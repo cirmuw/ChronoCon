@@ -1,0 +1,52 @@
+#!/bin/sh
+#SBATCH -q a100
+#SBATCH --cpus-per-task=24
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=150G
+#SBATCH -p gpu
+
+#SBATCH -o /msc/home/YOUR_USER/logs/%x.o%A.txt
+#SBATCH -e /msc/home/YOUR_USER/logs/%x.o%A.txt
+
+#SBATCH --mail-type=ALL
+#SBATCH --mail-user=firstname.lastname@meduniwien.ac.at  
+
+command="$@"
+echo "COMMAND: "$command
+
+# My code needs nnUNet, which needs these env variables to be set correctly:
+export nnUNet_results="/msc/home/cwatze93/data/nnUNet_frame/nnUNet_results"
+export nnUNet_preprocessed="/msc/home/cwatze93/data/nnUNet_frame/nnUNet_preprocessed"
+export nnUNet_raw="/msc/home/cwatze93/data/nnUNet_frame/nnUNet_raw"
+export nnUNet_compile=f
+
+# I use MLFLOW for logging
+# Other options are possible (and recommende by the cir logging guidlines)
+export MLFLOW_TRACKING_URI="file:///msc/home/cwatze93/data/mlflow/mlruns_01"
+
+singularity exec --nv /msc/home/cwatze93/container/cw_utils.sif $command
+
+
+
+#------------------------
+#### DEBUGGING without rebuilding the container 
+# In case you want to make a quick and dirty code change and just rerun the code without 
+# rebuilding the container you can do this by
+# 1) Having a local clone of your repo on the custer
+#    (in this example in:  /msc/home/cwatze93/code/segmentation_ls/cseg_utils)
+# 2) Inserting this to the beginning of your python path: 
+#     export SINGULARITYENV_PYTHONPATH=/msc/home/cwatze93/code/segmentation_ls:$PYTHONPATH
+# 
+
+
+#   export SINGULARITYENV_PYTHONPATH=/msc/home/cwatze93/code/segmentation_ls:$PYTHONPATH
+#   singularity exec --nv   /msc/home/cwatze93/container/cseg_utils.sif \
+#       python /msc/home/cwatze93/code/segmentation_ls/cseg_utils/tools/print_package_info.py
+
+
+#   singularity exec --nv /msc/home/cwatze93/container/cseg_utils.sif \
+#       python /msc/home/cwatze93/code/segmentation_ls/cseg_utils/project_specific/hvpg/training/training_and_hyperparameter_search_v1.py \
+#       --config  $config_file  
+# However, try to avaid having to many local 'quick' fixes without committing (and rebuilding)
+#-------------------------
+

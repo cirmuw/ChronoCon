@@ -1,0 +1,84 @@
+[project]
+name = "ra_utils"
+dynamic = ["version"]
+requires-python = ">=3.9"
+description = "ra_utils is .....  in development"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Some Guy", email = "some.guy@meduniwien.ac.at"},
+    { name = "Center for Imaging Research; Medical University of Vienna" }
+]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Healthcare Industry",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
+keywords = [
+    "deep learning",
+    "medical image analysis",
+]
+dependencies = [
+    "torch",
+    "tqdm",
+    "dicom2nifti",
+    "scipy",
+    "numpy",
+    "scikit-learn",
+    "scikit-image",
+    "SimpleITK",
+    "pandas",
+    "graphviz",
+    "requests",
+    "nibabel",
+    "matplotlib",
+    "seaborn",
+    "imagecodecs",
+    "yacs",
+    "einops",
+    "pytest"
+]
+
+[project.scripts]
+cir_package1_predict = "ra_utils.example_module:main_function"
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "ruff",
+    "pre-commit"
+]
+
+[build-system]
+requires = ["setuptools>=67.8.0", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["ra_utils"]
+exclude = [
+    "docs",
+    "documentation",
+    "logs",
+    "notebooks",
+    "references",
+    "singularity",
+    "slurm",
+    "tests",
+    "tutorials",
+    "data",
+    "features",
+    "inference",
+    "networks",
+    "training",
+    "utils",
+    "visualization"
+]
+
+[tool.setuptools_scm]
+write_to = "ra_utils/_version.py"
+local_scheme = "node-and-date"

@@ -1,0 +1,15 @@
+
+Bootstrap: docker
+From: pytorch/pytorch:2.3.0-cuda11.8-cudnn8-devel
+%post
+    apt-get update && apt-get install git libsm6 libxext6 -y
+    mkdir -p /data/dataset
+    mkdir /project/
+    pip install git+https://gitlab+deploy-token-1:!!!TOKEN!!!@gitlab.cir.meduniwien.ac.at:8888/phd/fdg-pet-ct-detector.git
+    pip install --upgrade git+https://github.com/FabianIsensee/hiddenlayer.git
+%environment
+    export LC_ALL=C
+%runscript
+    exec /bin/bash "$@"
+%startscript
+    exec /bin/bash "$@"

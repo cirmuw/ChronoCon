@@ -1,0 +1,20 @@
+#!/bin/sh
+
+#SBATCH -J Generate_Captions_All
+#SBATCH --time=72:00:00  # Maximum time limit according to the QoS policy
+#SBATCH --nodes=1
+#SBATCH --ntasks=8
+#SBATCH --mem=40000
+#SBATCH --gres=gpu:a100:1  # Requesting 1 GPU of type a100-40gb
+#SBATCH --partition=gpu  # GPU partition
+#SBATCH --qos=a100 # QoS for A100-40GB GPU
+#SBATCH --output=generate_captions_all_%j.log
+
+echo "Starting the hard work."
+
+export PYTHONPATH=$PYTHONPATH:/msc/home/pmeixn89/Projects/Projects/visdiff/serve
+SINGULARITY_IMAGE=/msc/home/pmeixn89/Projects/Projects/visdiff/applications/medicap_captions/medicap_run_image.sif
+
+singularity exec --nv $SINGULARITY_IMAGE python3 -u medicap_all_captions.py
+
+echo "Job finished."

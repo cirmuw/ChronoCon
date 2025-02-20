@@ -1,93 +1,227 @@
-# ra_utils
+### Legacy info: 
 
-
-
-## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
-
-```
-cd existing_repo
-git remote add origin https://gitlab.cir.meduniwien.ac.at:8888/cwatzenboeck/ra_utils.git
-git branch -M master
-git push -uf origin master
+We used to have a different structure, with a different design philosophy, which lead us to the structure: 
+```bash 
+.
+└── libs
+    ├── external_packages
+    │   └── ext_package_A
+    └── ra_utils
+        ├── ra_utils
+        │   ├── ...
+        ...
 ```
 
-## Integrate with your tools
+This structure has several downsides. (E.g. it is not simply installable via `pip install git+https//URL_OF_REPO.git` which makes building of containers on the cluster  unnecessarily complicated). It is also not the most common use case. The standard case is:
 
-- [ ] [Set up project integrations](https://gitlab.cir.meduniwien.ac.at:8888/cwatzenboeck/ra_utils/-/settings/integrations)
+*One* git repository *per* package. 
 
-## Collaborate with your team
+Which is now reflected in the new structure. 
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+Nonetheless, the old structure is still available in the 
+[`multi_package_project`](https://gitlab.cir.meduniwien.ac.at:8888/cwatzenboeck/project_structure_template01/-/tree/multi_package_project?ref_type=heads) branch.
 
-## Test and Deploy
 
-Use the built-in continuous integration in GitLab.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+# project_structure_template01
 
-***
+This is a template how a project structure might look like. It was created with having a python project in mind. For a c++ project some adaptations are surely needed. 
+Some of the highlights included: 
 
-# Editing this README
+- The project contained an example python package which is easily installable with `pip install -e` 
+- CI pipeline is already set up to automatically run unit- and doc-tests with `pytest`
+- CI pipeline is already set up to automatically build a documentation as an `html`
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+Feel free to change it to your needs as necessary. 
+When you make changes to this structure, which might make sense to for others as well, please create a merge request. 
 
-## Suggestions for a good README
+*Note:* If you want to use Unit-tests and so in in the gitlab pipeline, you will need to add a gitlab runner to your repository. Otherwise these will not work in the CI-CD-pipeline. Just google it if you need it. Or, if you want to remove this feature you can also delete the [`.gitlab-ci.yml`](.gitlab-ci.yml`) file in your fork of the repo. 
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
 
-## Name
-Choose a self-explaining name for your project.
+**Confluence**: There is corresponding confluence page for this template. [`https://confluence.meduniwien.ac.at/display/CIRLAB/Project+Structure`](https://confluence.meduniwien.ac.at/display/CIRLAB/Project+Structure).
+If you make major chages here consider updating the description on the confluence page.
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## Install instructions: 
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+The python packages come with an appropriate `pyproject.toml` file, which specifies the dependencies. 
+This allows you to install them simply with
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+```
+pip install -e .
+```
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Or, if you don't need a version to edit, but just want to use the code, you can use: 
+```bash
+pip install git+ssh://git@gitlab.cir.meduniwien.ac.at:11122/cwatzenboeck/project_structure_template01.git
+```
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+For instructions on how to build it via `pip install git+https ...` in a singularity container (on the MSC cluster!) see: 
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+[`singularity/workflow_a_la_konstantin`](singularity/workflow_a_la_konstantin). You might want to take a look at [`sample_file.sif`](singularity/workflow_a_la_konstantin/sample_file.sif).
+It boils down to creating an access token and modifying `sample_file.sif` accordingly. This way you can build a container on the cluster directly and all the dependecies are taken care of by putting them into `pyproject.toml`.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+### General structure
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+```bash
+# Run this to take a look at the folder structure 
+tree -I '*.pyc|__pycache__|ra_utils.*.rst|*.egg-info|.git|build|html|.env|.gitkeep|_static|_templates|ra_utils.rst|.pytest_cache|tmp' -a 
+```
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+```bash
+.
+├── ra_utils
+│   ├── __init__.py
+│   ├── data
+│   │   ├── dataloader.py
+│   │   └── download_dataset001_liver.py
+│   ├── features
+│   │   └── transforms.py
+│   ├── networks
+│   │   ├── architecture.py
+│   │   ├── layers.py
+│   │   └── loss_function.py
+│   ├── utils
+│   │   ├── example_module_illustrating_docstrings.py
+│   │   └── example_module_illustrating_pytest__test.py
+│   └── visualization
+│       └── semantic_segmentation.py
+├── docs
+│   ├── make.bat
+│   ├── Makefile
+│   └── source
+│       ├── conf.py
+│       └── index.rst
+├── documentation
+├── singularity
+│   ├── example_project.def
+│   ├── example_project_MSC_Philip_Meixner.def
+│   ├── example_project_MSC_Philip_Meixner.job
+│   └── workflow_a_la_konstantin
+│       ├── build_container_on_msc_cluster.job
+│       ├── README.md
+│       ├── run_arbitrary_command_with_container.job
+│       └── sample_file.def
+├── tutorials
+│   └── preprocessing_pipline.ipynb
+├── pyproject.toml
+├── .env-example
+├── .gitignore
+├── .gitlab-ci.yml
+├── logs
+├── notebooks
+├── README.md
+├── references
+├── requirements.txt
+├── slurm
+├── tests
+└── LICENSE
+```
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+[Here](https://docs.google.com/document/d/1_USwRnq4MR6dlpCHX_2xd5flOwr3TpvJ9h362sOBOFg/edit) you can find more infomation regarding each of the folders and files.
 
-## License
-For open source projects, say how it is licensed.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+
+_________________
+
+## TODOS
+We are getting there, but some parts can definitely be improved.
+
+### Ongoing
+- [ ] CI pipeline 
+  - [x] Basic testing with `pytest` in CI pipeline
+  - [x] Automatically build documentation 
+    - [ ] The structure of the package is not well reflected in the documentation 
+  - [ ] Add an official gitlab-runner: 
+       Currently the CI pipeline runs on my personal `cirpc`. There must be a better solution for this. 
+       Maybe after we move to a different gitlab this will take care of itself. :)
+  - [ ] Speed up CI pipeline
+        Building the environment is currently slow if your project depends large packages like PyTorch. 
+        There are several options to fix this. E.g. caching or building and deploying docker container. 
+        My first attempt (caching the virtual environment) did not speed up pipeline
+  - [ ] Deploy documentation (where to?)
+        The documentation is automatically build in the CI pipeline :-), however, one can only download it from the artifacts. 
+        Ideally the built html would also be deployed to some webpage (e.g. gitlab page) so that one can simply look up the 
+        API reference, ... in the browser.  
+- [ ] *Logging*: We set up a folder `logs` where some logging mechanism (``mlflow`?) might put log files. This should be aligned
+      the logging team. 
+  - [ ] Log environment (where?, how?, in pipeline?). Automatically save the environment for each commit.
+- [x] *singularity*: We added a simple example how a singularity image might be build. (See [`singularity/workflow_a_la_konstantin/sample_file.sif`](singularity/workflow_a_la_konstantin/sample_file.sif) and also the readme in the same folder).
+      However, this can and should be improved. 
+- [ ] Clean up: 
+      I added some code to test building the documentation, ... . Some parts should be cleaned up, others removed. 
+- [ ] Fix duplicate dependencies: 
+      Currently the projects dependencies are in [requirements.txt](requirements.txt) and also in the packages [pyproject.toml](pyproject.toml) file. 
+      This is not ideal. When one adds a dependency, one has to do it in two places. Maybe one should improve this. 
+      On the other hand, a project might contain several packages with different requirements. 
+- [x] Freeze environment where documentation build works as a checkpoint.  
+
+
+
+
+### Completed Column ✓
+- [x] Set up the basic structure
+- [x] Add a simple [tutorial example](tutorials/preprocessing_pipline.ipynb) for the package.
+- [x] Add examples how to write docstrings: [ra_utils/utils/example_module_illustrating_docstrings.py](ra_utils/utils/example_module_illustrating_docstrings.py)
+- [x] Add examples how to write test for your module: [ra_utils/utils/example_module_illustrating_pytest__test.py](ra_utils/utils/example_module_illustrating_pytest__test.py)
+
+
+_________________
+
+
+## Example `.env`
+Environment variables should be put in the `.env` file, which is included in the `.gitignore.
+For an example the variable names used in this project see: [`.env-example`](.env-example). You may copy this file as `.env` and adapt it to your needs.  
+Remember: Do NOT commit your environment variables to git!
+
+```bash
+SUPER_SECRET_API_KEY=....
+
+```
+
+
+They can be used in your python scripts in the following way: 
+```python
+
+# OPTION 1:  
+# Load environment variables from .env file if it exists 
+from dotenv import load_dotenv
+load_dotenv()
+
+# OPTION 2:
+from dotenv import dotenv_values
+
+config = dotenv_values(".env"),  # load environment variables as dictionary
+
+# Note that this allows the management of complex environments. E.g. 
+import os
+from dotenv import dotenv_values
+
+config = {
+    **dotenv_values(".env.shared"),  # load shared development variables
+    **dotenv_values(".env.secret"),  # load sensitive variables
+    **os.environ,  # override loaded values with environment variables
+}
+```
+
+_________________
+
+
+## How to access documentation
+### Automatically built documentation
+1.  Go to the latest pipeline test (click on the little check next to the commit id).
+2.  Click on build_docs.
+3.  On the right column, press "Download".
+4.  Unzip the downloaded file. 
+5.  Navigate to the html folder (usually the path looks like this: /artifacts/libs/package_name/docs/build/html)
+6.  Open the index.html file
+
+### Build documentation locally in your device
+1. Clone the repository.
+2. Make sure the environment you are working on to build the documentation has the necessary packages installed. You can find the list in the [docs_requirement.txt](https://drive.google.com/file/d/1PJCuWH5fsyVhBVmIesuaV0p3lSmoshLp/view?usp=sharing) provided. 
+3. Navigate to the project_structure_template01\libs\ra_utils\docs folder.
+4. Run the following command: sphinx-build -M html ./source ./
+5. You will find the documentation built in the project_structure_template01\libs\ra_utils\docs\folder 
+
+You can find this tutorial with images to facilitate the navigation on the [Google Docs file linked above](https://docs.google.com/document/d/1_USwRnq4MR6dlpCHX_2xd5flOwr3TpvJ9h362sOBOFg/edit).
+```

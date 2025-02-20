@@ -1,0 +1,21 @@
+#!/bin/sh
+#SBATCH --cpus-per-task=32
+#SBATCH --mem=256G
+#SBATCH -o /msc/home/YOUR_USER/logs/singularity_build.o%A.txt
+
+set -e
+
+# This script will create a container in: 
+#  ~/container/cw_utils.sif
+# Create the folder ~/container/  first or change this script
+
+# You also need to add the git access token in the sample_file.def  -> sample_file_FILLED.def
+
+
+singularity build --fakeroot ~/container/FRESH-cw_utils.sif \
+   ~/code/project_structure_template01/singularity/workflow_a_la_konstantin/sample_file_FILLED.def  
+
+
+rm ~/container/fdg-detector.sif
+mv ~/container/FRESH-cw_utils.sif ~/container/cw_utils.sif
+

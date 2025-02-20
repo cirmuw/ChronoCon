@@ -1,0 +1,25 @@
+# build with: 
+#  singularity build my_image.sig example_project.def
+# This worked for me on the cir cluster for odd reasons it did not work on the MSC
+# The likely reason is that the drivers on MSC are not up to date. 
+# Reducing the pytorch version (e.g. 2.1.0 -> 2.0) should work. 
+# Anyhow, you might want to take a look at the other .def files which were reported to work
+
+Bootstrap: docker
+    From: pytorch/pytorch:2.1.0-cuda11.8-cudnn8-devel
+
+%post
+    export LC_ALL=C.UTF-8
+    export DEBIAN_FRONTEND=noninteractive
+    ln -fs /usr/share/zoneinfo/Europe/Vienna /etc/localtime
+    apt-get update && apt-get install git python3-dev default-libmysqlclient-dev build-essential ffmpeg libsm6 libxext6 -y
+    pip install -r requirements.txt
+%files
+    /home/clemens/code/project_structure_template01/requirements.txt
+%environment
+    export LC_ALL=C
+%runscript
+    exec /bin/bash "$@"
+%startscript
+    exec /bin/bash "$@"
+
