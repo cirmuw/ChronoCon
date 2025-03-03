@@ -25,6 +25,9 @@ keywords = [
 ]
 dependencies = [
     "torch",
+    "torchvision",
+    "monai",
+    "pydicom",
     "tqdm",
     "dicom2nifti",
     "scipy",
@@ -41,7 +44,12 @@ dependencies = [
     "imagecodecs",
     "yacs",
     "einops",
-    "pytest"
+    "pytest",
+    #"importlib-metadata"
+    "ipython",
+    "jupyter", 
+    "ipykernel"
+
 ]
 
 [project.scripts]
