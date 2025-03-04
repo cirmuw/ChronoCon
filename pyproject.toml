@@ -48,8 +48,8 @@ dependencies = [
     #"importlib-metadata"
     "ipython",
     "jupyter", 
-    "ipykernel"
-
+    "ipykernel",
+    "landmarker",
 ]
 
 [project.scripts]
