@@ -30,6 +30,7 @@ def get_landmark_datasets(
             landmarks_train,
             pixel_spacing=pixel_spacings_train,
             transform=train_transform,
+            dim_img=dim_img,
             **kwargs,
         ),
         LandmarkDataset(
@@ -130,6 +131,7 @@ def get_landmark_datasets_CV(
             train_landmarks,
             pixel_spacing=train_pixel_spacings,
             transform=train_transform,
+            dim_img=dim_img,
             **kwargs
         )
 

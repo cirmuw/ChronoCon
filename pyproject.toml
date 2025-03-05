@@ -24,6 +24,7 @@ keywords = [
     "medical image analysis",
 ]
 dependencies = [
+    "nbstripout",
     "torch",
     "torchvision",
     "monai",
