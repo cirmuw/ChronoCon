@@ -2,72 +2,147 @@ from pathlib import Path
 import pandas as pd
 
 import ra_utils
-import ra_utils.data.data_utils
-from  ra_utils.data.data_utils import (
-    extract_extras_from_filename, 
-    extract_extras_from_abspath
-)
+
+import landmarker
+from landmarker.data import LandmarkDataset
 
 
 
 
-class DataHandler_CR_autoscoRA(object):
-    def __init__(self, 
-                 folder_H_images = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-                 folder_F_images = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-                 df_lm_labels_H = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points.csv",
-                 df_lm_labels_F = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points.csv",
-                 df_autoscoRA_labels_F = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_data/autoscoRA_feet.csv",
-                 df_autoscoRA_labels_H = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_data/autoscoRA_hands.csv"
-                 ):
-        self.filepaths = dict(
-                 folder_H_images = Path(folder_H_images),
-                 folder_F_images = Path(folder_F_images),
-                 df_lm_labels_H = Path(df_lm_labels_H),
-                 df_lm_labels_F = Path(df_lm_labels_F),
-                 df_autoscoRA_labels_F = Path(df_autoscoRA_labels_F),
-                 df_autoscoRA_labels_H = Path(df_autoscoRA_labels_H)
+def get_landmark_datasets(
+    image_paths_train,
+    image_paths_test1,
+    image_paths_test2,
+    landmarks_train,
+    landmarks_test1,
+    landmarks_test2,
+    train_transform=None,
+    inference_transform=None,
+    dim_img=(512,512),    
+    pixel_spacings_train=None,
+    pixel_spacings_test1=None,
+    pixel_spacings_test2=None,
+    **kwargs
+    ):
+    return (
+        LandmarkDataset(
+            image_paths_train,
+            landmarks_train,
+            pixel_spacing=pixel_spacings_train,
+            transform=train_transform,
+            **kwargs,
+        ),
+        LandmarkDataset(
+            image_paths_test1,
+            landmarks_test1,
+            pixel_spacing=pixel_spacings_test1,
+            transform=inference_transform,
+            dim_img=dim_img,
+            **kwargs,
+        ),
+        LandmarkDataset(
+            image_paths_test2,
+            landmarks_test2,
+            pixel_spacing=pixel_spacings_test2,
+            transform=inference_transform,
+            dim_img=dim_img,
+            **kwargs,
+        ),
+    )
+
+
+
+# Example ::
+#
+# folds_data_F = dataHandler.get_landmarks_dataset_F_CV()
+# cv_datasets_feet = get_landmark_datasets_CV(
+#     folds_data=folds_data_F,
+#     train_transform=my_train_transform,
+#     inference_transform=my_test_transform,
+#     dim_img=(512, 512),
+#     pixel_spacings_folds=pixel_spacings_folds_F
+# )
+
+def get_landmark_datasets_CV(
+    folds_data,
+    train_transform=None,
+    inference_transform=None,
+    dim_img=(512, 512),
+    pixel_spacings_folds=None,
+    **kwargs
+):
+    """
+    Parameters
+    ----------
+    folds_data : list
+        Typically the output of a function like get_landmarks_dataset_H_CV() or get_landmarks_dataset_F_CV().
+        Each element should be a tuple of:
+            (train_image_paths, train_landmarks, test_image_paths, test_landmarks)
+    train_transform : callable, optional
+        Transform to apply to the training dataset.
+    inference_transform : callable, optional
+        Transform to apply to the test dataset.
+    dim_img : tuple, optional
+        (height, width) to resize or pad images in the test sets, etc.
+    pixel_spacings_folds : list, optional
+        A parallel list to folds_data, containing pixel spacings for each fold.
+        If provided, each element should map to something like:
+            pixel_spacings_folds[i]['train'] -> list of pixel spacings for train images
+            pixel_spacings_folds[i]['test']  -> list of pixel spacings for test images
+        or None if spacing is not being used.
+    **kwargs : dict
+        Additional arguments passed to the LandmarkDataset constructor.
+
+    Returns
+    -------
+    list
+        A list of length N (number of folds). Each element is a tuple:
+            (train_dataset, test_dataset)
+        Each is a LandmarkDataset instance.
+    """
+
+    fold_datasets = []
+
+    # If pixel_spacings_folds is not provided, default to None for each fold
+    use_spacings = (pixel_spacings_folds is not None)
+    
+    for i, fold_info in enumerate(folds_data):
+        if len(fold_info) != 4:
+            raise ValueError(
+                "Each element in folds_data must be a tuple of "
+                "(train_image_paths, train_landmarks, test_image_paths, test_landmarks)."
+            )
+        
+        (train_image_paths, train_landmarks,
+         test_image_paths, test_landmarks) = fold_info
+
+        # Pixel spacings (optional)
+        if use_spacings:
+            train_pixel_spacings = pixel_spacings_folds[i].get("train", None)
+            test_pixel_spacings  = pixel_spacings_folds[i].get("test", None)
+        else:
+            train_pixel_spacings = None
+            test_pixel_spacings  = None
+
+        # Create the training dataset
+        train_dataset = LandmarkDataset(
+            train_image_paths,
+            train_landmarks,
+            pixel_spacing=train_pixel_spacings,
+            transform=train_transform,
+            **kwargs
         )
 
-    @staticmethod
-    def load_landmark_df(landmark_path: Path| str):
-        df = pd.read_csv(landmark_path, header=None)
-        column_names = ["filename"] + [f"landmark_{(i-1) // 2}_{(i-1) % 2}" for i in range(1, df.shape[1])]
-        df.columns = column_names
-        # drop those where on data is available
-        m = ~(df.filter(regex="^landmark")==0).all(axis=1)
-        df = df[m]
-        return df
+        # Create the test dataset
+        test_dataset = LandmarkDataset(
+            test_image_paths,
+            test_landmarks,
+            pixel_spacing=test_pixel_spacings,
+            transform=inference_transform,
+            dim_img=dim_img,
+            **kwargs
+        )
 
+        fold_datasets.append((train_dataset, test_dataset))
 
-    def load_H_and_F_landmark_df(self):
-        df_lm_labels_H = self.load_landmark_df(self.filepaths["df_lm_labels_H"])
-        df_lm_labels_F = self.load_landmark_df(self.filepaths["df_lm_labels_F"])
-        return df_lm_labels_H, df_lm_labels_F
-
-    def load_H_and_F_paths_from_folder(self):
-        files_H = list(self.filepaths["folder_H_images"].glob("*.dcm"))
-        files_F = list(self.filepaths["folder_F_images"].glob("*.dcm"))
-        
-        files_H_with_extras = [extract_extras_from_abspath(file) for file in files_H[:]]
-        files_F_with_extras = [extract_extras_from_abspath(file) for file in files_F[:]]
-        df_images_H = pd.DataFrame(files_H_with_extras)
-        df_images_F = pd.DataFrame(files_F_with_extras)
-        return df_images_H, df_images_F
-
-    def load_autoscoRA_lables(self):
-        df_autoscoRA_labels_H = pd.read_csv(self.filepaths["df_autoscoRA_labels_H"])
-        df_autoscoRA_labels_F = pd.read_csv(self.filepaths["df_autoscoRA_labels_F"])
-        return df_autoscoRA_labels_H, df_autoscoRA_labels_F 
-
-
-    def load_everything(self):
-        self.df_lm_labels_H, self.df_lm_labels_F = self.load_H_and_F_landmark_df()
-        self.df_images_H, self.df_images_F = self.load_H_and_F_paths_from_folder()
-        self.df_autoscoRA_labels_H, self.df_autoscoRA_labels_F = self.load_autoscoRA_lables()
-        
-        self.df_images_and_landmarks_F = pd.merge(self.df_images_F, self.df_lm_labels_F, on="filename", how="inner")
-        self.df_images_and_landmarks_H = pd.merge(self.df_images_H, self.df_lm_labels_H, on="filename", how="inner")
-
-        # TODO merge other labels and images
-
+    return fold_datasets

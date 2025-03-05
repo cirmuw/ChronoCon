@@ -11,7 +11,10 @@ import ra_utils.data.data_utils
 
 
 
-def plot_landmarks(image: str | Path | torch.Tensor, landmarks, landmarks_targets=None):
+def plot_landmarks(image: str | Path | torch.Tensor, 
+                   landmarks, 
+                   landmarks_targets=None, 
+                   figsize=(12, 10)):
     """
     Plots an image (either from a file path, a NumPy array, or a PyTorch tensor) with landmarks.
 
@@ -47,7 +50,7 @@ def plot_landmarks(image: str | Path | torch.Tensor, landmarks, landmarks_target
             "landmarks_targets must have the same shape as landmarks"
 
     # Create figure and axis
-    fig, ax = plt.subplots(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=figsize)
     ax.imshow(image, cmap='gray')
 
     # Plot detected landmarks

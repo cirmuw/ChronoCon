@@ -49,7 +49,7 @@ dependencies = [
     "ipython",
     "jupyter", 
     "ipykernel",
-    "landmarker",
+    # "landmarker",
 ]
 
 [project.scripts]
