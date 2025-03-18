@@ -50,6 +50,7 @@ dependencies = [
     "ipython",
     "jupyter", 
     "ipykernel",
+    "mlflow"
     # "landmarker",
 ]
 
