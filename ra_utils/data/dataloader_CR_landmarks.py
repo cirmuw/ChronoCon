@@ -32,7 +32,7 @@ def get_landmark_datasets(
             transform=train_transform,
             dim_img=dim_img,
             **kwargs,
-        ),
+        ) if len(image_paths_train) > 0 else None,
         LandmarkDataset(
             image_paths_test1,
             landmarks_test1,
@@ -40,7 +40,7 @@ def get_landmark_datasets(
             transform=inference_transform,
             dim_img=dim_img,
             **kwargs,
-        ),
+        ) if len(image_paths_test1) > 0 else None,
         LandmarkDataset(
             image_paths_test2,
             landmarks_test2,
@@ -48,7 +48,7 @@ def get_landmark_datasets(
             transform=inference_transform,
             dim_img=dim_img,
             **kwargs,
-        ),
+        ) if len(image_paths_test2) > 0 else None,
     )
 
 

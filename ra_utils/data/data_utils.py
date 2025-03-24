@@ -1,6 +1,7 @@
 
 import pydicom
 import pandas as pd
+import numpy as np
 
 def extract_landmarks_from_df(dfm, image_idx=0):
     landmark_columns = dfm.filter(regex="^landmark").columns
@@ -55,13 +56,13 @@ def get_dicom_info(dicom_paths, only_header=False):
         try:
             ds = pydicom.dcmread(path)
             pixel_spacing = getattr(ds, "PixelSpacing", None)
-            records.append({
-                "file_path": path,
-                "pixel_spacing": pixel_spacing,
-                "pixel_spacing_0": pixel_spacing[0] if pixel_spacing != None else None,
-                "pixel_spacing_1": pixel_spacing[1] if pixel_spacing != None else None
-            })
-            
+            if only_header:
+                records.append({
+                    "file_path": path,
+                    "pixel_spacing": pixel_spacing,
+                    "pixel_spacing_0": pixel_spacing[0] if pixel_spacing != None else None,
+                    "pixel_spacing_1": pixel_spacing[1] if pixel_spacing != None else None
+                })
             if not only_header:
                 pixel_array = ds.pixel_array
                 dim_original = pixel_array.shape

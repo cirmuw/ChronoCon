@@ -14,6 +14,36 @@ from ra_utils.data.data_utils import (
     extract_extras_from_abspath
 )
 
+import yaml
+import json
+import os
+
+def read_dict_from_file(filename: str) -> dict:
+    """
+    Reads a YAML (.yml/.yaml) or JSON (.json) file and returns its contents as a dictionary.
+    
+    Parameters:
+    - filename (str): Path to the YAML or JSON file.
+
+    Returns:
+    - dict: Dictionary containing the file contents.
+
+    Raises:
+    - ValueError: If file extension is not .yml/.yaml/.json.
+    """
+    _, ext = os.path.splitext(filename)
+    ext = ext.lower()
+    
+    if ext in ['.yml', '.yaml']:
+        with open(filename, 'r') as file:
+            return yaml.safe_load(file)
+    elif ext == '.json':
+        with open(filename, 'r') as file:
+            return json.load(file)
+    else:
+        raise ValueError(f"Unsupported file extension '{ext}'. Please use a .yml, .yaml, or .json file.")
+
+
 class DataHandler_CR_autoscoRA(object):
     def __init__(self, 
                  folder_H_images = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
@@ -92,8 +122,7 @@ class DataHandler_CR_autoscoRA(object):
         # Load splits if provided
         p = self.filepaths["training_test_splits_json_H"]
         if p is not None:
-            with open(p, 'r') as fp:
-                data = json.load(fp)
+            data = read_dict_from_file(p)
             self.splits_dict_H_raw = data
             # Potentially exclude certain IDs
             # Example: ids_to_exclude = data["exclude"]
@@ -103,8 +132,7 @@ class DataHandler_CR_autoscoRA(object):
 
         p = self.filepaths["training_test_splits_json_F"]
         if p is not None:
-            with open(p, 'r') as fp:
-                data = json.load(fp)
+            data = read_dict_from_file(p)
             self.splits_dict_F_raw = data
             self.splits_dict_F = self.splits_dict_F_raw.copy()
         else: 
@@ -181,6 +209,14 @@ class DataHandler_CR_autoscoRA(object):
         train_filenames = self.splits_dict_H["training"]
         test1_filenames = self.splits_dict_H["test1"]
         test2_filenames = self.splits_dict_H["test2"]
+
+        if train_filenames == None: 
+            train_filenames = []
+        if test1_filenames == None:
+            test1_filenames = []
+        if test2_filenames == None:
+            test2_filenames = []
+        
 
         # Filter DataFrame
         df_train = self.df_images_and_landmarks_H[
