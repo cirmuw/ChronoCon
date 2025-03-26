@@ -1,18 +1,30 @@
-### Some notebooks for landmark detection
+### Notebooks for Landmark Detection
 
-- eval_landmarker_02_reload_F.ipynb
-    Evaluation notbook for feet landmarks
+**Code corresponds to my fork of the `landmarker` package:**  
+[`github.com:ClemensWatzenboeck/landmarker.git`](https://github.com/ClemensWatzenboeck/landmarker.git)  
+Commit range: `a86481c..95edfb4` (branch: `dev_watz`)
 
-- eval_landmarker_02_reload.ipynb
-    Evaluation notbook for hands landmarks
+---
 
-##### OLD 
+#### 📁 Files
 
-- 01_dataloader.ipynb
-    Development notebook for dataloader - before I used landmarks package. 
+- **`eval_landmarker_02_reload_F.ipynb`**  
+  Evaluation notebook for **feet** landmarks.
 
-- dev_landmarker_01.ipynb
-    Development notebook for landmark detection. Mostly depricated. 
-     Better use `ra_utils/ra_utils/training/landmarks/01_train_mlflow.py`
+- **`eval_landmarker_02_reload.ipynb`**  
+  Evaluation notebook for **hands** landmarks.
 
+---
+
+#### 🕰️ Old / Deprecated
+
+- **`01_dataloader.ipynb`**  
+  Development notebook for the dataloader — created before using the `landmarks` package.
+
+- **`dev_landmarker_01.ipynb`**  
+  Early development notebook for landmark detection (mostly deprecated).  
+  Prefer using:  
+  `ra_utils/ra_utils/training/landmarks/01_train_mlflow.py`
+
+---
 
