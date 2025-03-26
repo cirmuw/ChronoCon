@@ -416,7 +416,7 @@ def main():
             optimizer=optimizer,
             device=device,
             epochs=epochs,
-            patience=10,
+            patience=config["training_parameters"].get("early_stopping_patience", 10),
             scheduler=lr_scheduler
         )
 
