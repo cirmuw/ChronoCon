@@ -7,6 +7,7 @@ import pydicom
 import matplotlib.pyplot as plt
 
 from pathlib import Path
+import argparse
 
 # MONAI imports
 import monai
@@ -48,6 +49,9 @@ from landmarker.visualize import detection_report
 from landmarker.visualize.evaluation import detection_report, convert_to_report_df, evaluate_model_on_loader
 from landmarker.data import LandmarkDataset
 
+import landmarker.data.landmark_dataset
+from landmarker.data.landmark_dataset import LandmarkDatasetOnTheFly
+
 #   My stuff
 import ra_utils
 import ra_utils.data.data_utils
@@ -61,6 +65,7 @@ import ra_utils.data
 import ra_utils.data.data_handler
 import ra_utils.data.dataloader_CR_landmarks
 import ra_utils.visualization.plot_landmarks #.plot_landmarks
+import ra_utils.data.data_utils
 import pydicom
 import numpy as np
 
@@ -128,7 +133,7 @@ def load_models_and_settings(config):
 def main():
 
     config = load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/inference/F_inference.yaml",
-                        debugging_in_jupyter_nb="False",
+                        debugging_in_jupyter_nb=False,
                         silencium=False)
 
     #%%
@@ -148,7 +153,9 @@ def main():
     print(f"Files in: {images_folder}   {len(image_paths) = }")
 
     # Debugging: 
-    #image_paths = image_paths[:3]
+    if config.get("debugging", False):
+        print("DEBUGGING = TRUE; Only run in 10 images")
+        image_paths = image_paths[:10]
 
     # Define transforms
     inference_transformd = Compose([
@@ -157,6 +164,11 @@ def main():
         ScaleIntensityd(('image', )),
     ])
 
+    # Filter out the paths which lead to an error
+    image_paths, image_paths_errors = ra_utils.data.data_utils.filter_image_paths(image_paths)
+    print(f"Filtered image paths: {len(image_paths) = }")
+    print(f"Filtered image paths: {len(image_paths_errors) = }")
+    print(f"Filtered image paths: {image_paths_errors = }")
 
     # Define loader with dummy landmarks: 
     # Create dummy landmarks to reuse the datasetclass of landmarks
@@ -166,12 +178,14 @@ def main():
     dummy_landmarks[:, 1,0] = 1 # make dummy landmark 1 the unit vector x
     dummy_landmarks[:, 2,1] = 1 # make dummy landmark 2 the unit vector y
 
-    ds = LandmarkDataset(
+
+    ds = LandmarkDatasetOnTheFly(
         image_paths,
         dummy_landmarks,
         pixel_spacing=None,
         transform=inference_transformd,
-        dim_img=dim_image
+        dim_img=dim_image, 
+        #store_imgs=config["input"].get("store_imgs", True),
     )
 
     loader = DataLoader(

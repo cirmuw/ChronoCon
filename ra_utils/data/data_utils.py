@@ -2,6 +2,32 @@
 import pydicom
 import pandas as pd
 import numpy as np
+from typing import List, Tuple
+from monai.transforms import LoadImage
+import pydicom
+from tqdm import tqdm
+
+def filter_image_paths(image_paths: List[str]) -> Tuple[List[str], List[str]]:
+    """
+    Attempts to load each path with MONAI's LoadImage transform.
+    Returns:
+      valid_paths: all paths that loaded successfully
+      error_paths: all paths that raised an exception
+    """
+    loader = LoadImage(image_only=True, ensure_channel_first=True)
+
+    valid_paths = []
+    error_paths = []
+
+    for path in tqdm(image_paths, desc="Filtering image paths"):
+        try:
+            _ = loader(path)
+            valid_paths.append(path)
+        except Exception as e:
+            print(f"Warning: Could not load {path}. Error: {e}")
+            error_paths.append(path)
+
+    return valid_paths, error_paths
 
 def extract_landmarks_from_df(dfm, image_idx=0):
     landmark_columns = dfm.filter(regex="^landmark").columns
