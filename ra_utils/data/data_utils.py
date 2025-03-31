@@ -17,7 +17,7 @@ def extract_extras_from_filename(filename: str):
         "filename": filename.replace(".dcm",""), 
         "id": x[0],
         "date_str": x[1],
-        "sex": x[2],
+        "region": x[2],
         "left_or_right": x[3],
         # I dont know what the rest means:  dp_MTwo_InvNo_RotNo_BOk_OPNo_app_ComNo
         "x4": x[4],
