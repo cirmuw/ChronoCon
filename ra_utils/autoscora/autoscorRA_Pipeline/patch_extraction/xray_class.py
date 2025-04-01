@@ -1,4 +1,4 @@
-import input.constants.input_constants as const
+import input.constants.input_constants_cw as const
 import os
 import sys
 import numpy as np

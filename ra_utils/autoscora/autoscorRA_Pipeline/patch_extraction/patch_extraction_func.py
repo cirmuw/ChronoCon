@@ -1,4 +1,4 @@
-import input.constants.input_constants as const
+import input.constants.input_constants_cw as const
 import patch_extraction.io_patch_extraction as iop
 import os
 import datetime

@@ -1,4 +1,4 @@
-import input.constants.input_constants as const
+import input.constants.input_constants_cw as const
 import input.constants.augmentation_constants as augm
 import patch_extraction.io_patch_extraction as iop
 import patch_extraction.patch_extraction_func as pe
