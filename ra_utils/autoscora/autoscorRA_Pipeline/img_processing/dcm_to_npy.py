@@ -1,5 +1,5 @@
-from autoscora_utils.logging_class import Logger
-import input.constants.input_constants as const
+from ra_utils.autoscora.autoscorRA_Pipeline.autoscora_utils.logging_class import Logger
+import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants as const
 import os
 import sys
 import numpy as np

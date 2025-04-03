@@ -1,5 +1,5 @@
 
-import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw as const
+import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw_dev as const
 import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.augmentation_constants as augm
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.io_patch_extraction as iop
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.patch_extraction_func as pe
@@ -28,7 +28,7 @@ start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 print("running patch_saving.py at " + start_time)
 
 extremity = "hand"  # "foot"  # "hand"
-img_format = ".npy"  # '.npy'  # '.dcm'
+img_format = ".dcm"  # '.npy'  # '.dcm'
 augment = False
 
 if extremity == "hand":
@@ -77,7 +77,8 @@ gt_joints = iop.import_joints_from_csv_to_dict(file=gt_joints_file, img_colname=
 pred_joints_rest = iop.import_joints_from_csv_to_dict(file=pred_joints_file, img_colname="img")
 
 # if the 100 img are also included in the pred_joints df, then the pred values overwrite the gt values
-joints = {**gt_joints, **pred_joints_rest}
+#joints = {**gt_joints, **pred_joints_rest}
+joints = pred_joints_rest   # for DEBUGGING
 
 # get points for patch extraction
 finger_points = iop.joints_to_points_dict_for_patch_extraction(joints=joints,
@@ -195,7 +196,7 @@ for img in img_names[lo:hi]:
             patch = pe.patch_cutter(img=array, rectangle_measures=None, rectangle_corners=modified_corners,
                                     square=True, resize_patch=np.array([128, 128]),
                                     padd_patch=None, base_crop=int(3),
-                                    plot=False, show_steps=True, print_log=False)
+                                    plot=True, show_steps=True, print_log=False)
 
             # save patch
             if augment:
@@ -211,6 +212,7 @@ for img in img_names[lo:hi]:
 
         del corners
         gc.collect()
+        exit(0) # DEBUGGING
 
     del extremity_ref
     del array

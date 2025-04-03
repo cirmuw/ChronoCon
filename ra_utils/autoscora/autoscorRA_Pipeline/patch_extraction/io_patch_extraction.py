@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import input.constants.input_constants_cw as const
+import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw as const
 import os
 import re
 
@@ -106,6 +106,8 @@ def import_joints_from_csv_to_dict(file=const.JOINTS_PATH_GT_100, img_colname="i
     joints_df = pd.read_csv(file, sep=sep, header=header)
     # use img_colname column as row index
     joints_df.set_index(img_colname, inplace=True)
+    # Drop columns not ending in -X or -Y (no coordinates)
+    joints_df = joints_df.loc[:, joints_df.columns.str.endswith(('-X', '-Y'))]
     # get names of joints (in csv one column key per coordinate (e.g, MCP1-P-X, MCP1-Y,...) but want one key per point)
     joint_names = list(set([re.sub("((-X)|(-Y))$", '', i) for i in joints_df.keys()]))
     # dict with row index as key and rows in {col: cell} dicts as values: {img_name: {col: cell, ...}, ...}

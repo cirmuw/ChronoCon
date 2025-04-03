@@ -1,4 +1,4 @@
-import input.constants.input_constants_cw as const
+import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw as const
 import os
 import sys
 import numpy as np
@@ -18,7 +18,7 @@ from matplotlib.lines import Line2D
 
 class XRay:
     def __init__(self, filepath, donotload=False, datatype='dcm'):
-        from autoscora_utils.logging_class import Logger
+        from ra_utils.autoscora.autoscorRA_Pipeline.autoscora_utils.logging_class import Logger
         self.logger = Logger.sub_logger('evaluation_class.' + type(self).__name__)
         self.filepath = filepath
         self.name = os.path.splitext(os.path.basename(self.filepath))[0]

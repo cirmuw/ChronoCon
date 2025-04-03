@@ -1,5 +1,5 @@
-import input.constants.input_constants_cw as const
-import patch_extraction.io_patch_extraction as iop
+import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw as const
+import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.io_patch_extraction as iop
 import os
 import datetime
 # import pandas as pd

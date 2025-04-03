@@ -46,6 +46,7 @@ dependencies = [
     "yacs",
     "einops",
     "pytest",
+    "imutils",  # for code of thomas
     #"importlib-metadata"
     "ipython",
     "jupyter", 
