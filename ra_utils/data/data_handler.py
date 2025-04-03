@@ -6,7 +6,7 @@ import json
 
 import pydicom
 from pydicom.errors import InvalidDicomError
-
+import re
 import ra_utils
 import ra_utils.data.data_utils
 from ra_utils.data.data_utils import (
@@ -53,7 +53,9 @@ class DataHandler_CR_autoscoRA(object):
                  df_autoscoRA_labels_F = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_data/autoscoRA_feet.csv",
                  df_autoscoRA_labels_H = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_data/autoscoRA_hands.csv",
                  training_test_splits_json_H = None,
-                 training_test_splits_json_F = None
+                 training_test_splits_json_F = None,
+                 df_autoscoRA_labels_F_header = "infer",
+                 df_autoscoRA_labels_H_header = "infer",
                  ):
         
         self.filepaths = dict(
@@ -66,23 +68,27 @@ class DataHandler_CR_autoscoRA(object):
                  training_test_splits_json_F=training_test_splits_json_F,
                  training_test_splits_json_H=training_test_splits_json_H
         )
+        self.df_autoscoRA_labels_F_header = df_autoscoRA_labels_F_header
+        self.df_autoscoRA_labels_H_header = df_autoscoRA_labels_H_header
         self.load_everything()
 
     @staticmethod
-    def load_landmark_df(landmark_path: Path| str):
-        df = pd.read_csv(landmark_path, header=None)
-        column_names = ["filename"] + [f"landmark_{(i-1) // 2}_{(i-1) % 2}" 
-                                       for i in range(1, df.shape[1])]
-        df.columns = column_names
+    def load_landmark_df(landmark_path: Path| str, header="infer"):
+        df = pd.read_csv(landmark_path, header=header)
+        df = df.rename(columns={"img": "filename"})
+        if header == None: 
+            column_names = ["filename"] + [f"landmark_{(i-1) // 2}_{(i-1) % 2}" 
+                                        for i in range(1, df.shape[1])]
+            df.columns = column_names
         
         # Drop rows where all landmark columns are zero
-        m = ~(df.filter(regex="^landmark") == 0).all(axis=1)
+        m = ~(df.iloc[:,1:] == 0).all(axis=1)
         df = df[m]
         return df
 
     def load_H_and_F_landmark_df(self):
-        df_lm_labels_H = self.load_landmark_df(self.filepaths["df_lm_labels_H"])
-        df_lm_labels_F = self.load_landmark_df(self.filepaths["df_lm_labels_F"])
+        df_lm_labels_H = self.load_landmark_df(self.filepaths["df_lm_labels_H"], header=self.df_autoscoRA_labels_H_header)
+        df_lm_labels_F = self.load_landmark_df(self.filepaths["df_lm_labels_F"], header=self.df_autoscoRA_labels_F_header)
         return df_lm_labels_H, df_lm_labels_F
 
     def load_H_and_F_paths_from_folder(self):
@@ -103,6 +109,8 @@ class DataHandler_CR_autoscoRA(object):
 
     def load_everything(self):
         self.df_lm_labels_H, self.df_lm_labels_F = self.load_H_and_F_landmark_df()
+        self.landmark_names_H = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_H.columns[1:]])) if self.df_autoscoRA_labels_H_header == "infer" else None          
+        self.landmark_names_F = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_F.columns[1:]])) if self.df_autoscoRA_labels_F_header == "infer" else None          
         self.df_images_H, self.df_images_F       = self.load_H_and_F_paths_from_folder()
         self.df_autoscoRA_labels_H, self.df_autoscoRA_labels_F = self.load_autoscoRA_lables()
         
@@ -141,7 +149,7 @@ class DataHandler_CR_autoscoRA(object):
     # --------------------------------------------------------------
     # Helper method: Extract image paths and landmark arrays from df
     # --------------------------------------------------------------
-    def _extract_image_paths_and_landmarks(self, df_subset: pd.DataFrame, get_pixel_spacing=False):
+    def _extract_image_paths_and_landmarks(self, df_subset: pd.DataFrame, get_pixel_spacing=False, landmark_names=None):
         """
         Given a subset of self.df_images_and_landmarks_H (or F),
         return a list of image-path strings, a 3D numpy array of landmarks,
@@ -152,7 +160,7 @@ class DataHandler_CR_autoscoRA(object):
 
         # Build landmarks array (example snippet)
         landmarks_list = [
-            ra_utils.data.data_utils.extract_landmarks_from_df(df_subset, image_idx=i)
+            ra_utils.data.data_utils.extract_landmarks_from_df(df_subset, image_idx=i, landmark_names=landmark_names)
             for i, _row in df_subset.iterrows()
         ]
         landmarks_array = np.array(landmarks_list, dtype=np.uint16)
@@ -230,14 +238,15 @@ class DataHandler_CR_autoscoRA(object):
         ]
 
         # Extract for each subset
+        landmark_names = self.landmark_names_H
         (image_paths_train, landmarks_train, pixel_spacing_train) = \
-            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         (image_paths_test1, landmarks_test1, pixel_spacing_test1) = \
-            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         (image_paths_test2, landmarks_test2, pixel_spacing_test2) = \
-            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         return (
             image_paths_train, 
@@ -282,10 +291,11 @@ class DataHandler_CR_autoscoRA(object):
                 self.df_images_and_landmarks_H["filename"].isin(test_filenames)
             ]
 
+            landmark_names = self.landmark_names_H
             (train_image_paths, train_landmarks, _) = \
-                self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=False)
+                self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=False, landmark_names=landmark_names)
             (test_image_paths,  test_landmarks,  _) = \
-                self._extract_image_paths_and_landmarks(df_test, get_pixel_spacing=False)
+                self._extract_image_paths_and_landmarks(df_test, get_pixel_spacing=False, landmark_names=landmark_names)
 
             folds_data.append((train_image_paths, train_landmarks,
                                test_image_paths,  test_landmarks))
@@ -322,14 +332,15 @@ class DataHandler_CR_autoscoRA(object):
             self.df_images_and_landmarks_F["filename"].isin(test2_filenames)
         ]
 
+        landmark_names = self.landmark_names_F
         (image_paths_train, landmarks_train, pixel_spacing_train) = \
-            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         (image_paths_test1, landmarks_test1, pixel_spacing_test1) = \
-            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         (image_paths_test2, landmarks_test2, pixel_spacing_test2) = \
-            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing)
+            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
 
         return (
             image_paths_train, 
@@ -374,10 +385,11 @@ class DataHandler_CR_autoscoRA(object):
                 self.df_images_and_landmarks_F["filename"].isin(test_filenames)
             ]
 
+            landmark_names = self.landmark_names_F
             (train_image_paths, train_landmarks, _) = \
-                self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=False)
+                self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=False, landmark_names=landmark_names)
             (test_image_paths,  test_landmarks,  _) = \
-                self._extract_image_paths_and_landmarks(df_test, get_pixel_spacing=False)
+                self._extract_image_paths_and_landmarks(df_test, get_pixel_spacing=False, landmark_names=landmark_names)
 
             folds_data.append((train_image_paths, train_landmarks,
                                test_image_paths,  test_landmarks))

@@ -74,7 +74,7 @@ def predict_single_image(model, sample, device):
         pred_lm_np = pred_landmark[0].cpu().numpy()
         pred_unresized = np.einsum("ij,lj->lj", A_inv, (pred_lm_np - t_np[None, :]))
 
-    return pred_landmark.cpu(), pred_unresized[...,::-1], dim_orig.cpu(), pixel_spacing.cpu(), padding.cpu()
+    return pred_landmark.cpu(), pred_unresized, dim_orig.cpu(), pixel_spacing.cpu(), padding.cpu()
 
 
 def predict_landmarks(model, loader, device):

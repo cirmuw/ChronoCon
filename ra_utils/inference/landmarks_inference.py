@@ -207,12 +207,24 @@ def main():
     landmarks_df_separate = pd.DataFrame(
         [[image_paths[i]] + landmarks_flat[i] for i in range(len(image_paths))],
         columns=column_names
-    )
-    landmarks_df_separate["file_name"] = landmarks_df_separate["image_path"].apply(lambda x: Path(x).name)
+        )
+    landmarks_df_separate["file_name"] = landmarks_df_separate["image_path"].apply(lambda x: Path(x).stem)
     landmarks_df_separate.to_csv(out_path, index=False)    
     print("Saving csv to ", out_path)
+
+
+    # Save the transformed renamed landmarks to a CSV file
+    renaming_csv = config["input"].get("renaming_csv", None)
+    if  renaming_csv != None: 
+        mapping_df = pd.read_csv(renaming_csv, header=None)
+        renaming_dict = {k: v for k, v in mapping_df.transpose().values}
+        out_path_with_lm_names = f"{Path(out_path).with_suffix('')}_with_lm_names{Path(out_path).suffix}"
+        landmarks_df_separate.rename(columns=renaming_dict, inplace=True)
+        landmarks_df_separate.to_csv(out_path_with_lm_names, index=False)
+        print(f"Renamed columns and saved to {out_path_with_lm_names}")
 
 
 
 if __name__ == "__main__":
     main()
+    print("Done")

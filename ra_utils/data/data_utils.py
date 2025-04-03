@@ -2,7 +2,7 @@
 import pydicom
 import pandas as pd
 import numpy as np
-from typing import List, Tuple
+from typing import List, Tuple, Iterable
 from monai.transforms import LoadImage
 import pydicom
 from tqdm import tqdm
@@ -29,12 +29,49 @@ def filter_image_paths(image_paths: List[str]) -> Tuple[List[str], List[str]]:
 
     return valid_paths, error_paths
 
-def extract_landmarks_from_df(dfm, image_idx=0):
-    landmark_columns = dfm.filter(regex="^landmark").columns
-    landmarks = dfm.loc[image_idx, landmark_columns].values.reshape(-1, 2)
+# def extract_landmarks_from_df(dfm, image_idx=0, landmark_columns = None):
+#     if not isinstance(landmark_columns, Iterable) and landmark_columns == None: 
+#         landmark_columns = dfm.filter(regex="^landmark").columns
+#     landmarks = dfm.loc[image_idx, landmark_columns].values.reshape(-1, 2)
+#     return landmarks
+
+
+def extract_landmarks_from_df(dfm, image_idx=0, landmark_names=None, x_suffix="-X", y_suffix="-Y"):
+    """
+    Extracts landmarks (x, y) from a DataFrame row.
+
+    Parameters:
+    - dfm: pandas DataFrame containing landmark columns.
+    - image_idx: row index to extract landmarks from.
+    - landmark_columns: list of landmark base names or column names (optional).
+    - x_suffix: suffix for x-coordinates (default: "-X").
+    - y_suffix: suffix for y-coordinates (default: "-Y").
+
+    Returns:
+    - landmarks: numpy array of shape (N, 2)
+    """
+    
+    if landmark_names is None or not isinstance(landmark_names, Iterable):
+        # Automatically select columns starting with 'landmark'
+        landmark_names = dfm.filter(regex="^landmark").columns
+        landmarks = dfm.loc[image_idx, landmark_names].values.reshape(-1, 2)
+    
+    else:
+        # Assume landmark_columns are base names, and construct full column names
+        x_cols = [f"{col}{x_suffix}" for col in landmark_names]
+        y_cols = [f"{col}{y_suffix}" for col in landmark_names]
+
+        # Check that all columns exist
+        missing = set(x_cols + y_cols) - set(dfm.columns)
+        if missing:
+            raise ValueError(f"Missing columns in DataFrame: {missing}")
+        
+        # Extract values
+        x_vals = dfm.loc[image_idx, x_cols].values
+        y_vals = dfm.loc[image_idx, y_cols].values
+        landmarks = np.stack((x_vals, y_vals), axis=1)
+
     return landmarks
-
-
 
 
 def extract_extras_from_filename(filename: str): 
