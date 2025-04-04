@@ -1,6 +1,6 @@
 
 # import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw_dev as const
-import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.augmentation_constants as augm
+#import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.augmentation_constants as augm
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.io_patch_extraction as iop
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.patch_extraction_func as pe
 from ra_utils.autoscora.autoscorRA_Pipeline.img_processing.dcm_to_npy import XRay
