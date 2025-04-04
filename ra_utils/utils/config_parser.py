@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import yaml
 
+
 def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_01.yaml",
                 debugging_in_jupyter_nb=False, silencium=False):
 

@@ -22,18 +22,23 @@ else:
     MATPLOTLIB_BACKEND = 'agg'
 
 # img hands
-IMAGE_DIR = "/home/cwatzenboeck/data/tmp/dev_autoscora/H"
-
 # IMAGE_DIR = PROJECT_DIR_SEP + \
 #              "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+#IMAGE_DIR = "/home/cwatzenboeck/data/tmp/dev_autoscora/H"
+IMAGE_DIR = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/images/H_dev"
+
+
 ARRAY_DIR = PROJECT_DIR_SEP + \
              "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_arrays"
 # PATCH_DIR = PROJECT_DIR_SEP + \
 #              "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_patches"
-PATCH_DIR = "/home/cwatzenboeck/data/tmp/dev_autoscora/out_patches_H"
+# PATCH_DIR = "/home/cwatzenboeck/data/tmp/dev_autoscora/out_patches_H"  
+PATCH_DIR = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/preprocessing/H/extracted_joint_patches_DB"
 
-AUGM_PATCH_DIR = PROJECT_DIR_SEP + \
-                 "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+# AUGM_PATCH_DIR = PROJECT_DIR_SEP + \
+#                  "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+AUGM_PATCH_DIR = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/preprocessing/H/extracted_joint_patches_augmented_DB"
+
 CV_PATCH_DIR = PROJECT_DIR_SEP + \
             "autoscoRA_images/H_CV_images_of_interest_2_renamed_mirrored_inverted_patches"
 CV_AUGM_PATCH_DIR = PROJECT_DIR_SEP + \

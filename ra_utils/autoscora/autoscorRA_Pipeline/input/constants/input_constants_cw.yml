@@ -1,0 +1,121 @@
+# A file containing all the file paths 
+## This file has the same content as input_constants_cw.py
+
+# ========================
+#  input_constants.yml
+# ========================
+# This YAML file captures the main constants and paths from input_constants.py,
+# along with explanatory comments derived from the script and docstrings.
+
+# Indicates whether to run locally or not
+RUN_LOCALLY: true
+
+# ------------------------------------
+# Directories (when RUN_LOCALLY = True)
+# ------------------------------------
+HOME_DIR_SEP: "/home/cwatzenboeck/data/AutoPIX_cirdata//"
+TDEIMEL_HOME_AUTOSCORA_SEP: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME//"
+ANNOTAION_DIR_SEP: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/"
+PROJECT_DIR_SEP: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/"
+MATPLOTLIB_BACKEND: "TkAgg"
+
+# --------------------------------------------------------------------
+# Image (Hand) directories for DICOMs, arrays, patches, augmentations
+# --------------------------------------------------------------------
+IMAGE_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+ARRAY_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_arrays"
+PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_patches"
+AUGM_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+CV_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_CV_images_of_interest_2_renamed_mirrored_inverted_patches"
+CV_AUGM_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_CV_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+FAIL_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/failures"
+
+# --------------------------------------------------------------------
+# Image (Foot) directories for DICOMs, arrays, patches, augmentations
+# --------------------------------------------------------------------
+F_IMAGE_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+F_ARRAY_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_arrays"
+F_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_patches"
+F_AUGM_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+F_CV_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_CV_images_of_interest_2_renamed_mirrored_inverted_patches"
+F_CV_AUGM_PATCH_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_CV_images_of_interest_2_renamed_mirrored_inverted_augmented_patches"
+F_FAIL_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_failures"
+
+# ---------------------------
+# Ground truth annotation CSV
+# ---------------------------
+JOINTS_PATH_GT_100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/hands_combined/all_hand_joints_100_onlynecessaryjoints.csv"
+ROIS_PATH_GT_100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/hands_combined/all_hand_rois_100.csv"
+
+F_JOINTS_PATH_GT_100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/feet/all_foot_joints_100.csv"
+F_ROIS_PATH_GT_100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/feet/all_foot_rois_100.csv"
+
+# ---------------------------------------------------------------------
+# Annotation CSVs for evaluating localization accuracy (Val, Pred, etc.)
+# ---------------------------------------------------------------------
+JOINTS_PATH_VAL_30: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/hands_combined/SCN_output/all_hand_joints_train70_pred30_onlynecessaryjoints_nodec.csv"
+F_JOINTS_PATH_VAL_30: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/feet/SCN_output/all_feet_joints_train70_pred30_nodec.csv"
+
+JOINTS_PATH_PRED_REST100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/hands_combined/SCN_output/all_hand_joints_train100_predrest_onlynecessaryjoints_nodec.csv"
+F_JOINTS_PATH_PRED_REST100: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/feet/SCN_output/all_feet_joints_train100_predrest_nodec.csv"
+
+# --------------------------------------
+# Joint localization cross-validation CSV
+# --------------------------------------
+JOINTS_PATH_100_SPLIT0: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_hand_joints_100img_split0_onlynecessaryjoints_nodec.csv"
+JOINTS_PATH_100_SPLIT1: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_hand_joints_100img_split1_onlynecessaryjoints_nodec.csv"
+JOINTS_PATH_100_SPLIT2: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_hand_joints_100img_split2_onlynecessaryjoints_nodec.csv"
+
+F_JOINTS_PATH_100_SPLIT0: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_feet_joints_100img_split0_nodec.csv"
+F_JOINTS_PATH_100_SPLIT1: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_feet_joints_100img_split1_nodec.csv"
+F_JOINTS_PATH_100_SPLIT2: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/crossval/SCN_output/all_feet_joints_100img_split2_nodec.csv"
+
+# --------------------
+# Pixel spacing (CSV)
+# --------------------
+PIXEL_SPACING: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/localization_cv_splits/H_100img_mm_per_px.csv"
+F_PIXEL_SPACING: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/localization_cv_splits/F_100img_mm_per_px.csv"
+
+# ------------------------------------------------
+# Parameters from patch_fit (JSON, CV splits, etc.)
+# ------------------------------------------------
+JOINT_TO_ROIS_PARAMETERS_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/patch_fit_out/chosen_patch_fit/patch_fit_hand_plotannotFalse_2022-06-29_10-24-22/parameters.json"
+CV_SPLIT_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/localization_cv_splits/cv_splits_hand_2022-06-26_09-55-48_H_before_F"
+CV_JOINT_TO_ROIS_PARAMETERS_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/patch_fit_out/chosen_patch_fit/patch_fit_hand_plotannotFalse_2022-06-29_10-24-22/cv_parameters_by_split.json"
+
+F_JOINT_TO_ROIS_PARAMETERS_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/patch_fit_out/chosen_patch_fit/patch_fit_foot_plotannotFalse_2022-06-29_10-24-22/parameters.json"
+F_CV_SPLIT_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/localization_cv_splits/cv_splits_foot_2022-06-26_09-55-48_H_before_F"
+F_CV_JOINT_TO_ROIS_PARAMETERS_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/output/loc_and_segm_output/patch_fit_out/chosen_patch_fit/patch_fit_foot_plotannotFalse_2022-06-29_10-24-22/cv_parameters_by_split.json"
+
+# ---------------
+# Scoring (CSV)
+# ---------------
+PREPROCESSING_OUTPUT_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output"
+PAT_DF_MANUAL_VERSION: "data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
+PAT_DF_MANUAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
+
+F_PAT_DF_MANUAL_VERSION: "pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+F_PAT_DF_MANUAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+
+H_F_DOUBLE_SCORE_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/double_scoring/Re_Scoring_50_v2_FINAL_pseudonymized_colrenamed.csv"
+
+# ----------------------------------------------
+# Dataset splits (train, val, test, stored as .npy)
+# ----------------------------------------------
+PAT_TRAIN_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/train_patients.npy"
+PAT_VAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/val_patients.npy"
+PAT_TEST_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/test_patients.npy"
+
+# ===========================
+# Legend (from the docstring)
+# ===========================
+# PATCHES/ROIs:
+#   SWR = wrist
+#   SCD# = #.Finger Carpometacarpalgelenk, distaler Anteil
+#   SMP# = #.Finger metacarpophalangealgelenk, proximaler Anteil
+#   SMD# = #.Finger metacarpophalangealgelenk, distaler Anteil
+#   SPP# = #.Finger proximales Interphalangealgelenk, proximaler Anteil
+#
+# SCORES: (not elaborated in code, but for reference)
+#
+# NETWORKS: (e.g. PIP I-V erosion, PIP II-V JSN, MCP I-V erosion, MCP I-V JSN, etc.)

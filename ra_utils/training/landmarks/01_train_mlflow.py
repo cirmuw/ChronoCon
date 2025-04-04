@@ -151,8 +151,12 @@ def main():
         mlflow.log_params(config["model_settings"])
         mlflow.log_params(config["training_parameters"])
 
-        #  TODO log all parameters from config
-        mlflow.log_dict(config, "config")
+        # Log config file
+        mlflow.log_dict(config, "config.yml")
+
+        # TODO:
+        # It would be good to also log the splits file
+
 
         # Load paths
         base_dir = Path(

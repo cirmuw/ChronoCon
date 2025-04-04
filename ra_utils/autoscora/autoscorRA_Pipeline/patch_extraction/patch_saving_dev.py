@@ -23,9 +23,18 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
 from matplotlib.lines import Line2D
+from importlib import resources
+
+# roi extraction settings from patch_fit
+def load_package_parameters(filename: str, package_resource="ra_utils.resources.patch_extraction"):
+    with resources.files(package_resource).joinpath(filename).open("r") as f:
+        return json.load(f)
 
 start_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 print("running patch_saving.py at " + start_time)
+
+
+
 
 extremity = "hand"  # "foot"  # "hand"
 img_format = ".dcm"  # '.npy'  # '.dcm'
@@ -39,7 +48,7 @@ if extremity == "hand":
     dcm_dir = const.IMAGE_DIR
     corners_list = ['RD', 'RP', 'UP', 'UD']
     finger_setup = iop.finger_joints_setup_hands
-    joints_to_rois_parameters_path = const.JOINT_TO_ROIS_PARAMETERS_PATH
+    # joints_to_rois_parameters_path = const.JOINT_TO_ROIS_PARAMETERS_PATH
     if augment:
         patch_dir = const.AUGM_PATCH_DIR
         modifications = augm.AUGM_LIST_OF_DICTS
@@ -53,7 +62,7 @@ elif extremity == "foot":
     dcm_dir = const.F_IMAGE_DIR
     corners_list = ['TD', 'TP', 'FP', 'FD']
     finger_setup = iop.finger_joints_setup_feet
-    joints_to_rois_parameters_path = const.F_JOINT_TO_ROIS_PARAMETERS_PATH
+    # joints_to_rois_parameters_path = const.F_JOINT_TO_ROIS_PARAMETERS_PATH
     if augment:
         patch_dir = const.F_AUGM_PATCH_DIR
         modifications = augm.AUGM_LIST_OF_DICTS  # try same as for hand
@@ -89,10 +98,14 @@ if extremity == "hand":
                                                                   setup=iop.wrist_by_center_setup)
     cmcgroup_points = {}  # {'SCD': None}
 
-# roi extraction settings from patch_fit
-# Opening JSON file
-with open(joints_to_rois_parameters_path) as json_file:
-    params = json.load(json_file)
+
+
+params = load_package_parameters("patch_fit_parameters_H.json") if extremity == "hand" else \
+         load_package_parameters("patch_fit_parameters_F.json")
+
+# load_patch_extraction_parameters(hand_or_foot="H") if extremity == "hand" else load_patch_fit_parameters(hand_or_foot="F")
+# with open(joints_to_rois_parameters_path) as json_file:
+#     params = json.load(json_file)
 
 # augmentation modifications
 if augment and False:
@@ -196,7 +209,7 @@ for img in img_names[lo:hi]:
             patch = pe.patch_cutter(img=array, rectangle_measures=None, rectangle_corners=modified_corners,
                                     square=True, resize_patch=np.array([128, 128]),
                                     padd_patch=None, base_crop=int(3),
-                                    plot=True, show_steps=True, print_log=False)
+                                    plot=False, show_steps=True, print_log=False)
 
             # save patch
             if augment:
@@ -212,7 +225,7 @@ for img in img_names[lo:hi]:
 
         del corners
         gc.collect()
-        exit(0) # DEBUGGING
+        #exit(0) # DEBUGGING
 
     del extremity_ref
     del array

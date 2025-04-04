@@ -105,18 +105,20 @@ def load_models_and_settings(config):
         mlflow_runs_dir = config["model"]["mlflow_runs_dir"] # "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/" 
         os.environ["MLFLOW_TRACKING_URI"] = mlflow_runs_dir
         run_id = config["model"]["run_id"]
-        logged_model_uri = f"runs:/{run_id}/best_model"  # or the path you used
+        model_artifact_name = config["model"].get("model_artifact_name", "best_model")
+        logged_model_uri = f"runs:/{run_id}/{model_artifact_name}"  # or the path you used
         model = mlflow.pytorch.load_model(logged_model_uri)
         model.eval()
 
-        logged_heatmap_uri = f"runs:/{run_id}/best_heatmap_generator"  # or the path you used
+        heatmap_generator_artifact_name = config["model"].get("heatmap_generator_artifact_name", "best_heatmap_generator")
+        logged_heatmap_uri = f"runs:/{run_id}/{heatmap_generator_artifact_name}"
         heatmap_generator = mlflow.pytorch.load_model(logged_heatmap_uri)
         heatmap_generator.eval();
 
+        # TODO:
+        # It would be best to load the settings ( img_size, ...) from the mlflow run
         # client = MlflowClient()
-        # local_path = client.download_artifacts(run_id, "config")
-
-        # # Load YAML config
+        # local_path = client.download_artifacts(run_id, "config.yml")
         # with open(local_path, 'r') as f:
         #     config_landmarks = yaml.safe_load(f)
         # pprint(config_landmarks)
@@ -136,7 +138,6 @@ def main():
                         debugging_in_jupyter_nb=False,
                         silencium=False)
 
-    #%%
     model, heatmap_generator, settings = load_models_and_settings(config)
     N_landmarks = settings["N_landmarks"]
     dim_image = settings["dim_image"]
