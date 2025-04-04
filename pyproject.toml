@@ -93,3 +93,6 @@ exclude = [
 [tool.setuptools_scm]
 write_to = "ra_utils/_version.py"
 local_scheme = "node-and-date"
+
+[tool.setuptools.package-data]
+"ra_utils.resources.patch_extraction" = ["*.json"]
