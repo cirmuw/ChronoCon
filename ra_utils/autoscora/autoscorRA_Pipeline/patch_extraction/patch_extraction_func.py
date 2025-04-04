@@ -574,7 +574,9 @@ def roi_modifier(rectangle_measures=None, rectangle_corners=None, modification_o
 
 def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
                  square=False, resize_patch=None, padd_patch=None, base_crop=int(3),
-                 plot=False, show_steps=True, print_log=False):
+                 plot=False, show_steps=True, print_log=False, 
+                 other_corners_to_plot=None  # plot additional corners
+                 ):
 
     """
     :param img: numpy array
@@ -710,6 +712,14 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
             for i in np.arange(0, len(corner_names)):
                 ax1.annotate(corner_names[i], (corner_arr[i, 0], corner_arr[i, 1]), color='red',
                              fontsize='x-small')
+            if other_corners_to_plot is not None:
+                corner_arr = np.array([coordinates for corner, coordinates in other_corners_to_plot.items()])
+                corner_names = [corner for corner, coordinates in other_corners_to_plot.items()]
+                ax1.scatter(corner_arr[:, 0], corner_arr[:, 1], s=3)
+                for i in np.arange(0, len(corner_names)):
+                    ax1.annotate(corner_names[i], (corner_arr[i, 0], corner_arr[i, 1]), color='blue',
+                                fontsize='x-small')
+
             # ax1.set_ylim(ax1.get_ylim()[::-1])
             ax2 = fig1.add_subplot(322)
             ax2.imshow(np.multiply(img, mask), cmap="gray")

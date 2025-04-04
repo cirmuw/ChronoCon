@@ -1,5 +1,5 @@
 
-import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw_dev as const
+# import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.input_constants_cw_dev as const
 import ra_utils.autoscora.autoscorRA_Pipeline.input.constants.augmentation_constants as augm
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.io_patch_extraction as iop
 import ra_utils.autoscora.autoscorRA_Pipeline.patch_extraction.patch_extraction_func as pe
@@ -18,7 +18,8 @@ import cv2
 import imutils
 import warnings
 import matplotlib
-matplotlib.use(const.MATPLOTLIB_BACKEND)
+# matplotlib.use(const.MATPLOTLIB_BACKEND)
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
@@ -43,66 +44,33 @@ config = ra_utils.utils.config_parser.load_config(
     debugging_in_jupyter_nb=False, silencium=False)
 
 
-extremity = "hand"  # "foot"  # "hand"
-img_format = ".dcm"  # '.npy'  # '.dcm'
-augment = False
+
+extremity = config["extremity"]  # "foot"  # "hand"
+img_format_input = config["img_format_input"]#".dcm"  # '.npy'  # '.dcm'
+img_dir = config["image_dir"]
+pred_joints_file = config["landmarks_csv"]
+patch_dir = config["output_dir"]
+
+
+def input_checks(config: dict):
+    if config["extremity"] not in ["hand", "foot"]:
+        raise ValueError("extremity must be either 'hand' or 'foot'")
+    if config["img_format_input"] not in [".dcm", ".npy"]:
+        raise ValueError("img_format_input must be either '.dcm' or '.npy'")
+
+
+input_checks(config)
 
 if extremity == "hand":
-    # gt_rois_file = const.ROIS_PATH_GT_100
-    # gt_joints_file = const.JOINTS_PATH_GT_100
-    pred_joints_file = const.JOINTS_PATH_PRED_REST100
-    array_dir = const.ARRAY_DIR
-    dcm_dir = const.IMAGE_DIR
     corners_list = ['RD', 'RP', 'UP', 'UD']
     finger_setup = iop.finger_joints_setup_hands
-    # joints_to_rois_parameters_path = const.JOINT_TO_ROIS_PARAMETERS_PATH
-    if augment:
-        patch_dir = const.AUGM_PATCH_DIR
-        modifications = augm.AUGM_LIST_OF_DICTS
-    else:
-        patch_dir = const.PATCH_DIR
 elif extremity == "foot":
-    # gt_rois_file = const.F_ROIS_PATH_GT_100
-    # gt_joints_file = const.F_JOINTS_PATH_GT_100
-    pred_joints_file = const.F_JOINTS_PATH_PRED_REST100
-    # The `array_dir` variable in the provided code is used to store the directory path where the
-    # image arrays or DICOM files are located. It is used to specify the directory where the input
-    # images are stored based on the format specified by the `img_format` variable (`.dcm` or `.npy`).
-    # This directory is then used to load the image data for further processing in the script.
-    array_dir = const.F_ARRAY_DIR
-    dcm_dir = const.F_IMAGE_DIR
     corners_list = ['TD', 'TP', 'FP', 'FD']
     finger_setup = iop.finger_joints_setup_feet
-    # joints_to_rois_parameters_path = const.F_JOINT_TO_ROIS_PARAMETERS_PATH
-    if augment:
-        patch_dir = const.F_AUGM_PATCH_DIR
-        modifications = augm.AUGM_LIST_OF_DICTS  # try same as for hand
-    else:
-        patch_dir = const.F_PATCH_DIR
-else:
-    raise ValueError("bodypart must be either 'hand' or 'foot'")
 
-if img_format == ".dcm":
-    img_dir = dcm_dir
-elif img_format == ".npy":
-    img_dir = array_dir
-else:
-    raise ValueError("img_format must be either '.dcm' or '.npy'")
 
-# use rois for the gt 100 and predict rois from joint coords for the rest
-#gt_rois = iop.import_rois_from_csv_to_dict(file=gt_rois_file, img_colname="img",
-#                                           corners=['RD', 'RP', 'UP', 'UD'])
-# use joint coord gt for the gt 100 and pred for rest (want the best possible patches for training the SCORING net)
-# gt_joints = iop.import_joints_from_csv_to_dict(file=gt_joints_file, img_colname="img")
-pred_joints_rest = iop.import_joints_from_csv_to_dict(file=pred_joints_file, img_colname="img")
-
-# if the 100 img are also included in the pred_joints df, then the pred values overwrite the gt values
-#joints = {**gt_joints, **pred_joints_rest}
-joints = pred_joints_rest   # for DEBUGGING
-
-# get points for patch extraction
-finger_points = iop.joints_to_points_dict_for_patch_extraction(joints=joints,
-                                                               setup=finger_setup)
+joints = iop.import_joints_from_csv_to_dict(file=pred_joints_file, img_colname="img")
+finger_points = iop.joints_to_points_dict_for_patch_extraction(joints=joints, setup=finger_setup)
 
 if extremity == "hand":
     wrist_points = iop.joints_to_points_dict_for_patch_extraction(joints=joints,
@@ -110,20 +78,21 @@ if extremity == "hand":
     cmcgroup_points = {}  # {'SCD': None}
 
 
-
+# load parameters to map reference size to length of DP
 params = load_package_parameters("patch_fit_parameters_H.json") if extremity == "hand" else \
          load_package_parameters("patch_fit_parameters_F.json")
 
 
 # augmentation modifications
-modifications = [{'rotate_degrees': 0,
-                    'shift_UR_by': 0,
-                    'shift_DP_by': 0,
-                    'resize_UR_by': 0,
-                    'resize_DP_by': None}]
+modification = {'rotate_degrees': 0,
+                'shift_UR_by': 0,
+                'shift_DP_by': 0,
+                'resize_UR_by': config.get("resize_UR_by", 0),
+                'resize_DP_by': None}
 
 if not os.path.isdir(patch_dir):
     os.mkdir(patch_dir)
+    print("created directory:", patch_dir)
 
 # iterator elements
 dir_img_names = iop.get_img_basenames_from_array_dir(array_dir=img_dir)
@@ -142,24 +111,36 @@ else:
     roi_wrist = []
     roi_cmcgroup = []
 
-if len(sys.argv) > 2:
-    lo = int(sys.argv[1])
-    hi = int(sys.argv[2])
-elif len(sys.argv) == 2:
-    lo = int(sys.argv[1])
-    hi = len(img_names)
-else:
-    lo = 0
-    hi = len(img_names)
+# if len(sys.argv) > 2:
+#     lo = int(sys.argv[1])
+#     hi = int(sys.argv[2])
+# elif len(sys.argv) == 2:
+#     lo = int(sys.argv[1])
+#     hi = len(img_names)
+# else:
+#     lo = 0
+#     hi = len(img_names)
+
+lo = config.get("image_index_start", 0)
+hi = config.get("image_index_end", len(img_names))
+if lo < 0 or hi > len(img_names):
+    raise ValueError(f"lo and hi must be between 0 and {len(img_names)}")
+if lo > hi:
+    raise ValueError(f"lo must be less than hi. {lo} > {hi}")
+if lo == hi:
+    raise ValueError(f"lo and hi must be different. {lo} == {hi}")
+if hi > len(img_names):
+    raise ValueError(f"hi must be less than {len(img_names)}. {hi} > {len(img_names)}")
+
 
 print("images", lo, "to", hi)
 
 for img in img_names[lo:hi]:
     print(img)
 
-    if img_format == ".npy":
+    if img_format_input == ".npy":
         array = np.load(img_dir + os.sep + img + ".npy")
-    elif img_format == ".dcm":
+    elif img_format_input == ".dcm":
         xray = XRay(img_dir + os.sep + img + ".dcm")
         array = xray.img.pixel_array
     else:
@@ -183,37 +164,37 @@ for img in img_names[lo:hi]:
 
         else:
             raise Exception(roi + " not in roi_finger, roi_wrist, or roi_cmcgroup")
+        
+        corners_original = corners.copy()
+        modified_corners = pe.roi_modifier(rectangle_measures=None, rectangle_corners=corners,
+                                            modification_order=['rotate',
+                                                                'shift_UR', 'shift_DP',
+                                                                'resize'],
+                                            rotate_degrees=modification['rotate_degrees'],
+                                            shift_by_UR=modification['shift_UR_by'],
+                                            shift_by_DP=modification['shift_DP_by'],
+                                            resize_UR_by=modification['resize_UR_by'],
+                                            resize_DP_by=modification['resize_DP_by'],
+                                            rectangle=True, square=True)
+        
+        out_dim = np.array(config.get("out_dim", [128, 128]))
+        patch = pe.patch_cutter(img=array, rectangle_measures=None, rectangle_corners=modified_corners,
+                                square=True, resize_patch=out_dim,
+                                padd_patch=None, base_crop=int(3),
+                                plot=config.get("plot", False), show_steps=config.get("plot_show_steps", True), print_log=False, 
+                                other_corners_to_plot=corners_original if config.get("plot_other_corners_as_well", False) else None
+                                )
 
-        # add corners modification/data augm here (e.g., as a for loop over modifications)
-        for i in range(len(modifications)):
-            modification = modifications[i]
-            # print(str(i) + ":", modification)
-            modified_corners = pe.roi_modifier(rectangle_measures=None, rectangle_corners=corners,
-                                               modification_order=['rotate',
-                                                                   'shift_UR', 'shift_DP',
-                                                                   'resize'],
-                                               rotate_degrees=modification['rotate_degrees'],
-                                               shift_by_UR=modification['shift_UR_by'],
-                                               shift_by_DP=modification['shift_DP_by'],
-                                               resize_UR_by=modification['resize_UR_by'],
-                                               resize_DP_by=modification['resize_DP_by'],
-                                               rectangle=True, square=True)
-
-            patch = pe.patch_cutter(img=array, rectangle_measures=None, rectangle_corners=modified_corners,
-                                    square=True, resize_patch=np.array([128, 128]),
-                                    padd_patch=None, base_crop=int(3),
-                                    plot=True, show_steps=True, print_log=False)
-
-            # save patch
-            save_path = patch_dir + os.sep + img + "_" + roi + ".npy"
-            np.save(save_path, patch)
-            del modified_corners
-            del patch
-            gc.collect()
+        # save patch
+        save_path = patch_dir + os.sep + img + "_" + roi + ".npy"
+        np.save(save_path, patch)
+        del modified_corners
+        del patch
+        gc.collect()
 
         del corners
         gc.collect()
-        exit(0) # DEBUGGING
+    exit(0) # DEBUGGING
 
     del extremity_ref
     del array
