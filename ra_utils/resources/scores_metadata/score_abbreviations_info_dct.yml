@@ -1,0 +1,177 @@
+Base_MCIE:
+  extremity: H
+  score_type: ERO
+CMCIII:
+  extremity: H
+  score_type: JSN
+CMCIV:
+  extremity: H
+  score_type: JSN
+CMCV:
+  extremity: H
+  score_type: JSN
+IP:
+  extremity: F
+  score_type: JSN
+IPED:
+  extremity: F
+  score_type: ERO
+IPEP:
+  extremity: F
+  score_type: ERO
+IPIED:
+  extremity: H
+  score_type: ERO
+IPIEP:
+  extremity: H
+  score_type: ERO
+LunatE:
+  extremity: H
+  score_type: ERO
+MCPI:
+  extremity: H
+  score_type: JSN
+MCPIED:
+  extremity: H
+  score_type: ERO
+MCPIEP:
+  extremity: H
+  score_type: ERO
+MCPII:
+  extremity: H
+  score_type: JSN
+MCPIIED:
+  extremity: H
+  score_type: ERO
+MCPIIEP:
+  extremity: H
+  score_type: ERO
+MCPIII:
+  extremity: H
+  score_type: JSN
+MCPIIIED:
+  extremity: H
+  score_type: ERO
+MCPIIIEP:
+  extremity: H
+  score_type: ERO
+MCPIV:
+  extremity: H
+  score_type: JSN
+MCPIVED:
+  extremity: H
+  score_type: ERO
+MCPIVEP:
+  extremity: H
+  score_type: ERO
+MCPV:
+  extremity: H
+  score_type: JSN
+MCPVED:
+  extremity: H
+  score_type: ERO
+MCPVEP:
+  extremity: H
+  score_type: ERO
+MTPI:
+  extremity: F
+  score_type: JSN
+MTPIED:
+  extremity: F
+  score_type: ERO
+MTPIEP:
+  extremity: F
+  score_type: ERO
+MTPII:
+  extremity: F
+  score_type: JSN
+MTPIIED:
+  extremity: F
+  score_type: ERO
+MTPIIEP:
+  extremity: F
+  score_type: ERO
+MTPIII:
+  extremity: F
+  score_type: JSN
+MTPIIIED:
+  extremity: F
+  score_type: ERO
+MTPIIIEP:
+  extremity: F
+  score_type: ERO
+MTPIV:
+  extremity: F
+  score_type: JSN
+MTPIVED:
+  extremity: F
+  score_type: ERO
+MTPIVEP:
+  extremity: F
+  score_type: ERO
+MTPV:
+  extremity: F
+  score_type: JSN
+MTPVED:
+  extremity: F
+  score_type: ERO
+MTPVEP:
+  extremity: F
+  score_type: ERO
+PIPII:
+  extremity: H
+  score_type: JSN
+PIPIIED:
+  extremity: H
+  score_type: ERO
+PIPIIEP:
+  extremity: H
+  score_type: ERO
+PIPIII:
+  extremity: H
+  score_type: JSN
+PIPIIIED:
+  extremity: H
+  score_type: ERO
+PIPIIIEP:
+  extremity: H
+  score_type: ERO
+PIPIV:
+  extremity: H
+  score_type: JSN
+PIPIVED:
+  extremity: H
+  score_type: ERO
+PIPIVEP:
+  extremity: H
+  score_type: ERO
+PIPV:
+  extremity: H
+  score_type: JSN
+PIPVED:
+  extremity: H
+  score_type: ERO
+PIPVEP:
+  extremity: H
+  score_type: ERO
+Rad_Carp:
+  extremity: H
+  score_type: JSN
+RadiusE:
+  extremity: H
+  score_type: ERO
+Sca_Cap:
+  extremity: H
+  score_type: JSN
+ScaphE:
+  extremity: H
+  score_type: ERO
+Tra_Sca:
+  extremity: H
+  score_type: JSN
+TrapE:
+  extremity: H
+  score_type: ERO
+UlnaE:
+  extremity: H
+  score_type: ERO
