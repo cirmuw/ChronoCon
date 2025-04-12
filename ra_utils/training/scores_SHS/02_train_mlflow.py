@@ -77,7 +77,7 @@ import mlflow
 def get_classes(config):
     # TODO 
     print("HACK Assuming Hand erosion problem -> 6 classes")
-    return np.array([0., 1., 2., 3., 4., 5.])
+    return np.array(["0", "1", "2", "3", "4", "5"])
 
 def make_params_a_la_Paul(config):
     params = {"chosen_score": config["data"]["scores"]}
@@ -132,6 +132,21 @@ def get_model_for_SHS_scoring(config, model_params):
             preprocessor=None
         )
         return model 
+
+    if model_name == "ResNet34":
+        out_dim = model_params["N_classes"]
+        encoder = ResNet34Encoder(weights='ResNet34_Weights.DEFAULT')
+        mlp = make_mlp(latent_dim=512, depth=2, 
+                       dropout_op = None,  # TODO read in  
+                       out_dim=out_dim)
+        model = EncoderClassifierNetwork(
+            encoder=encoder,
+            classifier=mlp,
+            return_latent_representation=False, 
+            preprocessor=None
+        )
+        return model 
+
     
     else:
         raise ValueError(f"Model {model_name} not implemented yet.")
@@ -203,31 +218,100 @@ def train_epoch(model,
         running_loss += loss.item()
     return running_loss / len(dataloader)
 
-def val_epoch(model, 
-               dataloader, 
-               criterion, 
-               device="cpu", 
-               classes = None
-               ):
-    running_loss = 0
+# def val_epoch(model, 
+#                dataloader, 
+#                criterion, 
+#                device="cpu", 
+#                classes = None  # list with class names. In our case actually name = score = same as index
+#                ):
+#     running_loss = 0
+#     model.eval()
+#     with torch.no_grad():
+#         for i, batch in enumerate(dataloader):
+#             X = batch["img"].to(device)
+#             Y = batch["score"].to(device)
+#             outputs = model(X)
+#             loss = criterion(outputs, Y)
+#             running_loss += loss.item()
+            
+#             # TODO score metrics: 
+#             # confusion matrix, 
+#             # F1 score, ...
+            
+#     loss = running_loss / len(dataloader)
+#     metrics = {"loss": loss}
+#     # TODO add class specific metrics
+    
+#     return metrics
+
+import torch
+import numpy as np
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
+import mlflow
+import json
+import os
+import tempfile
+import numpy as np
+from sklearn.metrics import confusion_matrix, accuracy_score, classification_report
+
+
+def val_epoch(model, dataloader, criterion, device="cpu", classes=None):
+    running_loss = 0.0
+    all_preds = []
+    all_labels = []
+    
     model.eval()
     with torch.no_grad():
-        for i, batch in enumerate(dataloader):
+        for batch in dataloader:
+            # Get inputs and targets
             X = batch["img"].to(device)
             Y = batch["score"].to(device)
+            
+            # Forward pass
             outputs = model(X)
             loss = criterion(outputs, Y)
             running_loss += loss.item()
             
-            # TODO score metrics: 
-            # confusion matrix, 
-            # F1 score, ...
+            # Convert logits to predicted class indices
+            preds = outputs.argmax(dim=1)
             
-    loss = running_loss / len(dataloader)
-    metrics = {"loss": loss}
-    # TODO add class specific metrics
+            # Save predictions and labels
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(Y.cpu().numpy())
+    
+    # Average loss over the validation set.
+    avg_loss = running_loss / len(dataloader)
+    metrics = {"loss": avg_loss}
+    
+    # Convert to numpy arrays.
+    all_preds = np.array(all_preds)
+    all_labels = np.array(all_labels)
+    
+    # Compute overall accuracy.
+    acc = accuracy_score(all_labels, all_preds)
+    metrics["accuracy"] = acc
+    
+    # Compute confusion matrix.
+    cm = confusion_matrix(all_labels, all_preds)
+    metrics["confusion_matrix"] = cm.tolist()  # convert to list for JSON/MLflow logging
+    
+    # If classes is provided, supply full label list to ensure all classes are included.
+    if classes is not None:
+        labels = list(range(len(classes)))  # Assumes classes are indexed 0, 1, ..., len(classes)-1
+        report = classification_report(
+            all_labels,
+            all_preds,
+            labels=labels,
+            target_names=classes,
+            output_dict=True,
+            zero_division=0.0
+        )
+    else:
+        report = classification_report(all_labels, all_preds, output_dict=True, zero_division=0.0)
+    metrics["classification_report"] = report
     
     return metrics
+
 
 
 # OLD!!!!
@@ -284,21 +368,97 @@ def train_loop(
                            criterion,
                            device=device)
         
-        # Validation: 
-        val_metrics = val_epoch(model=model, 
-                                dataloader=val_loader,
-                                criterion=criterion,
-                                device=device,
-                                classes=classes)
-        val_loss = val_metrics["loss"]
-        val_metrics = {f"val_{k}": v for k,v in val_metrics.items()}
+        # # Validation: 
+        # val_metrics = val_epoch(model=model, 
+        #                         dataloader=val_loader,
+        #                         criterion=criterion,
+        #                         device=device,
+        #                         classes=classes)
+        # val_loss = val_metrics["loss"]
+        # val_metrics = {f"val_{k}": v for k,v in val_metrics.items()}
         
-        print(f"Epoch {epoch}/{epochs}, Tr Loss: {train_loss:.4f} |  {val_loss:.4f}")
+        # print(f"Epoch {epoch}/{epochs}, Tr Loss: {train_loss:.4f} |  {val_loss:.4f}")
 
-        # ---- Log metrics to MLflow ----
+        # # ---- Log metrics to MLflow ----
+        # mlflow.log_metric("train_loss", train_loss, step=epoch)
+        # mlflow.log_metric("val_loss", val_loss, step=epoch)
+        # # TODO log other metrics
+
+        # #mlflow.log_metrics(val_metrics, step=epoch)
+
+
+
+        # At the end of each training epoch, after you get your validation metrics:
+        val_metrics = val_epoch(
+            model=model, 
+            dataloader=val_loader,
+            criterion=criterion,
+            device=device,
+            classes=classes  # list of class names, e.g. ['0', '1', '2']
+        )
+        val_loss = val_metrics["loss"]
+
+        print(f"Epoch {epoch}/{epochs}, Tr Loss: {train_loss:.4f} |  Val Loss: {val_loss:.4f}")
+
+        # ---- Log scalar metrics to MLflow ----
         mlflow.log_metric("train_loss", train_loss, step=epoch)
         mlflow.log_metric("val_loss", val_loss, step=epoch)
-        #mlflow.log_metrics(val_metrics, step=epoch)
+        mlflow.log_metric("val_accuracy", val_metrics.get("accuracy", 0.0), step=epoch)
+
+        # ---- Logging per-class metrics from classification report ----
+        # The classification report structure looks like:
+        # {
+        #   'ClassName': {'precision': ..., 'recall': ..., 'f1-score': ..., ...},
+        #   'accuracy': ...,
+        #   'macro avg': {...},
+        #   'weighted avg': {...}
+        # }
+        report = val_metrics["classification_report"]
+        if classes is not None:
+            for cls in classes:
+                cls_metrics = report.get(cls)
+                if cls_metrics:
+                    # Log precision, recall, and F1-score for each class
+                    mlflow.log_metric(f"val_{cls}_precision", cls_metrics["precision"], step=epoch)
+                    mlflow.log_metric(f"val_{cls}_recall", cls_metrics["recall"], step=epoch)
+                    mlflow.log_metric(f"val_{cls}_f1", cls_metrics["f1-score"], step=epoch)
+        
+        # Log macro-average metrics (calculated across all classes)
+        macro_avg = report.get("macro avg")
+        if macro_avg:
+            mlflow.log_metric("val_macro_precision", macro_avg["precision"], step=epoch)
+            mlflow.log_metric("val_macro_recall", macro_avg["recall"], step=epoch)
+            mlflow.log_metric("val_macro_f1", macro_avg["f1-score"], step=epoch)
+
+        # Log weighted-average metrics (weighted by support)
+        weighted_avg = report.get("weighted avg")
+        if weighted_avg:
+            mlflow.log_metric("val_weighted_precision", weighted_avg["precision"], step=epoch)
+            mlflow.log_metric("val_weighted_recall", weighted_avg["recall"], step=epoch)
+            mlflow.log_metric("val_weighted_f1", weighted_avg["f1-score"], step=epoch)
+
+        # Log accuracy
+        mlflow.log_metric("val_accuracy", report.get("accuracy"), step=epoch)
+
+        # ---- Optionally log per-class accuracy (using the confusion matrix) ----
+        # Compute per-class accuracy manually: 
+        # for each class, accuracy = (true positives) / (total actual for that class)
+        cm_array = np.array(val_metrics["confusion_matrix"])
+        if classes is not None and cm_array.shape[0] == len(classes):
+            for idx, cls in enumerate(classes):
+                total = cm_array[idx].sum()
+                # Avoid division by zero when there are no samples for this class.
+                class_accuracy = float(cm_array[idx, idx]) / total if total > 0 else 0.0
+                mlflow.log_metric(f"val_{cls}_accuracy", class_accuracy, step=epoch)
+
+        # ---- Optionally, log non-scalar data as JSON artifacts ----
+        # Using mlflow.log_dict (requires MLflow >=1.18.0) to log the classification report and confusion matrix.
+        mlflow.log_dict(report, "metrics/classification_report.json")
+        mlflow.log_dict(val_metrics.get("confusion_matrix", {}), "metrics/confusion_matrix.json")
+
+
+
+
 
 
         # ---- Update scheduler (if provided) ----
@@ -308,7 +468,7 @@ def train_loop(
         # ---- If we are not forcing full epochs, do early stopping checks ----
         if not run_full_epochs:
             if val_loss < best_loss:
-                best_val_mpe = val_loss
+                best_loss = val_loss
                 best_model = copy.deepcopy(model.state_dict())
                 epochs_no_improve = 0
 
@@ -409,7 +569,8 @@ def main():
         optimizer = torch.optim.AdamW(model.parameters(), **config["optimizer_params"])
 
         # scheduler
-        scheduler = None
+        #scheduler = None
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', verbose=True)
 
         # For now
         model_name = config["model_name"]
@@ -439,11 +600,14 @@ def main():
                             patience=config["training"].get("early_stopping_tol", 100),
                             scheduler=scheduler,
                             run_full_epochs=False,
-                            classes = classes
+                            classes = classes,
+                            log_model=config["SAVE_MODEL"]
                             )
         
 
 
+        artifact_uri = mlflow.get_artifact_uri()
+        print("ARTIFACTS URI = ", artifact_uri)
 
 
 
