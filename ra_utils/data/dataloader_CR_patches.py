@@ -4,6 +4,8 @@ import numpy as np
 
 
 import torchvision.transforms
+from torch.utils.data import WeightedRandomSampler
+
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
     Compose,
@@ -304,6 +306,11 @@ def load_img_SHS_patch_data(data_config: dict):
         with resources.files("ra_utils.resources.scores_metadata").joinpath("score_abbreviations_info_dct.yml").open("r") as f:
             score_abbreviations_info_dct = yaml.safe_load(f)
         extremity = [score_abbreviations_info_dct[score]["extremity"] for score in chosen_score]
+        score_type = [score_abbreviations_info_dct[score]["score_type"] for score in chosen_score]
+        assert len(set(extremity)) == 1, "All scores must have the same extremity"
+        assert len(set(score_type)) == 1, "All scores must have the same score type"
+        chosen_score_type = score_type[0]
+        extremity = extremity[0]
         paths_scores_df = restructure_paths_and_scores(chosen_score = chosen_score,
                                                       chosen_score_type = chosen_score_type,
                                                       extremity = extremity, 
@@ -324,12 +331,26 @@ def load_img_SHS_patch_data(data_config: dict):
 
     # TODO lateron: 
     # seperate into two functions and load split ids from file instead of splitting here
-    split_ratios =  data_config.get("split_ratio")
-    df_train, df_val, df_test = split_training_val_test__on_patient_level(df_include, ratios=split_ratios)
 
-    df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
-    df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
-    df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
+    use_splits_file = data_config.get("use_splits_file", False)
+    if use_splits_file: 
+        src = data_config["splits_file"]
+        print("reading ", src, "and do Tr, Val, Test  split accordingly")
+        splits_file = pd.read_csv(src)  # contains columns: "patient_id", "set_type" where "set_type" = "Tr", "Val", "Ts"
+        train_patients = splits_file["patient_id"][splits_file["set_type"] == "Tr"]
+        val_patients = splits_file["patient_id"][splits_file["set_type"] == "Val"]
+        test_patients = splits_file["patient_id"][splits_file["set_type"] == "Ts"]
+        df_train = df_include[df_include["patient_id"].isin(train_patients)].reset_index(drop=True)
+        df_val = df_include[df_include["patient_id"].isin(val_patients)].reset_index(drop=True)
+        df_test = df_include[df_include["patient_id"].isin(test_patients)].reset_index(drop=True)
+
+    else:
+        print("Performing split ")
+        split_ratios =  data_config.get("split_ratio")
+        df_train, df_val, df_test = split_training_val_test__on_patient_level(df_include, ratios=split_ratios)
+        df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
+        df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
+        df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
 
     print(f"{split_ratios = }")
     print(f"{len(df_exclude) = }")
@@ -357,6 +378,74 @@ def load_img_SHS_patch_data(data_config: dict):
         # data_list__val = data_list__val,
         # data_list__test = data_list__test
     )
+    return data
+
+
+def dataset_and_loader(data_tables, config):
+    """
+    Create dataset and dataloaders for training, validation and testing.
+    """
+
+    data_list__train = df_scores_to_dct_list(data_tables["df_train"])
+    data_list__val = df_scores_to_dct_list(data_tables["df_val"])
+    data_list__test = df_scores_to_dct_list(data_tables["df_test"])
+
+
+    transform_train = make_trainings_transforms(config["transforms"])
+    transform_train = Compose(transform_train)
+
+
+    transform_val = make_validation_transforms(config["transforms"])
+    transform_val = Compose(transform_val)
+
+    dataset_train = Dataset(data=data_list__train, transform=transform_train)
+    dataset_validation = Dataset(data=data_list__val, transform=transform_val)
+    dataset_test = Dataset(data=data_list__test, transform=transform_val)
+
+
+    use_WeightedRandomSampler = config["training"].get("use_WeightedRandomSampler", False)
+    if use_WeightedRandomSampler: 
+        # Suppose y is a list of labels for your training dataset
+        labels = [item['score'] for item in data_list__train]
+
+        class_count = torch.bincount(torch.tensor(labels))
+        class_weights = 1.0 / class_count.float()
+        sample_weights = [class_weights[label] for label in labels]
+
+        # Create the sampler
+        sampler = WeightedRandomSampler(weights=sample_weights,
+                                        num_samples=len(sample_weights),
+                                        replacement=True)
+
+    # Dataloaders
+    train_loader = DataLoader(
+        dataset_train,
+        batch_size=config["training"]["batch_size"],
+        shuffle=False if use_WeightedRandomSampler else True,
+        sampler=sampler if use_WeightedRandomSampler else None,
+        num_workers=config["training"]["num_workers"],
+    )
+    val_loader = DataLoader(
+        dataset_validation,
+        batch_size=config["training"]["batch_size"],
+        shuffle=False,
+        num_workers=config["training"]["num_workers"],
+    )
+    test_loader = DataLoader(
+        dataset_test,
+        batch_size=config["training"]["batch_size"],
+        shuffle=False,
+        num_workers=config["training"]["num_workers"],
+    )
+
+    data = {
+        "train_loader": train_loader,
+        "val_loader": val_loader,
+        "test_loader": test_loader,
+        "dataset_train": dataset_train,
+        "dataset_validation": dataset_validation,
+        "dataset_test": dataset_test
+    }
     return data
 
 #--------------------------------------------------------------#

@@ -46,8 +46,6 @@ from landmarker.heatmap.decoder import heatmap_to_coord
 from landmarker.metrics import point_error
 
 import copy
-import mlflow
-import mlflow.pytorch
 
 
 #   My stuff
@@ -115,7 +113,8 @@ def get_transforms(config):
 def main():
     config = load_config(
         default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_11.yaml",
-        debugging_in_jupyter_nb=False
+        debugging_in_jupyter_nb=False, 
+        silencium=False
     )
 
     # Debugging option:

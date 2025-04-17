@@ -87,7 +87,8 @@ exclude = [
     "networks",
     "training",
     "utils",
-    "visualization"
+    "visualization", 
+    "optuna"
 ]
 
 [tool.setuptools_scm]
@@ -96,3 +97,4 @@ local_scheme = "node-and-date"
 
 [tool.setuptools.package-data]
 "ra_utils.resources.patch_extraction" = ["*.json"]
+"ra_utils.resources.scores_metadata" = ["*.json", "*.yml"]

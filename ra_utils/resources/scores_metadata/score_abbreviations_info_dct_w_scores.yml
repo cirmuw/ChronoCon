@@ -1,0 +1,659 @@
+Base_MCIE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+CMCIII:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+CMCIV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+CMCV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+IP:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+IPED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+IPEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+IPIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+IPIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+LunatE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPI:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MCPIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPII:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MCPIIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIII:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MCPIIIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIIIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MCPIVED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPIVEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MCPVED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MCPVEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+MTPI:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MTPIED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPII:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MTPIIED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIIEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIII:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MTPIIIED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIIIEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIV:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MTPIVED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPIVEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPV:
+    extremity: F
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+MTPVED:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+MTPVEP:
+    extremity: F
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+PIPII:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+PIPIIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPIIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPIII:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+PIPIIIED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPIIIEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPIV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+PIPIVED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPIVEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPV:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+PIPVED:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+PIPVEP:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+Rad_Carp:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+RadiusE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+Sca_Cap:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+ScaphE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+Tra_Sca:
+    extremity: H
+    score_type: JSN
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+TrapE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+UlnaE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+LunatE+RadiusE+ScaphE+TrapE+UlnaE:
+    extremity: H
+    score_type: ERO
+    scores:
+    - '0'
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+    - '11'
+    - '12'
+    - '13'
+    - '14'
+    - '15'
+    - '16'
+    - '17'
+    - '18'
+    - '19'
+    - '20'
+    - '21'
+    - '22'
+    - '23'
+    - '24'
+    - '25'
