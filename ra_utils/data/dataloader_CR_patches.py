@@ -33,7 +33,8 @@ from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
     restructure_paths_and_scores,
     restructure_paths_and_scores_v2
 )
-
+import yaml
+from importlib import resources
 
 
 #--------------------------------------------------------------#
@@ -301,8 +302,6 @@ def load_img_SHS_patch_data(data_config: dict):
     chosen_score = data_config["scores"]
     if data_config.get("sum_wrist_points", False):
         # SUM WRISTS OPTION INCLUDED
-        import yaml
-        from importlib import resources
         with resources.files("ra_utils.resources.scores_metadata").joinpath("score_abbreviations_info_dct.yml").open("r") as f:
             score_abbreviations_info_dct = yaml.safe_load(f)
         extremity = [score_abbreviations_info_dct[score]["extremity"] for score in chosen_score]

@@ -6,6 +6,28 @@ from typing import Optional, Literal, List
 
 
 #--------------------------------------------------------------#
+#-------------------------  interfaces-------------------------#
+#--------------------------------------------------------------#
+
+
+def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
+                            options: Literal["image only", "image + score_type"] = "image only"):
+    if options == "image only":
+        X = batch["img"].to(device)
+        return model(X)
+
+    elif options == "image + score_type":
+        X = batch["img"].to(device)
+        score_types = batch["score_type"]   # List of strings (N_batch)
+        return model(images=X, score_types=score_types)
+    
+    else: 
+        raise ValueError(f"model_interface_forward :: {option = } not supported ")
+
+
+
+
+#--------------------------------------------------------------#
 #-------------------------    utils   -------------------------#
 #--------------------------------------------------------------#
 
