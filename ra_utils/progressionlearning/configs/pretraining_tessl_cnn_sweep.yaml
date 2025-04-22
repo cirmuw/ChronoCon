@@ -1,0 +1,18 @@
+program: pretraining_tessl.py
+name: pretraining_tessl_cnn
+method: grid
+metric:
+  goal: minimize
+  name: train_total_loss
+epochs: 100
+device: 'cuda'
+system: 'msc'
+data_path: '/msc/home/ijanic99/data/2024_ISPY2_multimodal/ISPY2_Parametric_maps/'
+save_path: '/msc/home/ijanic99/TemporalLoss/progressionlearning/results/pretraining_tessl_cnn/'
+timepoints: ['T0', 'T1', 'T2', 'T3']
+batch_size: 16
+val_batch_size: 16
+parameters:
+  lr:
+    values: [0.15, 0.015]
+

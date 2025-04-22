@@ -1,0 +1,20 @@
+program: pretraining_sep_all_timepoints.py
+name: pretraining
+method: grid
+metric:
+  goal: minimize
+  name: train_total_loss
+epochs: 100
+device: 'cuda'
+system: 'msc'
+data_path: '/msc/home/ijanic99/data/2024_ISPY2_multimodal/ISPY2_Parametric_maps/'
+save_path: '/msc/home/ijanic99/TemporalLoss/progressionlearning/results/pretraining_sep_all_timepoints_new/'
+timepoints: ['T0', 'T1', 'T2', 'T3']
+batch_size: 16
+val_batch_size: 16
+filters: [16,32,64,128,256,32]
+parameters:
+  lr:
+    values: [0.0001]
+  mode:
+    values: ['sup', 'temp', 'sup_temp']

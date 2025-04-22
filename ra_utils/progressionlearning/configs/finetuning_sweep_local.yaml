@@ -1,0 +1,25 @@
+program: finetuning.py
+name: finetuning
+method: grid
+metric:
+  goal: minimize
+  name: train_total_loss
+epochs: 50
+device: 'cuda'
+system: 'local'
+data_path: '/home/ivana/data/ISPY2_Parametric_maps/'
+model_path: '/home/ivana/progressionlearning/progressionlearning/results/pretraining_w_flips/'
+save_path: '/home/ivana/progressionlearning/progressionlearning/results/pretraining_w_flips/finetuning/'
+timepoints: ['T0', 'T1', 'T2', 'T3']
+batch_size: 16
+val_batch_size: 16
+filters: [16,32,64,128,256,32]
+parameters:
+  num_heads:  
+    values: [1]
+  gamma:
+    values: [2]
+  lr:
+    values: [0.0001]
+  mode:
+    values: ['sup_temp', 'sup', 'temp']
