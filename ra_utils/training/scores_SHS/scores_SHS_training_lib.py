@@ -33,9 +33,9 @@ def train_epoch(model,
     for i, batch in tqdm(enumerate(dataloader), desc="train_epoch :: batch"):
         Y = batch["score"].to(device)
         optimizer.zero_grad()
-        outputs = model_interface_forward(
+        output_dct = model_interface_forward(
             model, batch, device, options=interface_option)
-        loss = criterion(outputs, Y)
+        loss = criterion(output_dct["class_logits"], Y)
         loss.backward()
         optimizer.step()
         running_loss += loss.item()
@@ -101,8 +101,9 @@ def val_epoch(model,
             Y = batch["score"].to(device)
 
             # Forward pass
-            logits = model_interface_forward(
+            output_dct = model_interface_forward(
                 model, batch, device, options=interface_option)
+            logits = output_dct["class_logits"]
             loss = criterion(logits, Y)
             running_loss += loss.item() * len(Y)
             n_samples += len(Y)
