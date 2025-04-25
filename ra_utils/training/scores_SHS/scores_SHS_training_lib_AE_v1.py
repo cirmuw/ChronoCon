@@ -14,7 +14,7 @@ from sklearn.metrics import (
     balanced_accuracy_score,
 )
 import mlflow
-
+import matplotlib.pyplot as plt
 from ra_utils.training.scores_SHS.scores_SHS_training_lib import (
     calculate_some_classification_metrics,
     log_metrics_mlflow
@@ -103,7 +103,7 @@ def train_loop_AE_v1(
             lambda_x=lambda_x,
             lambda_y=lambda_y,
             lambda_z=lambda_z,
-            transform=transform,
+            transform = lambda x: x, # No denoising in val. loop  #transform,
             device=device,
             classes=classes,
             return_all_predictions=False,
@@ -121,10 +121,12 @@ def train_loop_AE_v1(
             )
         if verbose > 1:
             train_losses = "  Train:      " + " | ".join(
-            f"{key}: {value:.2e}" for key, value in train_loss_dct.items() if key != "L"
+            f"{key}: {value:.3f}" for key, value in train_loss_dct.items() if key != "L"
             )
             val_losses = "  Validation: " + " | ".join(
-            f"{key}: {value:.2e}" for key, value in val_metrics.items() if key.startswith("L") and key != "L"
+            f"{key}: {value:.3f}" for key, value in val_metrics.items() if (
+                key.startswith("L") and 
+                key != "L"
             )
             print(train_losses)
             print(val_losses)
@@ -155,9 +157,10 @@ def train_loop_AE_v1(
             improved = val_loss < best_val_loss
             if improved:
                 if verbose:
+                    improvement = (-(val_loss - best_val_loss) / best_val_loss)*100
                     print(
-                        "  New best validation loss ↓ "
-                        f"{best_val_loss:.4f} → {val_loss:.4f}"
+                        "    YEAH!! New best validation loss ↓ "
+                        f"{best_val_loss:.4f} → {val_loss:.4f}  this is a {improvement:.1f}% improvement "
                     )
                 best_val_loss = val_loss
                 best_AE_state = copy.deepcopy(model_AE.state_dict())
@@ -433,35 +436,42 @@ def make_score_type_2_head_name_dct(classifier_head_infos: dict):
     return out
 
 
-classifier_head_infos = {
-    "PIP_2-5_EP": {
-        "out_dim": 6,
-        "score_types":   ['PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP'],
-        "loss_weight": 1.0 
-    },
-    "PIP_1_EP": {
-        "out_dim": 6,
-        "score_types":   ['IPIEP'],
-        "loss_weight": 1.0 
-    }
-}
+# classifier_head_infos = {
+#     "PIP_2-5_EP": {
+#         "out_dim": 6,
+#         "score_types":   ['PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP'],
+#         "loss_weight": 1.0 
+#     },
+#     "PIP_1_EP": {
+#         "out_dim": 6,
+#         "score_types":   ['IPIEP'],
+#         "loss_weight": 1.0 
+#     }
+# }
 
 
 class ClassifierHeads(nn.Module):
     def __init__(self,
-                 classifier_head_infos = classifier_head_infos,  
+                 classifier_head_infos, # = classifier_head_infos,  
                  latent_dim: int = 480,
                  hidden_dim: int = 280,
-                 dropout_p = None):
+                 dropout_p = None, 
+                 only_linear=False):
         super(ClassifierHeads, self).__init__()
         self.classifier_head_infos = classifier_head_infos.copy()
         
         # input checks on classifier_head_infos -> No overlaps in score_types
         self.score_type_2_head_name = make_score_type_2_head_name_dct(classifier_head_infos)
-        self.heads = nn.ModuleDict({k: self.__make_mlp(latent_dim, v["out_dim"], 
-                                                       hidden_dim = hidden_dim, 
-                                                       dropout_p=dropout_p) 
-                                    for k,v in classifier_head_infos.items()})
+        if only_linear: 
+            print("Using only a single linear layer as classifier!")
+            self.heads = nn.ModuleDict({k: nn.Sequential(nn.Linear(latent_dim, v["out_dim"])) 
+                                        for k,v in classifier_head_infos.items()})            
+        else:
+            print("Using two layer as classifier.")
+            self.heads = nn.ModuleDict({k: self.__make_mlp(latent_dim, v["out_dim"], 
+                                                        hidden_dim = hidden_dim, 
+                                                        dropout_p=dropout_p) 
+                                        for k,v in classifier_head_infos.items()})
         
     def forward(self, z: torch.Tensor, score_types: List[str]) -> torch.Tensor:
         if len(z) != len(score_types):
@@ -570,10 +580,84 @@ class ClassifierHeads(nn.Module):
               nn.LayerNorm(hidden_dim),
               nn.ReLU(inplace=True)]
         if dropout_p is not None:
-            layers.append(nn.Dropout(p=dropout_p))
+            layers.append(nn.Dropout(p=dropout_p, inplace=True))
         layers.append(nn.Linear(hidden_dim, out_dim))
-        return nn.Sequential(layers)
+        return nn.Sequential(*layers)
         
+   
+   
+   
+
+from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet import (
+        resnet18,
+        resnet34,
+        resnet50
+    ) 
+
+from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnetT import (
+        resnet18_decoder,
+        resnet34_decoder,
+        resnet50_decoder
+    ) 
+
+
+
+
+
+class ResNetAutoEncoder(nn.Module):
+    def __init__(self, arch='resnet18'):
+        super().__init__()
+        out_ch=3
+        if arch == 'resnet18':
+            self.encoder = resnet18(pretrained=True)
+            self.decoder = resnet18_decoder(out_ch=out_ch)
+        elif arch == 'resnet34':
+            self.encoder = resnet34(pretrained=True)
+            self.decoder = resnet34_decoder(out_ch=out_ch)
+        elif arch == 'resnet50':
+            self.encoder = resnet50(pretrained=True)
+            self.decoder = resnet50_decoder(out_ch=out_ch)
+        else:
+            raise NotImplementedError
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x):
+        z = self.encoder(x)
+        z_out = self.avgpool(z)
+        z_out = torch.flatten(z_out, 1)
+        
+        # Option 1: recon before red. 
+        x_hat = self.decoder(z)
+        
+        # Option 2: recon after red. 
+        #x_hat = self.decoder(z_out.unsqueeze(2).unsqueeze(3))  # Then dims will not match... 
+        
+        return x_hat, z_out
+    
+    
+    
+# Just to use the same interface with recon, ... also for this model
+class ResNetNOAutoEncoder(nn.Module):
+    def __init__(self, arch='resnet18'):
+        super().__init__()
+        if arch == 'resnet18':
+            self.encoder = resnet18(pretrained=True)
+        elif arch == 'resnet34':
+            self.encoder = resnet34(pretrained=True)
+        elif arch == 'resnet50':
+            self.encoder = resnet50(pretrained=True)
+        else:
+            raise NotImplementedError
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x):
+        z = self.encoder(x)
+        z_out = self.avgpool(z)
+        z_out = torch.flatten(z_out, 1)
+        x_hat = x*0.0 
+        return x_hat, z_out
+    
+
         
 class DummyReturnZeroLoss(nn.Module):
     def __init__(self, device="cuda"):
@@ -707,24 +791,151 @@ def training_epoch_AE_v1(
 # ---------------------------------------------------------------------------
 
 
+# def evaluate_and_log_testset_results_AE_v1(
+#     model_AE: torch.nn.Module,
+#     model_classifier: Optional[torch.nn.Module],
+#     dataloader: torch.utils.data.DataLoader,
+#     *,
+#     loss_fn_x: Optional[torch.nn.Module] = None,
+#     loss_fn_y: Optional[torch.nn.Module] = None,
+#     loss_fn_z: Optional[torch.nn.Module] = None,
+#     device: str = "cuda",
+#     classes: Optional[List[str]] = None,
+#     transform=lambda x: x,
+#     prefix: str = "test_",
+#     lambda_x: float = 1.0,
+#     lambda_y: float = 1.0,
+#     lambda_z: float = 1.0,
+# ):
+#     """Run *val_epoch_AE_v1* on the test‑set, log results & return metrics."""
+
+#     metrics, outputs_all = val_epoch_AE_v1(
+#         model_AE,
+#         dataloader,
+#         model_classifier=model_classifier,
+#         loss_fn_x=loss_fn_x,
+#         loss_fn_y=loss_fn_y,
+#         loss_fn_z=loss_fn_z,
+#         lambda_x=lambda_x,
+#         lambda_y=lambda_y,
+#         lambda_z=lambda_z,
+#         transform=transform,
+#         device=device,
+#         classes=classes,
+#         return_all_predictions=True,
+#     )
+
+#     log_metrics_mlflow(
+#         metrics,
+#         prefix=prefix,
+#         classes=classes,
+#         step=None,
+#         log_report_and_confusion_matrix_as_artifact=True,
+#     )
+    
+#     # TODO create and log classification reports on score_type 
+#     # outputs all should contain: 
+#     # score_type, labels, preds 
+#     # This should be enouth to make score_type-specific classification reports and log them as artifacts
+#     # In addition also the head-specific classification report should be stored. 
+#     # model_classifier contains as atribute classifier_head_infos 
+#     # One can use the make_score_type_2_head_name_dct(model_classifier.classifier_head_infos) to access this
+#     # This way the classification reports could be combined on a head level
+    
+#     # also log reconstruction / latent / per‑head losses
+#     extra_loss_keys = {
+#         k: v for k, v in metrics.items() if k.startswith("L")
+#     }
+#     _log_scalar_dict("val_", extra_loss_keys, step=None)
+
+#     # save raw predictions
+#     with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
+#         np.savez_compressed(tmp.name, **outputs_all)
+#         npz_path = tmp.name
+#     mlflow.log_artifact(npz_path, artifact_path=f"predictions/{prefix}")
+#     os.remove(npz_path)
+
+#     # --------------------------------------------------------------
+#     #  Plot & log reconstructions (original → noisy → reconstructed)
+#     # --------------------------------------------------------------
+#     try:
+#         import matplotlib.pyplot as plt
+
+#         n_vis = min(10, len(dataloader.dataset))  # at most 10 samples
+#         collected = 0
+#         orig, noisy, recon = [], [], []
+
+#         model_AE.eval()
+#         with torch.no_grad():
+#             for batch in dataloader:
+#                 X_cpu = batch["img"]  # [B,1,H,W]
+#                 X = X_cpu.to(device)
+#                 X_t = transform(X)
+#                 X_pred, _ = model_AE(X_t)
+
+#                 for i in range(X.size(0)):
+#                     orig.append(X_cpu[i].squeeze().numpy())
+#                     noisy.append(X_t[i].cpu().squeeze().numpy())
+#                     recon.append(X_pred[i].cpu().squeeze().numpy())
+#                     collected += 1
+#                     if collected >= n_vis:
+#                         break
+#                 if collected >= n_vis:
+#                     break
+
+#         # build figure --------------------------------------------------
+#         fig, axes = plt.subplots(n_vis, 3, figsize=(6, 2 * n_vis))
+#         titles = ["original", "noisy", "recon"]
+#         for r in range(n_vis):
+#             for c, img in enumerate((orig[r], noisy[r], recon[r])):
+#                 ax = axes[r, c] if n_vis > 1 else axes[c]
+#                 ax.imshow(img, cmap="gray", vmin=0, vmax=1)
+#                 ax.axis("off")
+#                 if r == 0:
+#                     ax.set_title(titles[c])
+#         fig.tight_layout()
+
+#         with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_fig:
+#             fig.savefig(tmp_fig.name, dpi=150)
+#             mlflow.log_artifact(tmp_fig.name, artifact_path=f"plots/{prefix}reconstructions")
+#             plt.close(fig)
+#             os.remove(tmp_fig.name)
+#     except Exception as e:
+#         print("Failed to log reconstruction plots:", e)
+
+#     return metrics, outputs_all
+
+
+
 def evaluate_and_log_testset_results_AE_v1(
-    model_AE: torch.nn.Module,
-    model_classifier: Optional[torch.nn.Module],
-    dataloader: torch.utils.data.DataLoader,
+    model_AE:               torch.nn.Module,
+    model_classifier:       Optional[torch.nn.Module],
+    dataloader:             torch.utils.data.DataLoader,
     *,
     loss_fn_x: Optional[torch.nn.Module] = None,
     loss_fn_y: Optional[torch.nn.Module] = None,
     loss_fn_z: Optional[torch.nn.Module] = None,
-    device: str = "cuda",
-    classes: Optional[List[str]] = None,
-    transform=lambda x: x,
-    prefix: str = "test_",
-    lambda_x: float = 1.0,
-    lambda_y: float = 1.0,
-    lambda_z: float = 1.0,
+    device:    str  = "cuda",
+    classes:   Optional[List[str]] = None,
+    transform            = lambda x: x,
+    prefix:     str  = "test_",
+    lambda_x:   float = 1.0,
+    lambda_y:   float = 1.0,
+    lambda_z:   float = 1.0,
 ):
-    """Run *val_epoch_AE_v1* on the test‑set, log results & return metrics."""
+    """
+    Run *val_epoch_AE_v1* on the test-set, then
 
+    1. log global metrics (existing behaviour),
+    2. build + log classification reports
+       • by **score_type**
+       • by **classifier head** (if available),
+    3. log losses and artefacts (npz + recon plots).
+    """
+
+    # ------------------------------------------------------------------ #
+    # 0) Forward pass through the whole test set
+    # ------------------------------------------------------------------ #
     metrics, outputs_all = val_epoch_AE_v1(
         model_AE,
         dataloader,
@@ -741,6 +952,9 @@ def evaluate_and_log_testset_results_AE_v1(
         return_all_predictions=True,
     )
 
+    # ------------------------------------------------------------------ #
+    # 1) Log global metrics (loss, acc, …)
+    # ------------------------------------------------------------------ #
     log_metrics_mlflow(
         metrics,
         prefix=prefix,
@@ -749,42 +963,92 @@ def evaluate_and_log_testset_results_AE_v1(
         log_report_and_confusion_matrix_as_artifact=True,
     )
 
-    # save raw predictions
+    # ------------------------------------------------------------------ #
+    # 2) Per-score-type & per-head classification reports
+    # ------------------------------------------------------------------ #
+    # --- extract predictions ------------------------------------------ #
+    score_types = outputs_all.get("score_type")
+    y_true      = outputs_all["labels"]
+    y_pred      = outputs_all["preds"]
+
+    if score_types is not None:
+        score_types = np.asarray(score_types)
+
+        # ---- per score_type ------------------------------------------- #
+        by_st = {}
+        for st in np.unique(score_types):
+            idx = score_types == st
+            by_st[st] = classification_report(
+                y_true[idx], y_pred[idx],
+                labels=list(range(len(classes))) if classes else None,
+                target_names=classes if classes else None,
+                output_dict=True, zero_division=0.0,
+            )
+
+        mlflow.log_dict(
+            by_st, f"metrics/{prefix}classification_report_by_score_type.json"
+        )
+
+        # ---- per head (needs classifier) ------------------------------ #
+        if model_classifier is not None:
+            st2head = make_score_type_2_head_name_dct(
+                model_classifier.classifier_head_infos
+            )
+            heads = np.vectorize(st2head.get)(score_types)
+
+            by_head: Dict[str, Dict] = {}
+            for h in np.unique(heads):
+                idx = heads == h
+                by_head[h] = classification_report(
+                    y_true[idx], y_pred[idx],
+                    labels=list(range(len(classes))) if classes else None,
+                    target_names=classes if classes else None,
+                    output_dict=True, zero_division=0.0,
+                )
+
+            mlflow.log_dict(
+                by_head, f"metrics/{prefix}classification_report_by_head.json"
+            )
+
+    # ------------------------------------------------------------------ #
+    # 3) Log reconstruction / latent / per-head losses
+    # ------------------------------------------------------------------ #
+    extra_loss = {k: v for k, v in metrics.items() if k.startswith("L")}
+    _log_scalar_dict("val_", extra_loss, step=None)
+
+    # ------------------------------------------------------------------ #
+    # 4) Save raw preds + extras as compressed .npz
+    # ------------------------------------------------------------------ #
     with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
         np.savez_compressed(tmp.name, **outputs_all)
+        mlflow.log_artifact(tmp.name, artifact_path=f"predictions/{prefix}")
         npz_path = tmp.name
-    mlflow.log_artifact(npz_path, artifact_path=f"predictions/{prefix}")
     os.remove(npz_path)
 
-    # --------------------------------------------------------------
-    #  Plot & log reconstructions (original → noisy → reconstructed)
-    # --------------------------------------------------------------
+    # ------------------------------------------------------------------ #
+    # 5) (Optional) plot reconstructions
+    # ------------------------------------------------------------------ #
     try:
-        import matplotlib.pyplot as plt
-
-        n_vis = min(10, len(dataloader.dataset))  # at most 10 samples
-        collected = 0
+        n_vis = min(10, len(dataloader.dataset))
         orig, noisy, recon = [], [], []
-
         model_AE.eval()
+
         with torch.no_grad():
             for batch in dataloader:
-                X_cpu = batch["img"]  # [B,1,H,W]
-                X = X_cpu.to(device)
-                X_t = transform(X)
-                X_pred, _ = model_AE(X_t)
+                X_cpu = batch["img"]          # [B,1,H,W]  (assumed 0-1 scaled)
+                X     = X_cpu.to(device)
+                X_t   = transform(X)
+                X_rec, _ = model_AE(X_t)
 
                 for i in range(X.size(0)):
-                    orig.append(X_cpu[i].squeeze().numpy())
-                    noisy.append(X_t[i].cpu().squeeze().numpy())
-                    recon.append(X_pred[i].cpu().squeeze().numpy())
-                    collected += 1
-                    if collected >= n_vis:
+                    orig. append(X_cpu[i,0].numpy())
+                    noisy.append(X_t[i,0].cpu().numpy())
+                    recon.append(X_rec[i,0].cpu().numpy())
+                    if len(orig) >= n_vis:
                         break
-                if collected >= n_vis:
+                if len(orig) >= n_vis:
                     break
 
-        # build figure --------------------------------------------------
         fig, axes = plt.subplots(n_vis, 3, figsize=(6, 2 * n_vis))
         titles = ["original", "noisy", "recon"]
         for r in range(n_vis):
@@ -802,6 +1066,7 @@ def evaluate_and_log_testset_results_AE_v1(
             plt.close(fig)
             os.remove(tmp_fig.name)
     except Exception as e:
-        print("Failed to log reconstruction plots:", e)
+        print("Reconstruction plotting failed:", e)
 
+    # ------------------------------------------------------------------ #
     return metrics, outputs_all

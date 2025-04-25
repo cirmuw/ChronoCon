@@ -207,23 +207,23 @@ def log_metrics_mlflow(metrics: dict,
         for cls in classes:
             cls_metrics = classification_report_dict.get(cls)
             if cls_metrics:
-                mlflow.log_metric(f"{prefix}{cls}_precision", cls_metrics["precision"])
-                mlflow.log_metric(f"{prefix}{cls}_recall", cls_metrics["recall"])
-                mlflow.log_metric(f"{prefix}{cls}_f1", cls_metrics["f1-score"])
+                mlflow.log_metric(f"{prefix}{cls}_precision", cls_metrics["precision"], step=step)
+                mlflow.log_metric(f"{prefix}{cls}_recall", cls_metrics["recall"], step=step)
+                mlflow.log_metric(f"{prefix}{cls}_f1", cls_metrics["f1-score"], step=step)
 
     # ---- Log Macro-Average Metrics ----
     macro_avg = classification_report_dict.get("macro avg")
     if macro_avg:
-        mlflow.log_metric(f"{prefix}macro_precision", macro_avg["precision"])
-        mlflow.log_metric(f"{prefix}macro_recall", macro_avg["recall"])
-        mlflow.log_metric(f"{prefix}macro_f1", macro_avg["f1-score"])
+        mlflow.log_metric(f"{prefix}macro_precision", macro_avg["precision"], step=step)
+        mlflow.log_metric(f"{prefix}macro_recall", macro_avg["recall"], step=step)
+        mlflow.log_metric(f"{prefix}macro_f1", macro_avg["f1-score"], step=step)
 
     # ---- Log Weighted-Average Metrics ----
     weighted_avg = classification_report_dict.get("weighted avg")
     if weighted_avg:
-        mlflow.log_metric(f"{prefix}weighted_precision", weighted_avg["precision"])
-        mlflow.log_metric(f"{prefix}weighted_recall", weighted_avg["recall"])
-        mlflow.log_metric(f"{prefix}weighted_f1", weighted_avg["f1-score"])
+        mlflow.log_metric(f"{prefix}weighted_precision", weighted_avg["precision"], step=step)
+        mlflow.log_metric(f"{prefix}weighted_recall", weighted_avg["recall"], step=step)
+        mlflow.log_metric(f"{prefix}weighted_f1", weighted_avg["f1-score"], step=step)
 
     # ---- Log Per-Class Accuracy Derived from the Confusion Matrix ----
     cm_array = np.array(confusion_matrix_list)
@@ -231,7 +231,7 @@ def log_metrics_mlflow(metrics: dict,
         for idx, cls in enumerate(classes):
             total = cm_array[idx].sum()
             class_accuracy = float(cm_array[idx, idx]) / total if total > 0 else 0.0
-            mlflow.log_metric(f"{prefix}{cls}_accuracy", class_accuracy)
+            mlflow.log_metric(f"{prefix}{cls}_accuracy", class_accuracy, step=step)
 
 
 
@@ -353,6 +353,9 @@ def evaluate_and_log_testset_results(
     log_metrics_mlflow(test_metrics_and_predictions, prefix=prefix, classes=classes, step=None,
                        log_report_and_confusion_matrix_as_artifact=True)
     
+    # TODO log the head specific classification report at least as an artifact
+    # test_outputs_all_samples  there are the keys: 
+    # 
 
 
  

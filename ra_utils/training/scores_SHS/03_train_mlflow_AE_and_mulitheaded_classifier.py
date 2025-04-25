@@ -33,7 +33,9 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
     train_loop_AE_v1,
     make_score_type_2_head_name_dct,
     evaluate_and_log_testset_results_AE_v1,
-    ClassifierHeads
+    ClassifierHeads, 
+    ResNetAutoEncoder, 
+    ResNetNOAutoEncoder
 )
 
 import ra_utils.networks.loss_function
@@ -46,19 +48,38 @@ from ra_utils.progressionlearning.models.builder import (
 
 import torchvision.transforms.v2 as v2
 
-classifier_head_infos = {
-    "PIP_2-5_EP": {
-        "out_dim": 6,
-        "score_types":   ['PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP'],
-        "loss_weight": 1.0 
-    },
-    "PIP_1_EP": {
-        "out_dim": 6,
-        "score_types":   ['IPIEP'],
-        "loss_weight": 1.0 
-    }
-}
 
+
+
+
+
+def build_models(model_name: str, config: dict, classifier_head_infos: dict):
+    if model_name == "UNetMTANAE + MultiHeadClassifier":
+        model_AE = build_MTANAE(in_channels=1, out_channels=1)
+        classifier_kwargs = config["model"]["classifier"] 
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480, **classifier_kwargs)
+        
+    elif model_name ==  "ResNetAE + MultiHeadClassifier": 
+        AE_kwargs = config["model"]["autoencoder"]
+        model_AE = ResNetAutoEncoder(**AE_kwargs)
+        latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
+        classifier_kwargs = config["model"]["classifier"]
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, **classifier_kwargs)
+    
+    elif model_name ==  "ResNetNoAE + MultiHeadClassifier":
+        AE_kwargs = config["model"]["autoencoder"]
+        model_AE = ResNetNOAutoEncoder(**AE_kwargs)
+        latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
+        classifier_kwargs = config["model"]["classifier"]
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, **classifier_kwargs)
+    
+    elif model_name ==  "ResNetMTANAE + MultiHeadClassifier":
+        raise NotImplementedError(f"{model_name = }")     
+    
+    else:
+        raise NotImplementedError()
+    
+    return model_AE, model_c     
 
 
 # --------------------------------------------------------------#
@@ -70,9 +91,12 @@ def main():
 
     # Load the configuration
     config = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp02_AE.yml",   
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp02_AE_2.yml",   
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/ERO_H_PIP_SM_ResNet18.yml",        
         debugging_in_jupyter_nb=False, silencium=False)
+    
+    classifier_head_infos = config["data"]["classifier_head_infos"]
+    
 
     # Debugging option:
     # Set different MLFLOW location
@@ -102,6 +126,9 @@ def main():
         config["experiment_name"])
 
     with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=True):
+        artifact_uri = mlflow.get_artifact_uri()
+        print("ARTIFACTS URI = ", artifact_uri)
+        
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("Running on ", device)
 
@@ -124,30 +151,40 @@ def main():
         data = dataset_and_loader(data_tables, config)
 
         # Load/ make model
-        
-        model_AE = build_MTANAE(in_channels=1, out_channels=1)
-        classifier_kwargs = config["model"]["classifier"] 
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480, **classifier_kwargs)
+        model_name = config["model_name"]
+        model_AE, model_c = build_models(model_name, config, classifier_head_infos)
+
         model_AE.to(device)
         model_c.to(device)
 
-
+        # define loss function
+        loss_fn_y = get_score_loss_function(config["loss"]["score"])
         loss_fn_x = nn.MSELoss()
-        loss_fn_y = nn.CrossEntropyLoss()
         loss_fn_z = nn.L1Loss()
 
-        # TODO add parameters of model_AE  and of model_c  # Maybe with different learning rates 
-        # optimizer = torch.optim.AdamW(model_AE.parameters(), model_c.parameters(), **config["optimizer_params"])
         # ---- joint optimiser with separate lrs --------------------------------
-        opt_cfg = config["optimizer_params"].copy()
-        lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
-        lr_clf = opt_cfg["learning_rates"]["classifier"]
-
-        param_groups = [
-            {"params": model_AE.parameters(), "lr": lr_ae},
-            {"params": model_c.parameters(),  "lr": lr_clf},
-        ]
-        optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
+        if model_name in ["ResNetAE + MultiHeadClassifier"]: 
+            opt_cfg = config["optimizer_params"].copy()
+            lr_e  = opt_cfg["learning_rates"]["encoder"]
+            lr_d  = opt_cfg["learning_rates"]["decoder"]
+            lr_clf = opt_cfg["learning_rates"]["classifier"]
+            param_groups = [
+                {"params": model_AE.encoder.parameters(), "lr": lr_e},
+                {"params": model_AE.decoder.parameters(), "lr": lr_d},
+                {"params": model_c.parameters(),  "lr": lr_clf},
+            ]
+            print(opt_cfg["other_optimizer_kwargs"])
+            optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
+        else:
+            opt_cfg = config["optimizer_params"].copy()
+            lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
+            lr_clf = opt_cfg["learning_rates"]["classifier"]
+            param_groups = [
+                {"params": model_AE.parameters(), "lr": lr_ae},
+                {"params": model_c.parameters(),  "lr": lr_clf},
+            ]
+            print(opt_cfg["other_optimizer_kwargs"])
+            optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
         
         
         transform_AE = v2.GaussianNoise(mean=0, sigma = 0.05, clip=True)
@@ -162,10 +199,7 @@ def main():
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', verbose=True)
 
 
-        # define loss function
-        # loss_fn_no_reduce = get_loss_no_reduction(config)
-        loss_cfg = config["loss"]["score"]
-        criterion = get_score_loss_function(loss_cfg)
+
         
         
 
@@ -193,8 +227,8 @@ def main():
             epochs=epochs,
             patience=config["training"].get("early_stopping_tol", 100),
             lambda_x=config.get('loss_weights', {}).get('lambda_x', 1.0), 
-            lambda_y=config.get('loss_weights', {}).get('lambda_x', 1.0), 
-            lambda_z=config.get('loss_weights', {}).get('lambda_x', 1.0), 
+            lambda_y=config.get('loss_weights', {}).get('lambda_y', 1.0), 
+            lambda_z=config.get('loss_weights', {}).get('lambda_z', 1.0), 
             transform=transform_AE,
             classes=classes,
             log_model=config["SAVE_MODEL"],
