@@ -74,10 +74,10 @@ def extract_landmarks_from_df(dfm, image_idx=0, landmark_names=None, x_suffix="-
     return landmarks
 
 
-def extract_extras_from_filename(filename: str): 
-    x = filename.split(".dcm")[0].split("_")
+def extract_extras_from_filename(filename: str, ending = ".dcm", replace_ending=True, filename_str="filename"): 
+    x = filename.split(ending)[0].split("_")
     d = {
-        "filename": filename.replace(".dcm",""), 
+        filename_str: filename.replace(ending,"") if replace_ending else filename, 
         "id": x[0],
         "date_str": x[1],
         "region": x[2],
