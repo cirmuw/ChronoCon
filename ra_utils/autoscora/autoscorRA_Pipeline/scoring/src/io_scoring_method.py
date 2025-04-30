@@ -5,17 +5,143 @@ import numpy as np
 import yaml
 
 
-def io_scoring(chosen_score, chosen_score_type, extremity="H"):
-    """
-    :param chosen_score: e.g., chosen_score = "PIPIIIED"
-    :param chosen_score_type: e.g., chosen_score_type = 'ERO'  # or detect automatically
-    :param extremity: str, "H" = hand, "F" = foot
-    :return: list of paths to patches, list of corresponding scores
-    """
+# read in scores dataframe
+# score joint names
+r_neutral_hand_joints = ["r_Base_MCIE",
+                            "r_CMCIII",
+                            "r_CMCIV",
+                            "r_CMCV",
+                            "r_IPIED",
+                            "r_IPIEP",
+                            "r_LunatE",
+                            "r_MCPIII",
+                            "r_MCPIIIED",
+                            "r_MCPIIIEP",
+                            "r_MCPII",
+                            "r_MCPIIED",
+                            "r_MCPIIEP",
+                            "r_MCPI",
+                            "r_MCPIED",
+                            "r_MCPIEP",
+                            "r_MCPIV",
+                            "r_MCPIVED",
+                            "r_MCPIVEP",
+                            "r_MCPV",
+                            "r_MCPVED",
+                            "r_MCPVEP",
+                            "r_PIPIII",
+                            "r_PIPIIIED",
+                            "r_PIPIIIEP",
+                            "r_PIPII",
+                            "r_PIPIIED",
+                            "r_PIPIIEP",
+                            "r_PIPIV",
+                            "r_PIPIVED",
+                            "r_PIPIVEP",
+                            "r_PIPV",
+                            "r_PIPVED",
+                            "r_PIPVEP",
+                            "r_Rad_Carp",
+                            "r_RadiusE",
+                            "r_Sca_Cap",
+                            "r_ScaphE",
+                            "r_Tra_Sca",
+                            "r_TrapE",
+                            "r_UlnaE"
+                            ]
+r_neutral_hand_jsn = ["r_CMCIII",
+                        "r_CMCIV",
+                        "r_CMCV",
+                        "r_MCPIII",
+                        "r_MCPII",
+                        "r_MCPI",
+                        "r_MCPIV",
+                        "r_MCPV",
+                        "r_PIPIII",
+                        "r_PIPII",
+                        "r_PIPIV",
+                        "r_PIPV",
+                        "r_Rad_Carp",
+                        "r_Sca_Cap",
+                        "r_Tra_Sca",
+                        ]
+r_neutral_hand_ero = ["r_Base_MCIE",
+                        "r_IPIED",
+                        "r_IPIEP",
+                        "r_LunatE",
+                        "r_MCPIIIED",
+                        "r_MCPIIIEP",
+                        "r_MCPIIED",
+                        "r_MCPIIEP",
+                        "r_MCPIED",
+                        "r_MCPIEP",
+                        "r_MCPIVED",
+                        "r_MCPIVEP",
+                        "r_MCPVED",
+                        "r_MCPVEP",
+                        "r_PIPIIIED",
+                        "r_PIPIIIEP",
+                        "r_PIPIIED",
+                        "r_PIPIIEP",
+                        "r_PIPIVED",
+                        "r_PIPIVEP",
+                        "r_PIPVED",
+                        "r_PIPVEP",
+                        "r_RadiusE",
+                        "r_ScaphE",
+                        "r_TrapE",
+                        "r_UlnaE"
+                        ]
+r_neutral_foot_joints = ["r_IP",
+                            "r_IPED",
+                            "r_IPEP",
+                            "r_MTPIII",
+                            "r_MTPIIIED",
+                            "r_MTPIIIEP",
+                            "r_MTPII",
+                            "r_MTPIIED",
+                            "r_MTPIIEP",
+                            "r_MTPI",
+                            "r_MTPIED",
+                            "r_MTPIEP",
+                            "r_MTPIV",
+                            "r_MTPIVED",
+                            "r_MTPIVEP",
+                            "r_MTPV",
+                            "r_MTPVED",
+                            "r_MTPVEP",
+                            ]
+r_neutral_foot_jsn = ["r_IP",
+                        "r_MTPIII",
+                        "r_MTPII",
+                        "r_MTPI",
+                        "r_MTPIV",
+                        "r_MTPV",
+                        ]
+r_neutral_foot_ero = ["r_IPED",
+                        "r_IPEP",
+                        "r_MTPIIIED",
+                        "r_MTPIIIEP",
+                        "r_MTPIIED",
+                        "r_MTPIIEP",
+                        "r_MTPIED",
+                        "r_MTPIEP",
+                        "r_MTPIVED",
+                        "r_MTPIVEP",
+                        "r_MTPVED",
+                        "r_MTPVEP",
+                        ]
 
-    # score_type --> score_name --> roi
-    if extremity == "H":
-        scor_roi_matching_dict = {'JSN': {'CMCIII': ['SCD3'],
+# remove 'r_'
+neutral_hand_joints = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_joints]
+neutral_hand_jsn = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_jsn]
+neutral_hand_ero = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_ero]
+neutral_foot_joints = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_joints]
+neutral_foot_jsn = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_jsn]
+neutral_foot_ero = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_ero]
+
+
+scor_roi_matching_dict_H = {'JSN': {'CMCIII': ['SCD3'],
                                           'CMCIV': ['SCD4'],
                                           'CMCV': ['SCD5'],
                                           'MCPIII': ['SMD3'],
@@ -57,26 +183,43 @@ def io_scoring(chosen_score, chosen_score_type, extremity="H"):
                                           'TrapE': ['SWR'],
                                           'UlnaE': ['SWR']}
                                   }
+
+scor_roi_matching_dict_F = {'JSN': {'MTPI': ['STD1'],
+                                    'MTPII': ['STD2'],
+                                    'MTPIII': ['STD3'],
+                                    'MTPIV': ['STD4'],
+                                    'MTPV': ['STD5'],
+                                    'IP': ['SID1']},
+                            'ERO': {'MTPIEP': ['STP1'],
+                                    'MTPIED': ['STD1'],
+                                    'MTPIIEP': ['STP2'],
+                                    'MTPIIED': ['STD2'],
+                                    'MTPIIIEP': ['STP3'],
+                                    'MTPIIIED': ['STD3'],
+                                    'MTPIVEP': ['STP4'],
+                                    'MTPIVED': ['STD4'],
+                                    'MTPVEP': ['STP5'],
+                                    'MTPVED': ['STD5'],
+                                    'IPEP': ['SIP1'],
+                                    'IPED': ['SID1']}
+                            }
+
+def io_scoring(chosen_score, chosen_score_type, extremity="H",
+               score_path_H = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv",
+               score_path_F = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+               ):
+    """
+    :param chosen_score: e.g., chosen_score = "PIPIIIED"
+    :param chosen_score_type: e.g., chosen_score_type = 'ERO'  # or detect automatically
+    :param extremity: str, "H" = hand, "F" = foot
+    :return: list of paths to patches, list of corresponding scores
+    """
+
+    # score_type --> score_name --> roi
+    if extremity == "H":
+        scor_roi_matching_dict = scor_roi_matching_dict_H
     elif extremity == "F":
-        scor_roi_matching_dict = {'JSN': {'MTPI': ['STD1'],
-                                          'MTPII': ['STD2'],
-                                          'MTPIII': ['STD3'],
-                                          'MTPIV': ['STD4'],
-                                          'MTPV': ['STD5'],
-                                          'IP': ['SID1']},
-                                  'ERO': {'MTPIEP': ['STP1'],
-                                          'MTPIED': ['STD1'],
-                                          'MTPIIEP': ['STP2'],
-                                          'MTPIIED': ['STD2'],
-                                          'MTPIIIEP': ['STP3'],
-                                          'MTPIIIED': ['STD3'],
-                                          'MTPIVEP': ['STP4'],
-                                          'MTPIVED': ['STD4'],
-                                          'MTPVEP': ['STP5'],
-                                          'MTPVED': ['STD5'],
-                                          'IPEP': ['SIP1'],
-                                          'IPED': ['SID1']}
-                                  }
+        scor_roi_matching_dict = scor_roi_matching_dict_F
     else:
         raise ValueError("extremity must bei either 'H' or 'F'")
 
@@ -92,143 +235,13 @@ def io_scoring(chosen_score, chosen_score_type, extremity="H"):
                 [joint for joint, joint_rois in scor_roi_matching_dict[score_type].items()
                  if roi_i in joint_rois]
 
-    # read in scores dataframe
-    # score joint names
-    r_neutral_hand_joints = ["r_Base_MCIE",
-                             "r_CMCIII",
-                             "r_CMCIV",
-                             "r_CMCV",
-                             "r_IPIED",
-                             "r_IPIEP",
-                             "r_LunatE",
-                             "r_MCPIII",
-                             "r_MCPIIIED",
-                             "r_MCPIIIEP",
-                             "r_MCPII",
-                             "r_MCPIIED",
-                             "r_MCPIIEP",
-                             "r_MCPI",
-                             "r_MCPIED",
-                             "r_MCPIEP",
-                             "r_MCPIV",
-                             "r_MCPIVED",
-                             "r_MCPIVEP",
-                             "r_MCPV",
-                             "r_MCPVED",
-                             "r_MCPVEP",
-                             "r_PIPIII",
-                             "r_PIPIIIED",
-                             "r_PIPIIIEP",
-                             "r_PIPII",
-                             "r_PIPIIED",
-                             "r_PIPIIEP",
-                             "r_PIPIV",
-                             "r_PIPIVED",
-                             "r_PIPIVEP",
-                             "r_PIPV",
-                             "r_PIPVED",
-                             "r_PIPVEP",
-                             "r_Rad_Carp",
-                             "r_RadiusE",
-                             "r_Sca_Cap",
-                             "r_ScaphE",
-                             "r_Tra_Sca",
-                             "r_TrapE",
-                             "r_UlnaE"
-                             ]
-    r_neutral_hand_jsn = ["r_CMCIII",
-                          "r_CMCIV",
-                          "r_CMCV",
-                          "r_MCPIII",
-                          "r_MCPII",
-                          "r_MCPI",
-                          "r_MCPIV",
-                          "r_MCPV",
-                          "r_PIPIII",
-                          "r_PIPII",
-                          "r_PIPIV",
-                          "r_PIPV",
-                          "r_Rad_Carp",
-                          "r_Sca_Cap",
-                          "r_Tra_Sca",
-                          ]
-    r_neutral_hand_ero = ["r_Base_MCIE",
-                          "r_IPIED",
-                          "r_IPIEP",
-                          "r_LunatE",
-                          "r_MCPIIIED",
-                          "r_MCPIIIEP",
-                          "r_MCPIIED",
-                          "r_MCPIIEP",
-                          "r_MCPIED",
-                          "r_MCPIEP",
-                          "r_MCPIVED",
-                          "r_MCPIVEP",
-                          "r_MCPVED",
-                          "r_MCPVEP",
-                          "r_PIPIIIED",
-                          "r_PIPIIIEP",
-                          "r_PIPIIED",
-                          "r_PIPIIEP",
-                          "r_PIPIVED",
-                          "r_PIPIVEP",
-                          "r_PIPVED",
-                          "r_PIPVEP",
-                          "r_RadiusE",
-                          "r_ScaphE",
-                          "r_TrapE",
-                          "r_UlnaE"
-                          ]
-    r_neutral_foot_joints = ["r_IP",
-                             "r_IPED",
-                             "r_IPEP",
-                             "r_MTPIII",
-                             "r_MTPIIIED",
-                             "r_MTPIIIEP",
-                             "r_MTPII",
-                             "r_MTPIIED",
-                             "r_MTPIIEP",
-                             "r_MTPI",
-                             "r_MTPIED",
-                             "r_MTPIEP",
-                             "r_MTPIV",
-                             "r_MTPIVED",
-                             "r_MTPIVEP",
-                             "r_MTPV",
-                             "r_MTPVED",
-                             "r_MTPVEP",
-                             ]
-    r_neutral_foot_jsn = ["r_IP",
-                          "r_MTPIII",
-                          "r_MTPII",
-                          "r_MTPI",
-                          "r_MTPIV",
-                          "r_MTPV",
-                          ]
-    r_neutral_foot_ero = ["r_IPED",
-                          "r_IPEP",
-                          "r_MTPIIIED",
-                          "r_MTPIIIEP",
-                          "r_MTPIIED",
-                          "r_MTPIIEP",
-                          "r_MTPIED",
-                          "r_MTPIEP",
-                          "r_MTPIVED",
-                          "r_MTPIVEP",
-                          "r_MTPVED",
-                          "r_MTPVEP",
-                          ]
 
-    # remove 'r_'
-    neutral_hand_joints = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_joints]
-    neutral_hand_jsn = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_jsn]
-    neutral_hand_ero = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_hand_ero]
-    neutral_foot_joints = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_joints]
-    neutral_foot_jsn = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_jsn]
-    neutral_foot_ero = [re.sub("^r_", "", joint_name) for joint_name in r_neutral_foot_ero]
+
+
+
 
     if extremity == "H":
-        score_path = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
+        score_path = score_path_H
         # score_path = \
         #     '/home/cir/tdeimel/autoscoRA/autoscoRA_Preprocessing/output/data_split/' \
         #     'pat_df_medstream_manual_H_dp_img_of_int_2_' \
@@ -237,7 +250,7 @@ def io_scoring(chosen_score, chosen_score_type, extremity="H"):
         r_neutral_jsn = r_neutral_hand_jsn
         r_neutral_ero = r_neutral_hand_ero
     elif extremity == "F":
-        score_path = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+        score_path = score_path_F
         # score_path = \
         #     '/home/cir/tdeimel/autoscoRA/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/' \
         #     'pat_df_medstream_manual_F_dp_img_of_int_2_' \
@@ -282,6 +295,10 @@ def io_scoring(chosen_score, chosen_score_type, extremity="H"):
         score_list = score_list + [score]
 
     return path_list, score_list
+
+
+
+
 
 
 def mandatory_train_val_test_ids(segm_to_train=True, double_to_test=True, missing_to_train=False, conflict='train',

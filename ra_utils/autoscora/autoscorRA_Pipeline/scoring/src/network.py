@@ -68,7 +68,7 @@ class Custom_VGG(nn.Module):
                                             nn.ReLU(True),
                                             nn.Dropout(),
                                             nn.Linear(4096, num_classes),
-                                            nn.Softmax(dim=1)
+                                            nn.Softmax(dim=1) # CW: removed softmax to allow for BCE loss
                                            )
 
         self._init_classifier_weights()

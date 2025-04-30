@@ -34,7 +34,8 @@ def find(s, ch):
 
 
 def get_indices4(train_test_split, len_cur_path_list, path_list, score_list, train_pat, val_pat, test_pat, op_patients, chosen_score, 
-                 path_to_all_patients_npy="src/all_patients_num.npy"):
+                 path_to_all_patients_npy="src/all_patients_num.npy", 
+                 path_to_model_dir=None):
 
     all_patients = np.load(path_to_all_patients_npy)
 
@@ -109,12 +110,12 @@ def get_indices4(train_test_split, len_cur_path_list, path_list, score_list, tra
                 if num in test_patients:
                     test_indices = np.append(test_indices, ind)
 
-    if True:
+    if path_to_model_dir != None:
         np_path_list = np.array(path_list)
-        np.save("train_files_f.npy", np_path_list[train_indices])
-        np.save("val_files_f.npy", np_path_list[val_indices])
-        np.save("test_files_f.npy", np_path_list[test_indices])
-        print("train/val/test patient split saved!")
+        np.save(f"{path_to_model_dir}/train_files_f.npy", np_path_list[train_indices])
+        np.save(f"{path_to_model_dir}/val_files_f.npy", np_path_list[val_indices])
+        np.save(f"{path_to_model_dir}/test_files_f.npy", np_path_list[test_indices])
+        print(f"train/val/test patient split saved to {path_to_model_dir}!")
 
     return train_indices, val_indices, test_indices, score_list, path_list
 

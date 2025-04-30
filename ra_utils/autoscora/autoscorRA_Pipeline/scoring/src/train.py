@@ -7,7 +7,8 @@ from monai.transforms import Affine, Rand2DElastic, RandGaussianNoise
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def train(data_train_x, data_train_y, model, optimizer, n_classes, classes, augment, aug_params, regression, weighted_kappa, lam, ordinal):
+def train(data_train_x, data_train_y, model, optimizer, n_classes, classes, augment, aug_params, regression, weighted_kappa, lam, ordinal, 
+          return_loss = False):
 
     model.train()
     total_loss = 0
@@ -59,11 +60,15 @@ def train(data_train_x, data_train_y, model, optimizer, n_classes, classes, augm
                                                     values = loss_all)
 
     #return loss/data_train_x.shape[0]
-    return mean_values, count_values
+    if return_loss:
+        return loss.item(), mean_values, count_values
+    else:
+        return mean_values, count_values
 
 
 
-def validate(data_val_x, data_val_y, model, n_classes, classes, regression, weighted_kappa, lam, ordinal):
+def validate(data_val_x, data_val_y, model, n_classes, classes, regression, weighted_kappa, lam, ordinal, 
+             return_loss = False):
     model.eval()
     total_loss = 0
 
@@ -93,9 +98,10 @@ def validate(data_val_x, data_val_y, model, n_classes, classes, regression, weig
     mean_values, count_values = get_individual_loss(unique_classes = classes,
                                                     classes = data_val_y,
                                                     values = loss_all)
-
-    #return loss/data_val_x.shape[0]
-    return mean_values, count_values
+    if return_loss:
+        return loss.item(), mean_values, count_values
+    else:
+        return mean_values, count_values
 
 
 
@@ -118,6 +124,31 @@ def get_individual_loss(unique_classes, classes, values):
         if ind.size != 0:
             count_values[i] = len(values[ind])
             mean_values[i] = torch.mean(values[ind])
+        else:
+            count_values[i] = 0
+            mean_values[i] = 0
+
+    return mean_values, count_values
+
+
+def get_individual_loss_v2(unique_classes, classes, values, device="cpu"):
+    # Ensure unique_classes is a torch tensor (on same device)
+
+    if isinstance(unique_classes, (np.ndarray, list)):
+        classes = torch.tensor(classes, device=torch.device(device))
+    if isinstance(values, (np.ndarray, list)):
+        values = torch.tensor(values, device=torch.device(device))
+    if isinstance(classes, (np.ndarray, list)):
+        classes = torch.tensor(classes, device=torch.device(device))
+
+    mean_values = torch.zeros(len(unique_classes), dtype=torch.float32)
+    count_values = torch.zeros(len(unique_classes), dtype=torch.float32)
+
+    for i, c in enumerate(unique_classes):
+        mask = (classes == c)
+        if mask.any():
+            count_values[i] = mask.sum()
+            mean_values[i] = values[mask].mean()
         else:
             count_values[i] = 0
             mean_values[i] = 0

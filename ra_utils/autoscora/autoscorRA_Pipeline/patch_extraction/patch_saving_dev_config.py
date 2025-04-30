@@ -49,7 +49,8 @@ extremity = config["extremity"]  # "foot"  # "hand"
 img_format_input = config["img_format_input"]#".dcm"  # '.npy'  # '.dcm'
 img_dir = config["image_dir"]
 pred_joints_file = config["landmarks_csv"]
-patch_dir = config["output_dir"]
+patch_dir_root = config["output_dir"]
+seperate_output_folder_structure_by_roi = config.get("seperate_output_folder_structure_by_roi", False)
 
 
 def input_checks(config: dict):
@@ -90,9 +91,9 @@ modification = {'rotate_degrees': 0,
                 'resize_UR_by': config.get("resize_UR_by", 0),
                 'resize_DP_by': None}
 
-if not os.path.isdir(patch_dir):
-    os.mkdir(patch_dir)
-    print("created directory:", patch_dir)
+if not os.path.isdir(patch_dir_root):
+    os.mkdir(patch_dir_root)
+    print("created directory:", patch_dir_root)
 
 # iterator elements
 dir_img_names = iop.get_img_basenames_from_array_dir(array_dir=img_dir)
@@ -186,6 +187,14 @@ for img in img_names[lo:hi]:
                                 )
 
         # save patch
+        if seperate_output_folder_structure_by_roi: 
+            patch_dir = os.path.join(patch_dir_root, roi)
+            if not os.path.isdir(patch_dir):
+                print("creating directory:", patch_dir)
+                os.mkdir(patch_dir)
+        else: 
+            patch_dir = patch_dir_root
+
         save_path = patch_dir + os.sep + img + "_" + roi + ".npy"
         np.save(save_path, patch)
         del modified_corners
@@ -194,7 +203,7 @@ for img in img_names[lo:hi]:
 
         del corners
         gc.collect()
-    exit(0) # DEBUGGING
+    #exit(0) # DEBUGGING
 
     del extremity_ref
     del array

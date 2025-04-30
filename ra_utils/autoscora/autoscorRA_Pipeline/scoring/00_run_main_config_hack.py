@@ -7,7 +7,6 @@ import sys
 import argparse
 import csv
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 
 import ra_utils
 import ra_utils.autoscora.autoscorRA_Pipeline.scoring.src
@@ -174,7 +173,6 @@ if params["model_name"] == "test":
     print("Testing mode, only 2 epochs, ...")
 else: 
     train_params = [100, 150, -1, -1, -1, True]  # for training
-    train_params = [100, 100, -1, -1, -1, False]  # for training
 
 
 params["n_epochs"] = train_params[0]
@@ -406,28 +404,48 @@ optimizer = torch.optim.Adam(model.parameters(), lr=params["lr"])
 
 ### Dataloader ###
 
-training_data = CustomDataset(path = params["path_aug"],
-                                    path_list = params["path_list"],
-                                    score_list = params["score_list"],
-                                    indices = params["train_indices"],
-                                    binary = params["binary"],
-                                    add_augm = False,  # used to be True
-                                    augment = True,
-                                    aug_params = aug_params)
+# training_data = CustomDataset(path = params["path_aug"],
+#                                     path_list = params["path_list"],
+#                                     score_list = params["score_list"],
+#                                     indices = params["train_indices"],
+#                                     binary = params["binary"],
+#                                     add_augm = False,  # used to be True
+#                                     augment = True,
+#                                     aug_params = aug_params)
 
-train_dataloader = DataLoader(training_data, batch_size=params["batch_size"], shuffle=True, num_workers=8)
+# train_dataloader = DataLoader(training_data, batch_size=params["batch_size"], shuffle=True, num_workers=8)
 
 
-validation_data = CustomDataset(path = params["path_orig"],
-                                    path_list = params["path_list"],
-                                    score_list = params["score_list"],
-                                    indices = params["val_indices_bal"],
-                                    binary = params["binary"],
-                                    add_augm = False,
-                                    augment = False)
+# validation_data = CustomDataset(path = params["path_orig"],
+#                                     path_list = params["path_list"],
+#                                     score_list = params["score_list"],
+#                                     indices = params["val_indices_bal"],
+#                                     binary = params["binary"],
+#                                     add_augm = False,
+#                                     augment = False)
 
-validation_dataloader = DataLoader(validation_data, batch_size=params["batch_size"], shuffle=True, num_workers=8)
+# validation_dataloader = DataLoader(validation_data, batch_size=params["batch_size"], shuffle=True, num_workers=8)
 
+config = ra_utils.utils.config_parser.load_config(
+default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/scoring_H_XX_dev.yml", 
+debugging_in_jupyter_nb=True, silencium=True)
+# transforms_config = config["transforms"]
+# training_config = config["training"]
+# data_config = config["data"]
+
+from ra_utils.data.dataloader_CR_patches import (
+    load_img_SHS_patch_data,
+    dataset_and_loader,
+    df_scores_to_dct_list
+)
+# Load tables with paths and scores (+ split)
+data_tables = load_img_SHS_patch_data(config["data"])
+
+# Make dataset and dataloaders
+data = dataset_and_loader(data_tables, config)
+train_dataloader = data["train_loader"] 
+validation_dataloader = data["val_loader"]
+test_dataloader = data["test_loader"]  
 
 ### Training ###
 if b_train:
@@ -444,8 +462,8 @@ if b_train:
 
     model_save_name = "model"
 
-
-    for epoch in tqdm(range(params["n_epochs"]), desc="Training loop", unit="epoch"):
+    
+    for epoch in range(params["n_epochs"]):
         count_size = 0
         cur_loss_epoch = 0
         y_raw_epoch = np.array([])
@@ -458,13 +476,14 @@ if b_train:
 
         sta_epoch = time.time()
         #for i in range(params["n_batches"]):
-        loss_batch_tr = 0
         for i, batch in enumerate(train_dataloader):
             sta_batch = time.time()
 
-            x_raw, y_raw, path_to_dataset = batch
+            # x_raw, y_raw, path_to_dataset = batch
+            x_raw = batch["img"]
+            y_raw = batch["score"]
 
-            loss_batch_tr_, cur_loss_batch, count_values_batch = train(data_train_x = x_raw,
+            cur_loss_batch, count_values_batch = train(data_train_x = x_raw,
                                                         data_train_y = y_raw,
                                                         model = model,
                                                         optimizer = optimizer,
@@ -475,9 +494,7 @@ if b_train:
                                                         regression = params["regression"],
                                                         weighted_kappa = params["weighted_kappa"],
                                                         lam = params["lambda"],
-                                                        ordinal=params["ordinal"], 
-                                                        return_loss=True)
-            loss_batch_tr += loss_batch_tr_
+                                                        ordinal=params["ordinal"])
 
             #cur_loss_batch = cur_loss_batch.cpu().detach().numpy()
             cur_loss_batch = cur_loss_batch
@@ -490,8 +507,6 @@ if b_train:
             if params["verbose"]:
                 print(log_batch.format(epoch+1, i+1, params["n_batches"], balanced_mean(cur_loss_batch, count_values_epoch[-1]), sto_batch, delt_loss_batch))
             old_loss_batch = cur_loss_batch
-
-        loss_batch_tr /= len(train_dataloader)
 
 
         #y_raw_epoch, log_batch_loss
@@ -517,13 +532,17 @@ if b_train:
         cur_loss_epoch_val = 0
         sta_epoch_val = time.time()
         #for i in range(params["n_batches_val"]):
-        loss_batch_val = 0
         for i, batch in enumerate(validation_dataloader):
             sta_batch_val = time.time()
 
-            x_raw, y_raw, path_to_dataset = batch
+            # x_raw, y_raw, path_to_dataset = batch
 
-            loss_batch_val_, cur_loss_batch_val, count_values_batch_val = validate(data_val_x = x_raw,
+            x_raw = batch["img"]  ##<<<<<-----
+            y_raw = batch["score"]
+
+
+
+            cur_loss_batch_val, count_values_batch_val = validate(data_val_x = x_raw,
                                                         data_val_y = y_raw,
                                                         model = model,
                                                         n_classes = params["n_classes"],
@@ -531,9 +550,7 @@ if b_train:
                                                         regression = params["regression"],
                                                         weighted_kappa = params["weighted_kappa"],
                                                         lam = params["lambda"],
-                                                        ordinal=params["ordinal"], 
-                                                        return_loss=True)
-            loss_batch_val += loss_batch_val_
+                                                        ordinal=params["ordinal"])
 
 
 
@@ -548,8 +565,6 @@ if b_train:
             old_loss_batch_val = cur_loss_batch_val
 
 
-        loss_batch_val /= len(validation_dataloader)
-        print(f"Epoch: {epoch+1:03d}    Loss Tr: {loss_batch_tr:.3f}    Loss Val: {loss_batch_val:.3f}")
 
         count_values_sum_val = np.array([0.]*params["n_classes"])
         cur_loss_epoch_val = np.array([0.]*params["n_classes"])
@@ -584,7 +599,8 @@ if b_train:
 
 
 ### Testing ###
-
+print("DEBUGGING EXIT!!!!!")
+exit()
 
 if b_pred:
 
