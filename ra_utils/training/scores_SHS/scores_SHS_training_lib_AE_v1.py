@@ -20,6 +20,8 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib import (
     log_metrics_mlflow
 )
 
+from ra_utils.networks.architecture import make_mlp
+
 # ---------------------------------------------------------------------------
 # Training loop (AutoEncoder + multi‑head classifier)
 # ---------------------------------------------------------------------------
@@ -55,6 +57,7 @@ def train_loop_AE_v1(
     classes: Optional[List[str]] = None,
     log_model: bool = False,
     verbose: bool = True,
+    ES_metric_key = "Ly"  # which metric to use for early stopping
 ):
     """Orchestrates the whole training process using *training_epoch_AE_v1* and
     the newly defined *val_epoch_AE_v1*.
@@ -126,7 +129,7 @@ def train_loop_AE_v1(
             val_losses = "  Validation: " + " | ".join(
             f"{key}: {value:.3f}" for key, value in val_metrics.items() if (
                 key.startswith("L") and 
-                key != "L"
+                key != "L")
             )
             print(train_losses)
             print(val_losses)
@@ -153,16 +156,17 @@ def train_loop_AE_v1(
 
         # ------------------------------------------------------------------
         # 4) Early stopping --------------------------------------------------
+        val_loss_ES = val_metrics[ES_metric_key]  # used to be val_loss
         if not run_full_epochs:
-            improved = val_loss < best_val_loss
+            improved = val_loss_ES < best_val_loss
             if improved:
                 if verbose:
-                    improvement = (-(val_loss - best_val_loss) / best_val_loss)*100
+                    improvement = (-(val_loss_ES - best_val_loss) / best_val_loss)*100
                     print(
-                        "    YEAH!! New best validation loss ↓ "
-                        f"{best_val_loss:.4f} → {val_loss:.4f}  this is a {improvement:.1f}% improvement "
+                        f"    YEAH!! New best validation {ES_metric_key} ↓ "
+                        f"{best_val_loss:.4f} → {val_loss_ES:.4f}  this is a {improvement:.1f}% improvement \n"
                     )
-                best_val_loss = val_loss
+                best_val_loss = val_loss_ES
                 best_AE_state = copy.deepcopy(model_AE.state_dict())
                 if model_classifier is not None:
                     best_clf_state = copy.deepcopy(model_classifier.state_dict())
@@ -454,47 +458,17 @@ class ClassifierHeads(nn.Module):
     def __init__(self,
                  classifier_head_infos, # = classifier_head_infos,  
                  latent_dim: int = 480,
-                 hidden_dim: int = 280,
-                 dropout_p = None, 
-                 only_linear=False):
+                 mlp_kwargs = {"depth": 0, 
+                               "dropout_op": None}):
         super(ClassifierHeads, self).__init__()
         self.classifier_head_infos = classifier_head_infos.copy()
         
         # input checks on classifier_head_infos -> No overlaps in score_types
         self.score_type_2_head_name = make_score_type_2_head_name_dct(classifier_head_infos)
-        if only_linear: 
-            print("Using only a single linear layer as classifier!")
-            self.heads = nn.ModuleDict({k: nn.Sequential(nn.Linear(latent_dim, v["out_dim"])) 
-                                        for k,v in classifier_head_infos.items()})            
-        else:
-            print("Using two layer as classifier.")
-            self.heads = nn.ModuleDict({k: self.__make_mlp(latent_dim, v["out_dim"], 
-                                                        hidden_dim = hidden_dim, 
-                                                        dropout_p=dropout_p) 
-                                        for k,v in classifier_head_infos.items()})
+        self.heads = nn.ModuleDict({k: make_mlp(**{"latent_dim": latent_dim, 
+                                                 "out_dim": v["out_dim"]},  
+                                                 **mlp_kwargs) for k,v in classifier_head_infos.items()})
         
-    def forward(self, z: torch.Tensor, score_types: List[str]) -> torch.Tensor:
-        if len(z) != len(score_types):
-            raise ValueError(
-                f"z (length {len(z)}) and score_types (length {len(score_types)}) "
-                "must match."
-            )
-
-        active_heads = [self.score_type_2_head_name[s] for s in score_types]
-
-        # Fast path: whole batch uses the same head
-        if len(set(active_heads)) == 1:
-            return self.heads[active_heads[0]](z)
-
-        # Slow path: split the batch per head (avoid calling each head B times)
-        outs: list[torch.Tensor | None] = [None] * len(active_heads)
-        for head_name in set(active_heads):
-            idx = [i for i, h in enumerate(active_heads) if h == head_name]
-            head_out = self.heads[head_name](z[idx])            # run once
-            for k, i in enumerate(idx):                         # restore order
-                outs[i] = head_out[k : k + 1]
-        return torch.cat(outs, dim=0)
-
     def forward(
         self,
         z: torch.Tensor,            # [B, latent_dim]
@@ -574,15 +548,17 @@ class ClassifierHeads(nn.Module):
 
 
 
-    def __make_mlp(self, in_dim, out_dim, hidden_dim=256, dropout_p=None):
-        layers = [nn.Linear(in_dim, hidden_dim),
-              #nn.BatchNorm1d(hidden_dim),
-              nn.LayerNorm(hidden_dim),
-              nn.ReLU(inplace=True)]
-        if dropout_p is not None:
-            layers.append(nn.Dropout(p=dropout_p, inplace=True))
-        layers.append(nn.Linear(hidden_dim, out_dim))
-        return nn.Sequential(*layers)
+
+
+    # def __make_mlp(self, in_dim, out_dim, hidden_dim=256, dropout_p=None):
+    #     layers = [nn.Linear(in_dim, hidden_dim),
+    #           #nn.BatchNorm1d(hidden_dim),
+    #           nn.LayerNorm(hidden_dim),
+    #           nn.ReLU(inplace=True)]
+    #     if dropout_p is not None:
+    #         layers.append(nn.Dropout(p=dropout_p, inplace=True))
+    #     layers.append(nn.Linear(hidden_dim, out_dim))
+    #     return nn.Sequential(*layers)
         
    
    
@@ -599,8 +575,176 @@ from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnetT import (
         resnet34_decoder,
         resnet50_decoder
     ) 
+from typing import Literal
 
 
+class EncoderDecoderNetwork(nn.Module):
+    def __init__(self,
+                 encoder,
+                 decoder,
+                 preprocessor = None,
+                 postprocessor = None, 
+                 reducer = None
+                 ):
+        super().__init__()
+        self.preprocessor = preprocessor
+        self.postprocessor = postprocessor
+        self.encoder = encoder
+        self.decoder = decoder
+        self.reducer = reducer
+        
+        
+    def forward(self, x):
+        if self.preprocessor == None:
+            x_preprocessed = x
+        else:
+            x_preprocessed = self.preprocessor(x)
+
+        z = self.encoder(x_preprocessed)
+        x_pred = self.decoder(z)
+
+        if self.postprocessor != None:
+            x_pred = self.postprocessor(x_pred)
+
+        if self.reducer != None: 
+            z = self.reducer(z)
+
+
+        return x_pred, z
+
+import torchvision
+class PreprocessingResNetRGBMaker(nn.Module):
+    """
+    input  dim (Nb, Nc=1, ...)
+    output dim (Nb, Nc=3, ...)
+    can also normalize channels (which pretrained resnet expects)
+    """
+        
+    def __init__(self, 
+                 mean = (0.485, 0.456, 0.406),
+                 std = (0.229, 0.224, 0.225)
+                 ):
+        super().__init__()
+        self.normalize = torchvision.transforms.Normalize(mean=mean, std=std)
+                    
+    def forward(self, x):
+        # Repeat the single channel to create 3 channels
+        x = x.repeat(1, 3, 1, 1)
+        # Normalize the channels
+        x = self.normalize(x)
+        return x
+
+
+class PostprocessingGrayScaleMaker(nn.Module):
+    """
+    input  dim (N, 3, H, W)
+    output dim (N, 1, H, W)
+    """
+    def __init__(self, 
+                 mean=(0.485, 0.456, 0.406),
+                 std=(0.229, 0.224, 0.225), 
+                 output_function : Literal["None", "relu", "sigmoid"] = "None"
+                 ):
+        super().__init__()
+        self.mean = torch.tensor(mean).view(1, 3, 1, 1)
+        self.std = torch.tensor(std).view(1, 3, 1, 1)
+        
+        self.output_function_str = output_function
+        if output_function == "None":
+            self.output_function = None
+        elif output_function == "relu":
+            self.output_function = nn.ReLU()
+        elif output_function == "sigmoid":
+            self.output_function = nn.Sigmoid()
+        else: 
+            raise ValueError(f"{output_function=}")
+                
+    def forward(self, x):
+        # Unnormalize the channels
+        x = x * self.std.to(x.device) + self.mean.to(x.device)
+        # Average over the channels
+        x = torch.mean(x, dim=1, keepdim=True)
+        if self.output_function != None:
+            x = self.output_function(x)
+        return x
+
+class PostprocessingGrayScaleMaker_v2(nn.Module):
+    """
+    input  dim (N, 3, H, W)
+    output dim (N, 1, H, W)
+    """
+    def __init__(self, output_function="sigmoid"):
+        super().__init__()
+        self.output_function_str = output_function
+        if output_function == "None":
+            self.output_function = None
+        elif output_function == "relu":
+            self.output_function = nn.ReLU()
+        elif output_function == "sigmoid":
+            self.output_function = nn.Sigmoid()
+        else: 
+            raise ValueError(f"{output_function=}")
+                
+    def forward(self, x):
+        x = torch.mean(x, dim=1, keepdim=False)
+        x.unsqueeze_(1)
+        if self.output_function != None:
+            x = self.output_function(x)
+        return x
+
+
+def build_ResNetAutoEncoder_v2(arch="resnet18", output_function="sigmoid"):
+    out_ch = 3
+    if arch == 'resnet18':
+        encoder = resnet18(pretrained=True)
+        decoder = resnet18_decoder(out_ch=out_ch)
+    elif arch == 'resnet34':
+        encoder = resnet34(pretrained=True)
+        decoder = resnet34_decoder(out_ch=out_ch)
+    elif arch == 'resnet50':
+        encoder = resnet50(pretrained=True)
+        decoder = resnet50_decoder(out_ch=out_ch)
+    else:
+        raise NotImplementedError
+
+    reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+    preprocessor = PreprocessingResNetRGBMaker()
+    #postprocessor = PostprocessingGrayScaleMaker(output_function="sigmoid")
+    postprocessor = PostprocessingGrayScaleMaker_v2(output_function=output_function)
+
+
+    net = EncoderDecoderNetwork(encoder=encoder,
+                                decoder=decoder,  
+                                preprocessor=preprocessor,
+                                postprocessor=postprocessor,
+                                reducer=reducer)
+    return net
+    
+
+
+def build_ResNetAutoEncoder_v2p1(arch="resnet18", output_function="sigmoid"):
+    from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_using_basic_block_decoder import (
+        resnet18_decoder_v2
+    )
+    if arch == 'resnet18':
+        encoder = resnet18(pretrained=True)
+        decoder = resnet18_decoder_v2()
+    else:
+        raise NotImplementedError
+
+    reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+    preprocessor = PreprocessingResNetRGBMaker()
+    #postprocessor = PostprocessingGrayScaleMaker(output_function="sigmoid")
+    postprocessor = PostprocessingGrayScaleMaker_v2(output_function=output_function)
+
+
+    net = EncoderDecoderNetwork(encoder=encoder,
+                                decoder=decoder,  
+                                preprocessor=preprocessor,
+                                postprocessor=postprocessor,
+                                reducer=reducer)
+    return net
+    
 
 
 

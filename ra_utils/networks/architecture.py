@@ -10,19 +10,46 @@ from typing import Optional, Literal, List
 #--------------------------------------------------------------#
 
 
-def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
-                            options: Literal["image only", "image + score_type"] = "image only"):
-    if options == "image only":
-        X = batch["img"].to(device)
-        return model(X)
+# def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
+#                             options: Literal["image only", "image + score_type"] = "image only"):
+#     if options == "image only":
+#         X = batch["img"].to(device)
+#         return model(X)
 
-    elif options == "image + score_type":
+#     elif options == "image + score_type":
+#         X = batch["img"].to(device)
+#         score_types = batch["score_type"]   # List of strings (N_batch)
+#         return model(images=X, score_types=score_types)
+    
+#     else: 
+#         raise ValueError(f"model_interface_forward :: {option = } not supported ")
+
+
+def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
+                            options: Literal["IN: image; OUT: class_logits", 
+                                             "IN: image + score_type; OUT: class_logits",
+                                             "IN: image; OUT: recon, latent"] = "IN: image only; OUT: class_logits"):
+    if options == "IN: image; OUT: class_logits":
+        X = batch["img"].to(device)
+        class_logits =  model(X)
+        return {"class_logits": class_logits}
+
+    elif options == "IN: image + score_type; OUT: class_logits":
         X = batch["img"].to(device)
         score_types = batch["score_type"]   # List of strings (N_batch)
-        return model(images=X, score_types=score_types)
+        class_logits =  model(images=X, score_types=score_types)
+        return {"class_logits": class_logits}
+    
+    if options == "IN: image; OUT: recon, latent":
+        X = batch["img"].to(device)
+        recon, z =  model(X)
+        return {"recon": recon, "latent": z}    
     
     else: 
         raise ValueError(f"model_interface_forward :: {option = } not supported ")
+
+
+
 
 
 
@@ -34,7 +61,7 @@ def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
 def make_mlp(
     latent_dim: int = 320,
     hidden_dim: int = 256,
-    normalization: Literal["batch", "instance"] = "batch",
+    normalization: Literal["batch", "instance", "layer"] = "batch",
     norm_op_kwargs: dict = {},
     depth: int = 2,
     nonlin=nn.ReLU,
@@ -46,12 +73,16 @@ def make_mlp(
     def get_normalization_block(norm_dim: int = hidden_dim):
         if normalization == "batch":
             return nn.BatchNorm1d(norm_dim, **norm_op_kwargs)
+        elif normalization == "layer":
+            return nn.LayerNorm(norm_dim, **norm_op_kwargs)
         elif normalization == "instance":
             return nn.Sequential(
                 nn.Unflatten(1, (1, norm_dim)),  # ->  Nb, 1, hidden_dim
                 nn.InstanceNorm1d(1, **norm_op_kwargs),
                 nn.Flatten()  # -> Nb, hidden_dim
             )
+        else: 
+            raise NotADirectoryError(f"{normalization = }")
 
     mlp_layers = []
 

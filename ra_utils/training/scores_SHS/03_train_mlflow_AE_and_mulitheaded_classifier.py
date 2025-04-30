@@ -35,7 +35,9 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
     evaluate_and_log_testset_results_AE_v1,
     ClassifierHeads, 
     ResNetAutoEncoder, 
-    ResNetNOAutoEncoder
+    ResNetNOAutoEncoder,
+    build_ResNetAutoEncoder_v2,
+    build_ResNetAutoEncoder_v2p1
 )
 
 import ra_utils.networks.loss_function
@@ -47,7 +49,7 @@ from ra_utils.progressionlearning.models.builder import (
 )
 
 import torchvision.transforms.v2 as v2
-
+import ra_utils.utils.config_parser
 
 
 
@@ -56,22 +58,55 @@ import torchvision.transforms.v2 as v2
 def build_models(model_name: str, config: dict, classifier_head_infos: dict):
     if model_name == "UNetMTANAE + MultiHeadClassifier":
         model_AE = build_MTANAE(in_channels=1, out_channels=1)
-        classifier_kwargs = config["model"]["classifier"] 
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480, **classifier_kwargs)
-        
+        cfg = config["model"]["classifier"]
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480,  mlp_kwargs=classifier_kwargs)
+
+
+
     elif model_name ==  "ResNetAE + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetAutoEncoder(**AE_kwargs)
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        classifier_kwargs = config["model"]["classifier"]
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, **classifier_kwargs)
-    
+        cfg = config["model"]["classifier"]
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+
+
+    elif model_name ==  "ResNetAE_v2 + MultiHeadClassifier": 
+        AE_kwargs = config["model"]["autoencoder"]
+        model_AE = build_ResNetAutoEncoder_v2(**AE_kwargs)  
+        latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
+        cfg = config["model"]["classifier"]
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+
+
+    elif model_name ==  "ResNetAE_v2p1 + MultiHeadClassifier": 
+        AE_kwargs = config["model"]["autoencoder"]
+        model_AE = build_ResNetAutoEncoder_v2p1(**AE_kwargs)  
+        latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
+        cfg = config["model"]["classifier"]
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+
+
     elif model_name ==  "ResNetNoAE + MultiHeadClassifier":
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetNOAutoEncoder(**AE_kwargs)
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        classifier_kwargs = config["model"]["classifier"]
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, **classifier_kwargs)
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim,  mlp_kwargs=classifier_kwargs)
     
     elif model_name ==  "ResNetMTANAE + MultiHeadClassifier":
         raise NotImplementedError(f"{model_name = }")     
@@ -82,6 +117,7 @@ def build_models(model_name: str, config: dict, classifier_head_infos: dict):
     return model_AE, model_c     
 
 
+
 # --------------------------------------------------------------#
 # --------------------------  main -----------------------------#
 # --------------------------------------------------------------#
@@ -90,10 +126,10 @@ def main():
     print(f"Using device: {device}")
 
     # Load the configuration
-    config = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp02_AE_2.yml",   
+    config, config_name = ra_utils.utils.config_parser.load_config(
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp03_ResNetAE_MLP.yml",   
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/ERO_H_PIP_SM_ResNet18.yml",        
-        debugging_in_jupyter_nb=False, silencium=False)
+        debugging_in_jupyter_nb=False, silencium=False, return_config_name=True)
     
     classifier_head_infos = config["data"]["classifier_head_infos"]
     
@@ -133,13 +169,13 @@ def main():
         print("Running on ", device)
 
         # Log the parts of the config which are not a dict
-        basic_config = {f"{k}": v for k,
-                        v in config.items() if not isinstance(v, dict)}
-        mlflow.log_params(basic_config)
+        # basic_config = {f"{k}": v for k, v in config.items() if not isinstance(v, dict)}
+        # mlflow.log_params(basic_config)
+        mlflow.log_params(ra_utils.utils.utils.flatten_dict(config))
 
         # Log the parts of the config which are a dict
-        for n in ["data", "transforms", "training", "optimizer_params"]:
-            mlflow.log_params({f"{n}.{k}": v for k, v in config[n].items()})
+        # for n in ["data", "transforms", "training", "optimizer_params"]:
+        #     mlflow.log_params({f"{n}.{k}": v for k, v in config[n].items()})
 
         # Log config file
         mlflow.log_dict(config, "config.yml")
@@ -163,7 +199,9 @@ def main():
         loss_fn_z = nn.L1Loss()
 
         # ---- joint optimiser with separate lrs --------------------------------
-        if model_name in ["ResNetAE + MultiHeadClassifier"]: 
+        if model_name in ["ResNetAE + MultiHeadClassifier", 
+                          "ResNetAE_v2 + MultiHeadClassifier", 
+                          "ResNetAE_v2p1 + MultiHeadClassifier"]: 
             opt_cfg = config["optimizer_params"].copy()
             lr_e  = opt_cfg["learning_rates"]["encoder"]
             lr_d  = opt_cfg["learning_rates"]["decoder"]
@@ -213,6 +251,7 @@ def main():
 
         classes = get_classes(config) # TO be removed
 
+        print("Start training for: ", config_name)
         model_AE, model_c = train_loop_AE_v1(
             model_AE=model_AE,
             model_classifier=model_c,
@@ -233,12 +272,14 @@ def main():
             classes=classes,
             log_model=config["SAVE_MODEL"],
             verbose=2,
+            ES_metric_key=config["training"].get("early_stopping_metric_key", "L")
         )
 
 
 
         artifact_uri = mlflow.get_artifact_uri()
         print("ARTIFACTS URI = ", artifact_uri)
+        print("Done with training for: ", config_name)
 
         evaluate_on_testset = config.get("evaluate_on_testset", False)
         if evaluate_on_testset:

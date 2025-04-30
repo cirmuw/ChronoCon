@@ -5,7 +5,7 @@ import yaml
 
 
 def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_01.yaml",
-                debugging_in_jupyter_nb=False, silencium=False):
+                debugging_in_jupyter_nb=False, silencium=False, return_config_name=False):
 
     def parse_args():
         parser = argparse.ArgumentParser(
@@ -43,4 +43,7 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
         from pprint import pprint
         pprint(config)
 
-    return config
+    if return_config_name:
+        return config, config_file
+    else: 
+        return config

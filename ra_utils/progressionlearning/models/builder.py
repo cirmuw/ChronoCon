@@ -1,18 +1,23 @@
 from monai.networks.nets import BasicUNet
-from models.MTANUNet import MTANRecUnet
-from models.RecUNet import RecUnet
-from models.Classifier import AttClassifier
-from models.TESSLCNN import MRIEncoder2D
+
+import ra_utils.progressionlearning.models as models
+
+from ra_utils.progressionlearning.models.MTANUNet import MTANRecUnet
+from ra_utils.progressionlearning.models.RecUNet import RecUnet
+from ra_utils.progressionlearning.models.Classifier import AttClassifier
+from ra_utils.progressionlearning.models.TESSLCNN import MRIEncoder2D
 import torch
 
 def build_MTANAE(
         filters:list = [16,32,64,128,256,32], 
         disentangle: bool = False ,
-        device: str ='cuda'): 
+        device: str ='cuda', 
+        in_channels: int = 3,
+        out_channels: int = 3): 
     unet = BasicUNet(
         spatial_dims=2, 
-        in_channels=3, 
-        out_channels=3, 
+        in_channels=in_channels, 
+        out_channels=out_channels, 
         features=filters).to(device)
     
     model = MTANRecUnet(

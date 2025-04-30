@@ -195,3 +195,130 @@ def get_model_for_SHS_scoring(config, model_params):
         raise ValueError(f"Model {model_name} not implemented yet.")
 
 
+
+import torch.nn as nn 
+
+from ra_utils.networks.architecture import (
+    model_interface_forward
+)
+
+encoder_model_loader = {
+    "ResNet18Encoder": ResNet18Encoder,
+    "ResNet34Encoder": ResNet34Encoder,
+    "ResNet50Encoder": ResNet50Encoder,
+}
+
+encoder_model_loader_kwargs = {
+    "ResNet18Encoder": dict(weights='ResNet18_Weights.DEFAULT'),
+    "ResNet34Encoder": dict(weights='ResNet34_Weights.DEFAULT'),
+    "ResNet50Encoder": dict(weights='ResNet50_Weights.DEFAULT'),    
+}
+
+
+
+def get_model_for_SHS_scoring_with_imports(config):
+    model_name = config["model_name"]
+    if model_name == "MultiModalImageScoreTypeNetwork":
+        # out dim and classes
+        scores_names = get_classes(config)
+        n_classes = len(scores_names)    
+
+        # make encoder
+        #encoder = ResNet18Encoder(weights='ResNet18_Weights.DEFAULT')
+        cfg = config["model"]["encoder"]
+        model_params = ra_utils.utils.utils.model_parameter_imports_(
+            cfg["model_params"], 
+            model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        if isinstance(model_params, dict):
+            special_model_params = {k: v for k, v in model_params.items() if isinstance(k, str) and k.startswith("__")}
+        else:
+            special_model_params = {}
+        for k in special_model_params.keys():
+            model_params.pop(k)
+        encoder_name = special_model_params["__name"]
+        encoder = encoder_model_loader[encoder_name](**encoder_model_loader_kwargs[encoder_name])
+
+        # tabular data encoder / ROI type encoder
+        cfg = config["model"]["ROI_type_encoder"]
+        model_params = ra_utils.utils.utils.model_parameter_imports_(
+            cfg["model_params"], 
+            model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+
+        score_types = config["data"]["scores"]
+        encoder_tab = ROI_type_encoder(classes=score_types, **model_params)
+        latent_dim_tab = encoder_tab.output_dim
+
+        # make classifier 
+        cfg = config["model"]["classifier"]
+        model_params = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        latent_dim = 512 + latent_dim_tab
+        p = {**{"latent_dim": latent_dim, "out_dim": n_classes}, 
+            **model_params}
+        classifier = make_mlp(**p)
+
+        # Reducer for later:  # SEE /home/cwatzenboeck/projects/segmentation_ls/cseg_utils/project_specific/hvpg/slices/model/utils_resnet.py
+        # reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+
+
+        model = MultiModalImageScoreTypeNetwork(
+            image_encoder=encoder,
+            score_type_encoder=encoder_tab,
+            classifier=classifier,
+            return_latent_representation=False
+        )
+        return model
+
+
+    elif model_name == "EncoderClassifierNetwork":
+        # out dim and classes
+        scores_names = get_classes(config)
+        n_classes = len(scores_names)    
+
+        # make encoder
+        cfg = config["model"]["encoder"]
+        model_params = ra_utils.utils.utils.model_parameter_imports_(
+            cfg["model_params"], 
+            model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        if isinstance(model_params, dict):
+            special_model_params = {k: v for k, v in model_params.items() if isinstance(k, str) and k.startswith("__")}
+        else:
+            special_model_params = {}
+        for k in special_model_params.keys():
+            model_params.pop(k)
+        encoder_name = special_model_params["__name"]
+        encoder = encoder_model_loader[encoder_name](**encoder_model_loader_kwargs[encoder_name])
+
+        # make classifier 
+        cfg = config["model"]["classifier"]
+        model_params = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        latent_dim = 512
+        p = {**{"latent_dim": latent_dim, "out_dim": n_classes}, 
+            **model_params}
+        classifier = make_mlp(**p)
+
+        # Reducer for later:  # SEE /home/cwatzenboeck/projects/segmentation_ls/cseg_utils/project_specific/hvpg/slices/model/utils_resnet.py
+        # reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+
+
+        model = EncoderClassifierNetwork(
+            encoder=encoder,
+            classifier=classifier,
+            return_latent_representation=False,
+            preprocessor=None
+        )
+        return model
+
+    
+
+        
+    else:
+        raise ValueError(f"{model_name = } not known.")
+
+
