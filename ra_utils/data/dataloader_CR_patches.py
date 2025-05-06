@@ -118,6 +118,7 @@ def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
             "patient_id": row["patient_id"], 
             "date_str": row["date_str"], 
             "left_or_right": row["left_or_right"],
+            "roi_name": row["roi_name"]
         })
     return data
 

@@ -12,47 +12,24 @@ from ra_utils.utils.utils_SHS_scoring import get_classes
 import ra_utils.utils.utils
 
 from ra_utils.data.dataloader_CR_patches import (
-    load_img_SHS_patch_data,
-    dataset_and_loader
-)
-
-from ra_utils.networks.assemble_model import (
-    get_model_for_SHS_scoring,
-    get_model_for_SHS_scoring_with_imports,
-    make_params_a_la_Paul
-)
-
-from ra_utils.training.scores_SHS.scores_SHS_training_lib import (
-#    train_loop, # no longer needed
-    evaluate_and_log_testset_results
+    process_several_score_groups,
+    dataset_and_loader_several
 )
 
 from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
-    training_epoch_AE_v1, 
-    val_epoch_AE_v1, 
-    train_loop_AE_v1,
-    make_score_type_2_head_name_dct,
-    evaluate_and_log_testset_results_AE_v1,
-    ClassifierHeads, 
-    ResNetAutoEncoder, 
-    ResNetNOAutoEncoder,
-    build_ResNetAutoEncoder_v2,
-    build_ResNetAutoEncoder_v2p1
+    evaluate_and_log_testset_results_AE_v2,
+    train_loop_AE_v2
 )
 
 import ra_utils.networks.loss_function
 from ra_utils.networks.loss_function import get_score_loss_function
 
-
-from ra_utils.progressionlearning.models.builder import (
-    build_MTANAE
-)
-
 import torchvision.transforms.v2 as v2
 import ra_utils.utils.config_parser
 
 
-from ra_utils.training.scores_SHS.model_builders import build_models_AE
+from ra_utils.training.scores_SHS.model_builders import build_models_AE_v2
+
 
 
 
@@ -66,8 +43,7 @@ def main():
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp03_ResNetAE_MLP.yml",   
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/ERO_H_PIP_SM_ResNet18.yml",        
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/dev.yml",      
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True)
     
     classifier_head_infos = config["data"]["classifier_head_infos"]
@@ -107,27 +83,25 @@ def main():
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("Running on ", device)
 
-        # Log the parts of the config which are not a dict
-        # basic_config = {f"{k}": v for k, v in config.items() if not isinstance(v, dict)}
-        # mlflow.log_params(basic_config)
-        mlflow.log_params(ra_utils.utils.utils.flatten_dict(config))
-
-        # Log the parts of the config which are a dict
-        # for n in ["data", "transforms", "training", "optimizer_params"]:
-        #     mlflow.log_params({f"{n}.{k}": v for k, v in config[n].items()})
 
         # Log config file
+        mlflow.log_params(ra_utils.utils.utils.flatten_dict(config))
         mlflow.log_dict(config, "config.yml")
 
         # Load tables with paths and scores (+ split)
-        data_tables = load_img_SHS_patch_data(config["data"])
+        # data_tables = load_img_SHS_patch_data(config["data"])
+        data_tables = process_several_score_groups(config["data"])
 
         # Make dataset and dataloaders
-        data = dataset_and_loader(data_tables, config)
+        # data = dataset_and_loader(data_tables, config)
+        data = dataset_and_loader_several(data_tables, config)
 
         # Load/ make model
+        attention_paths_dct = config["data"]["score_groups"]
         model_name = config["model_name"]
-        model_AE, model_c = build_models_AE(model_name, config, classifier_head_infos)
+        model_AE, model_c = build_models_AE_v2(model_name, config, 
+                                            classifier_head_infos = classifier_head_infos, 
+                                            attention_paths_dct = attention_paths_dct)
 
         model_AE.to(device)
         model_c.to(device)
@@ -138,64 +112,37 @@ def main():
         loss_fn_z = nn.L1Loss()
 
         # ---- joint optimiser with separate lrs --------------------------------
-        if model_name in ["ResNetAE + MultiHeadClassifier", 
-                          "ResNetAE_v2 + MultiHeadClassifier", 
-                          "ResNetAE_v2p1 + MultiHeadClassifier"]: 
-            opt_cfg = config["optimizer_params"].copy()
-            lr_e  = opt_cfg["learning_rates"]["encoder"]
-            lr_d  = opt_cfg["learning_rates"]["decoder"]
-            lr_clf = opt_cfg["learning_rates"]["classifier"]
-            param_groups = [
-                {"params": model_AE.encoder.parameters(), "lr": lr_e},
-                {"params": model_AE.decoder.parameters(), "lr": lr_d},
-                {"params": model_c.parameters(),  "lr": lr_clf},
-            ]
-            print(opt_cfg["other_optimizer_kwargs"])
-            optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
-        else:
-            opt_cfg = config["optimizer_params"].copy()
-            lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
-            lr_clf = opt_cfg["learning_rates"]["classifier"]
-            param_groups = [
-                {"params": model_AE.parameters(), "lr": lr_ae},
-                {"params": model_c.parameters(),  "lr": lr_clf},
-            ]
-            print(opt_cfg["other_optimizer_kwargs"])
-            optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
+        opt_cfg = config["optimizer_params"].copy()
+        lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
+        lr_clf = opt_cfg["learning_rates"]["classifier"]
+        param_groups = [
+            {"params": model_AE.parameters(), "lr": lr_ae},
+            {"params": model_c.parameters(),  "lr": lr_clf},
+        ]
+        print(opt_cfg["other_optimizer_kwargs"])
+        optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
         
         
         transform_AE = v2.GaussianNoise(mean=0, sigma = 0.05, clip=True)
-
-        # model_params = ra_utils.utils.utils.unflatten_dict(config["model_params"])
-        # model = get_model_for_SHS_scoring(config, model_params)
-        # model = get_model_for_SHS_scoring_with_imports(config)
-        # model = model.to(device)
 
         # scheduler
         scheduler = None
         # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', verbose=True)
 
 
-
-        
-        
-
-        train_dataloader = data["train_loader"]
-        val_loader = data["val_loader"]
-        test_loader = data["test_loader"]
+        train_dataloaders = {k: data[k]["train_loader"] for k in data.keys()}
+        val_loaders = {k: data[k]["val_loader"] for k in data.keys()}
+        test_loaders = {k: data[k]["test_loader"] for k in data.keys()}
         epochs = config["training"]["epochs"]
-        model_forward_interface_option = config.get(
-            "model_forward_interface_option", "image only")
 
-
-        classes = get_classes(config) # TO be removed
+        classes = None # get_classes(config) # TO be removed
 
         print("Start training for: ", config_name)
-        model_AE, model_c = train_loop_AE_v1(
+        model_AE, model_c = train_loop_AE_v2(
             model_AE=model_AE,
             model_classifier=model_c,
-            train_dataloader=train_dataloader,
-            val_loader=val_loader,
+            train_dataloaders=train_dataloaders,
+            val_loaders=val_loaders,
             loss_fn_x=loss_fn_x,
             loss_fn_y=loss_fn_y,
             loss_fn_z=loss_fn_z,
@@ -223,10 +170,10 @@ def main():
         evaluate_on_testset = config.get("evaluate_on_testset", False)
         if evaluate_on_testset:
             print("Evaluating on test set")
-            evaluate_and_log_testset_results_AE_v1(
+            evaluate_and_log_testset_results_AE_v2(
                 model_AE=model_AE,
                 model_classifier=model_c,
-                dataloader=test_loader,
+                dataloaders=test_loaders,
                 loss_fn_x=loss_fn_x,
                 loss_fn_y=loss_fn_y,
                 loss_fn_z=loss_fn_z,

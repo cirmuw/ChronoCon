@@ -2,11 +2,14 @@ from monai.networks.nets import BasicUNet
 
 import ra_utils.progressionlearning.models as models
 
-from ra_utils.progressionlearning.models.MTANUNet import MTANRecUnet
+from ra_utils.progressionlearning.models.MTANUNet import MTANRecUnet, MTANRecUnet_v2, MTANRecUnet_v3
 from ra_utils.progressionlearning.models.RecUNet import RecUnet
 from ra_utils.progressionlearning.models.Classifier import AttClassifier
 from ra_utils.progressionlearning.models.TESSLCNN import MRIEncoder2D
 import torch
+from typing import Dict, List
+
+
 
 def build_MTANAE(
         filters:list = [16,32,64,128,256,32], 
@@ -26,6 +29,61 @@ def build_MTANAE(
         disentangle=disentangle).to(device)
     
     return model
+
+
+def build_MTANAE_v1p1(
+        filters: list = [16, 32, 64, 128, 256, 32],
+        device: str = 'cuda',
+        u_net_arch="BasicUNet",
+        u_net_kwargs=dict(
+            spacial_dims=2,
+            in_channels=3,
+            out_channels=3,
+        )):
+    if u_net_arch == "BasicUNet":
+        unet = BasicUNet(
+            features=filters,
+            **u_net_kwargs).to(device)
+    elif u_net_arch == "UNet":
+        raise NotImplementedError
+    else: 
+        raise NotImplementedError
+
+    model = MTANRecUnet_v2(
+        unet=unet,
+        filters=filters[1:5]).to(device)
+
+    return model
+
+
+def build_MTANAE_v2(
+        attention_paths: Dict[str, List[str]],
+        filters: list = [16, 32, 64, 128, 256, 32],
+        device: str = 'cuda',
+        u_net_arch="BasicUNet",
+        u_net_kwargs=dict(
+            spacial_dims=2,
+            in_channels=3,
+            out_channels=3,
+        )):
+    if u_net_arch == "BasicUNet":
+        unet = BasicUNet(
+            features=filters,
+            **u_net_kwargs).to(device)
+    elif u_net_arch == "UNet":
+        raise NotImplementedError
+    else: 
+        raise NotImplementedError
+
+    model = MTANRecUnet_v3(
+        unet=unet,
+        filters=filters[1:5],
+        attention_paths=attention_paths).to(device)
+
+    return model
+
+
+
 
 
 def build_RecUNet(

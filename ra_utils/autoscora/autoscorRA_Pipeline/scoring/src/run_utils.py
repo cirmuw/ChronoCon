@@ -91,8 +91,14 @@ def restructure_paths_and_scores_v2(
     
     import yaml
     from importlib import resources
+    import pandas as pd
+    import json
     with resources.files("ra_utils.resources.scores_metadata").joinpath("score_abbreviations_info_dct.yml").open("r") as f:
         score_abbreviations_info_dct = yaml.safe_load(f)
+
+    with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv").open("r") as f:
+        df_score_roi_matching = pd.read_csv(f)
+    score_2_roi_name_dct = df_score_roi_matching.set_index("score_name").transpose().to_dict()
 
 
     path_list = []
@@ -100,6 +106,7 @@ def restructure_paths_and_scores_v2(
     chosen_score_list = []
     extremities = []
     score_types = []
+    roi_names = []
     for chosen_score in chosen_scores:
         extremity = score_abbreviations_info_dct[chosen_score]["extremity"]
         score_type = score_abbreviations_info_dct[chosen_score]["score_type"]
@@ -115,6 +122,7 @@ def restructure_paths_and_scores_v2(
         chosen_score_list = chosen_score_list + [chosen_score] * len(path_list_tmp)
         extremities = extremities + [extremity] * len(path_list_tmp)
         score_types = score_types + [score_type] * len(path_list_tmp)
+        roi_names += [score_2_roi_name_dct[chosen_score]["ROI_name"]] * len(path_list_tmp)
 
 
 
@@ -123,7 +131,9 @@ def restructure_paths_and_scores_v2(
                 "score": score_list, 
                 "chosen_score": chosen_score_list, 
                 "chosen_score_type": score_types,
-                "extremity": extremities}
+                "extremity": extremities,
+                "roi_name": roi_names
+                }
     df = pd.DataFrame(data_dct)
     return df
 

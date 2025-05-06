@@ -25,10 +25,12 @@ from typing import Optional, Literal, List
 #         raise ValueError(f"model_interface_forward :: {option = } not supported ")
 
 
-def model_interface_forward(model: nn.Module, batch: dict, device="cpu",
+def model_interface_forward(model: nn.Module, batch: dict, device="cuda",
                             options: Literal["IN: image; OUT: class_logits", 
                                              "IN: image + score_type; OUT: class_logits",
-                                             "IN: image; OUT: recon, latent"] = "IN: image only; OUT: class_logits"):
+                                             "IN: image; OUT: recon, latent",
+                                             "IN: image + score_type; OUT: recon, latent",                                             
+                                             ] = "IN: image only; OUT: class_logits"):
     if options == "IN: image; OUT: class_logits":
         X = batch["img"].to(device)
         class_logits =  model(X)
