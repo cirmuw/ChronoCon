@@ -17,15 +17,9 @@ import re
 import cv2
 import imutils
 import warnings
-import matplotlib
-# matplotlib.use(const.MATPLOTLIB_BACKEND)
-matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
-import matplotlib.gridspec as gridspec
-from matplotlib.lines import Line2D
-from importlib import resources
 
+from importlib import resources
+from tqdm import tqdm
 import ra_utils
 import ra_utils.utils.config_parser
 
@@ -40,7 +34,7 @@ print("running patch_saving.py at " + start_time)
 
 
 config = ra_utils.utils.config_parser.load_config(
-    default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_patches/H_patch_extraction_01.yml",  # for debugging
+    default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_patches/F_patch_extraction_all_LOCAL.yml",  # for debugging
     debugging_in_jupyter_nb=False, silencium=False)
 
 
@@ -136,7 +130,7 @@ if hi > len(img_names):
 
 print("images", lo, "to", hi)
 
-for img in img_names[lo:hi]:
+for img in tqdm(img_names[lo:hi]):
     print(img)
 
     if img_format_input == ".npy":
@@ -149,7 +143,11 @@ for img in img_names[lo:hi]:
 
     extremity_ref = pe.ref_size_from_bone_lengths(joints=joints[img], extremity=extremity)
 
-    for roi in roi_names:
+    roi_indexes_to_use = config.get("roi_indexes_to_use", np.arange(0, len(roi_names)))
+    for roi_i, roi in enumerate(roi_names):
+        if roi_i not in roi_indexes_to_use:
+            print("skipping roi", roi)
+            continue
         # print(roi)
         ref_to_length_DP = params[roi]['length_DP'][1]
         rel_shift_DP = -params[roi]['center_shift_DP'][1]/ref_to_length_DP
@@ -183,7 +181,8 @@ for img in img_names[lo:hi]:
                                 square=True, resize_patch=out_dim,
                                 padd_patch=None, base_crop=int(3),
                                 plot=config.get("plot", False), show_steps=config.get("plot_show_steps", True), print_log=False, 
-                                other_corners_to_plot=corners_original if config.get("plot_other_corners_as_well", False) else None
+                                other_corners_to_plot=corners_original if config.get("plot_other_corners_as_well", False) else None,
+                                crop_back_border=config.get("crop_back_border", True),
                                 )
 
         # save patch
@@ -208,7 +207,6 @@ for img in img_names[lo:hi]:
     del extremity_ref
     del array
     gc.collect()
-    print("DONE")
 
 
 """

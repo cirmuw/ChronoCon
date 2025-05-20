@@ -297,6 +297,67 @@ def io_scoring(chosen_score, chosen_score_type, extremity="H",
     return path_list, score_list
 
 
+def io_scoring_fast(           
+    chosen_score: str,
+    chosen_score_type: str,
+    extremity: str = "H",
+    score_path_H = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv",
+    score_path_F = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+    ):
+    """
+    Vectorised rewrite of `io_scoring`.
+    Parameters
+    ----------
+    chosen_score        e.g. "PIPIIIED"
+    chosen_score_type   "JSN" or "ERO"
+    extremity           "H" = hand, "F" = foot
+    Returns
+    -------
+    path_list  : list[str]   e.g. ["img123_SPD3.npy", ...]
+    score_list : list[float] same order as `path_list`
+    """
+
+    # ------------------------------------------------------------------
+    # 1. pick dictionaries & CSV path
+    # ------------------------------------------------------------------
+    if extremity == "H":
+        scor_roi_matching_dict = scor_roi_matching_dict_H
+        score_path = score_path_H
+    elif extremity == "F":
+        scor_roi_matching_dict = scor_roi_matching_dict_F
+        score_path = score_path_F
+    else:                                     # keep original error semantics
+        raise ValueError('extremity must be either "H" or "F"')
+
+    # ------------------------------------------------------------------
+    # 2. quick look-ups (no dictionary inversions necessary)
+    # ------------------------------------------------------------------
+    try:
+        roi_code = scor_roi_matching_dict[chosen_score_type][chosen_score][0]
+    except KeyError as e:                     # invalid score / score type
+        raise KeyError(f"Unknown score mapping: {e}")
+
+    # ------------------------------------------------------------------
+    # 3. read CSV once
+    # ------------------------------------------------------------------
+    df = pd.read_csv(score_path, dtype={"filename_manual": "string"})
+
+    # find the column holding the score values
+    # (hands/feet CSVs sometimes prefix joints with "r_")
+    for col_candidate in (f"r_{chosen_score}", chosen_score):
+        if col_candidate in df.columns:
+            col_name = col_candidate
+            break
+    else:
+        raise KeyError(f"Column for score '{chosen_score}' not found in file")
+
+    # ------------------------------------------------------------------
+    # 4. vectorised construction of return values
+    # ------------------------------------------------------------------
+    path_list = (df["filename_manual"] + "_" + roi_code + ".npy").tolist()
+    score_list = df[col_name].tolist()
+
+    return path_list, score_list
 
 
 
@@ -322,6 +383,7 @@ def mandatory_train_val_test_ids(segm_to_train=True, double_to_test=True, missin
         F_segm_path = const.F_JOINTS_PATH_GT_100
         double_score_path = const.H_F_DOUBLE_SCORE_PATH
         """
+        raise NotImplementedError
         pass
     else:
         

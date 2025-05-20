@@ -11,7 +11,7 @@ from torch.utils.data import DataLoader
 import ra_utils
 import ra_utils.autoscora.autoscorRA_Pipeline.scoring.src
 
-from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.io_scoring_method import io_scoring, mandatory_train_val_test_ids
+from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.io_scoring_method import io_scoring, io_scoring_fast, mandatory_train_val_test_ids
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.network import Custom_VGG
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.load import get_indices4, load2, balance_train_set, balanced_mean, get_patient_nr, CustomDataset
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.train import train, validate, test
@@ -112,7 +112,7 @@ def restructure_paths_and_scores_v2(
         score_type = score_abbreviations_info_dct[chosen_score]["score_type"]
 
 
-        path_list_tmp, score_list_tmp = io_scoring(chosen_score = chosen_score,
+        path_list_tmp, score_list_tmp = io_scoring_fast(chosen_score = chosen_score,
                                                     chosen_score_type = score_type,
                                                     extremity = extremity,
                                                     score_path_H = score_path_H, 

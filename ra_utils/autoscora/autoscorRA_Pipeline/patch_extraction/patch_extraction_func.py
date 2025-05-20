@@ -575,7 +575,8 @@ def roi_modifier(rectangle_measures=None, rectangle_corners=None, modification_o
 def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
                  square=False, resize_patch=None, padd_patch=None, base_crop=int(3),
                  plot=False, show_steps=True, print_log=False, 
-                 other_corners_to_plot=None  # plot additional corners
+                 other_corners_to_plot=None,  # plot additional corners
+                 crop_back_border=True
                  ):
 
     """
@@ -634,27 +635,35 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
     x2 = np.max(np.where(rotated_mask == pixel_max)[1])
 
     raw_patch = rotated_masked[y1:y2, x1:x2]
+    # plt.imshow(raw_patch, cmap="gray")
+    # plt.title("raw patch before cropping")
+    # plt.show()
 
     # if present, crop black borders that occur due to small errors in calculating rotation
     cropped_patch = raw_patch
-    check_0 = np.any(cropped_patch == 0)
-    cropped_by = 0
-    while check_0:
-        cropped_patch = cropped_patch[1:-1, 1:-1]
-        check_0 = np.any(np.array([np.any(cropped_patch[1, :] == 0),
-                                   np.any(cropped_patch[-1, :] == 0),
-                                   np.any(cropped_patch[:, 1] == 0),
-                                   np.any(cropped_patch[:, -1] == 0)]))
-        cropped_by += 1
-    if not check_0:
-        # additional cropping because had weird dotted line on all sides after rotation
-        if base_crop > 0:
-            cropped_patch = cropped_patch[base_crop:-base_crop, base_crop:-base_crop]
-        if print_log:
-            print("removed black borders --> check_0 = " + str(check_0) +
-                  " (after cropping all 4 borders by " + str(cropped_by) + str(base_crop) + " )")
-    if check_0:
-        warnings.warn("what's happening with those black borders of the patch?")
+    if crop_back_border:
+        check_0 = np.any(cropped_patch == 0)
+        cropped_by = 0
+        while check_0:
+            cropped_patch = cropped_patch[1:-1, 1:-1]
+            check_0 = np.any(np.array([np.any(cropped_patch[1, :] == 0),
+                                    np.any(cropped_patch[-1, :] == 0),
+                                    np.any(cropped_patch[:, 1] == 0),
+                                    np.any(cropped_patch[:, -1] == 0)]))
+            cropped_by += 1
+        if not check_0:
+            # additional cropping because had weird dotted line on all sides after rotation
+            if base_crop > 0:
+                cropped_patch = cropped_patch[base_crop:-base_crop, base_crop:-base_crop]
+            if print_log:
+                print("removed black borders --> check_0 = " + str(check_0) +
+                    " (after cropping all 4 borders by " + str(cropped_by) + str(base_crop) + " )")
+        if check_0:
+            warnings.warn("what's happening with those black borders of the patch?")
+
+    # plt.imshow(cropped_patch, cmap="gray")
+    # plt.title("before cropped to square")
+    # plt.show()
 
     # crop to square
     if square:  # cuts longer axis equally on both sides
@@ -676,6 +685,10 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
             if print_log:
                 print("patch was already square before cropping to square: obviously not cropped any further now")
         patch = square_patch
+        # plt.imshow(patch, cmap="gray")
+        # plt.title("cropped to square")
+        # plt.show()
+
     else:
         patch = cropped_patch
 
@@ -692,11 +705,18 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
         if print_log:
             print("padded by", padding, "to shape", padd_patch)
 
+        # plt.imshow(patch, cmap="gray")
+        # plt.title("padded")
+        # plt.show()
+
     # resize
     if resize_patch is not None:
         patch = cv2.resize(patch, (resize_patch[0], resize_patch[1]), interpolation=cv2.INTER_LINEAR)
         if print_log:
             print("resized to", resize_patch)
+        # plt.imshow(patch, cmap="gray")
+        # plt.title("resized")
+        # plt.show()
 
     # plot
     if plot:

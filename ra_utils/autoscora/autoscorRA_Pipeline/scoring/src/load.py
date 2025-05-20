@@ -35,7 +35,8 @@ def find(s, ch):
 
 def get_indices4(train_test_split, len_cur_path_list, path_list, score_list, train_pat, val_pat, test_pat, op_patients, chosen_score, 
                  path_to_all_patients_npy="src/all_patients_num.npy", 
-                 path_to_model_dir=None):
+                 path_to_model_dir=None,
+                 return_patient_ids_instead=False):
 
     all_patients = np.load(path_to_all_patients_npy)
 
@@ -84,7 +85,12 @@ def get_indices4(train_test_split, len_cur_path_list, path_list, score_list, tra
     val_patients = np.append(val_patients, remaining_patients[diff_train: diff_train+diff_val])
     test_patients = np.append(test_patients, remaining_patients[diff_train+diff_val:])
 
-
+    if return_patient_ids_instead: # Added by CW
+        return dict(
+            train_patients = list(train_patients), 
+            val_patients = list(val_patients),
+            test_patients = list(test_patients)
+        )
 
     ### Assign indices to train/val/test index set according to train/val/test/set ###
     ### If patient is not an OP patient                                            ###
