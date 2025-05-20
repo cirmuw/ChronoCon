@@ -9,7 +9,8 @@ import torch.nn.functional as F
 from tqdm import tqdm
 import mlflow
 import mlflow.pytorch
-
+import pingouin  as pg
+import pandas as pd
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -26,7 +27,7 @@ def train_epoch(model,
                 optimizer,
                 criterion,
                 device="cpu",
-                interface_option="image only"
+                interface_option="image only", 
                 ):
     running_loss = 0
     model.train()
@@ -43,36 +44,73 @@ def train_epoch(model,
 
 
 
-def calculate_some_classification_metrics(all_preds, all_labels):
-    metrics = {}
-    mse = np.mean((all_preds - all_labels) ** 2)
-    mae = np.mean(np.abs(all_preds - all_labels))
-    rmse = np.sqrt(np.mean((all_preds - all_labels) ** 2))
-    metrics["rmse"] = rmse
-    metrics["mse"] = mse
-    metrics["mae"] = mae
+def calculate_some_classification_metrics(all_preds, all_labels, calc_ICC3: int = 0, add_support: int = 0):
+    """
+    Parameters
+    ----------
+    all_preds, all_labels : 1-D array-like (same length, no NaNs)
+    calc_ICC3 : int
+        0 → no ICC, 1 → add ICC3 only, 2+ → add ICC3 plus CI, F, df, p, n.
+    """
+    # ---------- core scores --------------------------------------------------
+    all_preds  = np.asarray(all_preds).flatten()
+    all_labels = np.asarray(all_labels).flatten()
 
+    metrics = {
+        "rmse":  float(np.sqrt(np.mean((all_preds - all_labels) ** 2))),
+        "mse":   float(np.mean((all_preds - all_labels) ** 2)),
+        "mae":   float(np.mean(np.abs(all_preds - all_labels))),
+        "accuracy":                float(np.mean(all_preds == all_labels)),
+        "accuracy (error < 2)":    float(np.mean(np.abs(all_preds - all_labels) < 2)),
+        "error > 1 (percent)":    float(np.mean(np.abs(all_preds - all_labels) > 1))*100,
+        "balanced acc.":           float(balanced_accuracy_score(all_labels, all_preds)),
+    }
 
-
-    # 1. Accuracy: Percentage of predictions that exactly match the true labels.
-    accuracy = np.mean(all_preds == all_labels)
-    metrics["accuracy"] = accuracy
-
-    # 2. Error > 1: Percentage of predictions where the absolute error is greater than 1.
-    accuracy_lt_2 = np.mean(np.abs(all_preds - all_labels) < 2)
-    metrics["accuracy (error < 2)"] = accuracy_lt_2
-
-    # 3. Balanced Accuracy: Using scikit-learn's balanced_accuracy_score.
-    balanced_acc = balanced_accuracy_score(all_labels, all_preds)
-    metrics["balanced acc."] = balanced_acc
-
-    # 4. Balanced (error < 2): For each unique class, calculate the percentage of predictions with an error less than 2 and average.
-    unique_labels = np.unique(all_labels)
-    balanced_error_less_2 = np.mean([
-        np.mean(np.abs(all_preds[all_labels == label] - label) < 2)
-        for label in unique_labels
+    # balanced acc. with error < 2
+    unique = np.unique(all_labels)
+    bal_err_lt2 = np.mean([
+        np.mean(np.abs(all_preds[all_labels == u] - u) < 2) for u in unique
     ])
-    metrics["balanced acc. (error < 2)"] = balanced_error_less_2
+    metrics["balanced acc. (error < 2)"] = float(bal_err_lt2)
+
+    if add_support>0:
+       metrics["n_samples eval"] = int(len(all_labels))
+
+    if add_support>1:
+        # # add support (number of samples per class)
+        support = {}
+        for u in np.unique(all_labels):
+            support[u] = int(np.sum(all_labels == u))
+            metrics[f"support_{u}"] = support[u]
+        #metrics["support"] = support
+
+    # ---------- ICC(3,1) -----------------------------------------------------
+    if calc_ICC3:
+        n = len(all_preds)
+        df_long = pd.DataFrame({
+            "target": np.repeat(np.arange(n), 2),
+            "Raters": np.tile(["pred", "label"], n),
+            "Rating": np.concatenate([all_preds, all_labels]),
+        })
+
+        icc_tbl = pg.intraclass_corr(
+            data=df_long, targets="target", raters="Raters", ratings="Rating"
+        )
+        icc3_row = icc_tbl.loc[icc_tbl["Type"] == "ICC3"].iloc[0]
+
+        metrics["ICC3"] = float(icc3_row["ICC"])
+
+        if calc_ICC3 >= 2:
+            # expand with CI, F, dfs, p, and sample count
+            metrics.update({
+                "ICC_CI95_lower": float(icc3_row["CI95%"][0]),
+                "ICC_CI95_upper": float(icc3_row["CI95%"][1]),
+                "ICC_F":          float(icc3_row["F"]),
+                "ICC_df1":        float(icc3_row["df1"]),
+                "ICC_df2":        float(icc3_row["df2"]),
+                "ICC_p":          float(icc3_row["pval"]),
+                "ICC_n":          int(n),
+            })
 
     return metrics
 
@@ -201,6 +239,16 @@ def log_metrics_mlflow(metrics: dict,
     if log_report_and_confusion_matrix_as_artifact: 
         mlflow.log_dict(classification_report_dict, f"metrics/{prefix}classification_report.json")
         mlflow.log_dict(confusion_matrix_list, f"metrics/{prefix}confusion_matrix.json")
+
+    # ---- Log ICC3 and other metrics ----
+    if "ICC3" in metrics:
+        mlflow.log_metric(f"{prefix}ICC3", metrics["ICC3"], step=step)
+        
+        # Log additional ICC metrics if they exist
+        for icc_key in ["ICC_CI95_lower", "ICC_CI95_upper"#, "ICC_F", "ICC_df1", "ICC_df2", "ICC_p", "ICC_n"
+                        ]:
+            if icc_key in metrics:
+                mlflow.log_metric(f"{prefix}{icc_key}", metrics[icc_key], step=step)
 
     # ---- Log Class-Specific Metrics ----
     if classes is not None:

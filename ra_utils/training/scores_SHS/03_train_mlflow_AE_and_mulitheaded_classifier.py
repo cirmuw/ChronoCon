@@ -31,13 +31,7 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
     training_epoch_AE_v1, 
     val_epoch_AE_v1, 
     train_loop_AE_v1,
-    make_score_type_2_head_name_dct,
     evaluate_and_log_testset_results_AE_v1,
-    ClassifierHeads, 
-    ResNetAutoEncoder, 
-    ResNetNOAutoEncoder,
-    build_ResNetAutoEncoder_v2,
-    build_ResNetAutoEncoder_v2p1
 )
 
 import ra_utils.networks.loss_function
