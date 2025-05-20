@@ -29,6 +29,8 @@ class MTANRecUnet(nn.Module):
         self.projector_3 = Projector(in_dim=filters[2], out_dim=filters[2], pool_param=(1,1))
         self.projector_4 = Projector(in_dim=filters[3], out_dim=filters[3], pool_param=(1,1))
         self.attention_blocks = nn.ModuleList([self.att_layer([filters[i], filters[i], filters[i]]) for i in range(4)])
+        self.latent_dim = sum(filters)
+        assert len(filters) == 4
 
     def att_layer(self, channel):
         att_block = nn.Sequential(
@@ -50,7 +52,7 @@ class MTANRecUnet(nn.Module):
         else:
             return refined_feature, None
     
-    def forward(self, x):
+    def forward(self, x, *args, **kwargs): # CW added dummy args to have same interface for all models
         rec = None
         latent = None
         rec = self.unet(x)
@@ -92,6 +94,8 @@ class MTANRecUnet_v2(nn.Module):
         self.projector_3 = Projector(in_dim=filters[2], out_dim=filters[2], pool_param=(1,1))
         self.projector_4 = Projector(in_dim=filters[3], out_dim=filters[3], pool_param=(1,1))
         self.attention_blocks = nn.ModuleList([self.att_layer([filters[i], filters[i], filters[i]]) for i in range(4)])
+        self.latent_dim = sum(filters)
+        assert len(filters) == 4
 
     def att_layer(self, channel):
         att_block = nn.Sequential(
@@ -148,7 +152,7 @@ class MTANRecUnet_v3(nn.Module):
     def __init__(self, 
                  unet, 
                  attention_paths: Dict[str, List[str]],
-                 filters=[16,32,64,128,256,32],
+                 filters=[32,64,128,256],
                  ):
         super(MTANRecUnet_v3, self).__init__()
         self.attention_paths = attention_paths.copy()
@@ -158,6 +162,8 @@ class MTANRecUnet_v3(nn.Module):
         self.projector_2 = Projector(in_dim=filters[1], out_dim=filters[1], pool_param=(1,1))
         self.projector_3 = Projector(in_dim=filters[2], out_dim=filters[2], pool_param=(1,1))
         self.projector_4 = Projector(in_dim=filters[3], out_dim=filters[3], pool_param=(1,1))
+        self.latent_dim = sum(filters)
+        assert len(filters) == 4
         
         # Each "task" gets their own attention blocks 
         # A task corresponds to a ROI type not really a MultiTask setting per se. 
