@@ -3,6 +3,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Optional, Sequence
 from torch import Tensor
+#  import online_triplet_loss.losses   # now added to ra_utils and modified
+import ra_utils.loss.online_mining_triplet_loss
+from typing import Optional
+
 
 
 def get_score_loss_function(cfg: dict):
@@ -22,8 +26,53 @@ def get_score_loss_function(cfg: dict):
     else: 
         raise NotImplementedError(f"{name=}")
     return loss
-        
-        
+
+
+def get_triplet_loss_fn(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {"margin": 1.0})
+    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if name == None: 
+        return DummyReturnZeroLoss()
+    elif name == "OnlineBatchHardTripletLoss":
+        return ra_utils.loss.online_mining_triplet_loss.OnlineBatchHardTripletLoss(**params)
+    elif name == "OnlineBatchAllTripletLoss":
+        return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLoss(**params)
+    else: 
+        raise NotImplementedError(f"{name = }")
+
+
+class DummyReturnZeroLoss(nn.Module):
+    def __init__(self, device="cuda"):
+        super().__init__()
+        self.device = device
+    def forward(self, *args, **kwargs):
+        return torch.tensor(0.0, device=self.device)
+
+
+
+
+# class OnlineBatchHardTripletLoss(nn.Module):
+#     def __init__(self, margin = 1.0):
+#         super().__init__()
+#         self.margin = margin
+#     def forward(self, labels, embeddings):
+#         loss = online_triplet_loss.losses.batch_hard_triplet_loss(labels, embeddings, margin=self.margin)
+#         return loss
+
+
+
+# class OnlineBatchAllTripletLoss(nn.Module):
+#     def __init__(self, margin = 1.0):
+#         super().__init__()
+#         self.margin = margin
+#     def forward(self, labels, embeddings):
+#         loss, fraction_pos = online_triplet_loss.losses.batch_all_triplet_loss(labels, embeddings, squared=False, margin=self.margin)
+#         return loss
+
+
+
+
 
 
 
@@ -75,6 +124,8 @@ class FocalLoss(nn.Module):
                 'Reduction must be one of: "mean", "sum", "none".')
 
         super().__init__()
+        if isinstance(alpha, list):
+            alpha = torch.tensor(alpha)
         self.alpha = alpha
         self.gamma = gamma
         self.ignore_index = ignore_index

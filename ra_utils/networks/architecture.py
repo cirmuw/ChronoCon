@@ -2,8 +2,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision
-from typing import Optional, Literal, List
+from typing import Optional, Literal, List, Dict
 
+from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet import (
+        resnet18,
+        resnet34,
+        resnet50
+    ) 
+
+from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnetT import (
+        resnet18_decoder,
+        resnet34_decoder,
+        resnet50_decoder
+    ) 
 
 #--------------------------------------------------------------#
 #-------------------------  interfaces-------------------------#
@@ -210,6 +221,8 @@ class EncoderClassifierNetwork(nn.Module):
         else:
             return y
     
+
+
         
 class ROI_type_encoder(nn.Module):
     def __init__(self, classes: List[str], out_dim: Optional[int] = None, normalized: bool = False):
@@ -313,3 +326,470 @@ class MultiModalImageScoreTypeNetwork(nn.Module):
             return logits, z_concat
         else:
             return logits
+        
+
+class MultiModalImageScoreTypeNetworkAE(nn.Module):
+    def __init__(
+        self,
+        autoencoder: nn.Module, # return X_recon, z
+        score_type_encoder: Optional[nn.Module] = None,
+        preprocessor: Optional[nn.Module] = None,
+        postprocessor: Optional[nn.Module] = None
+    ):
+        """Wrapper to add score type and keep interface the same: 
+           (recon, z_prime)  <-- img
+
+        Args:
+            autoencoder (nn.Module): (recon, z)  <-- img
+            score_type_encoder (nn.Module): 
+        forward: 
+            returns (recon, z_prime)
+        """
+
+
+        super().__init__()
+        self.auto_encoder = autoencoder
+        self.score_type_encoder = score_type_encoder
+        self.preprocessor = preprocessor
+        self.postprocessor = postprocessor
+
+        if score_type_encoder == None: 
+            latent_dim_tab = 0
+        else: 
+            latent_dim_tab = score_type_encoder.output_dim
+        latent_dim_autoencoder = autoencoder.latent_dim 
+        self.latent_dim = latent_dim_autoencoder + latent_dim_tab
+
+
+    def forward(self, images: torch.Tensor, score_types: List[str]):
+        """
+        :param images: tensor of shape [N, 3, H, W]
+        :param score_types: list of strings (length N)
+        """
+
+        if self.preprocessor == None:
+            x_preprocessed = images
+        else:
+            x_preprocessed = self.preprocessor(images)
+
+        x_recon, z_img = self.auto_encoder(x_preprocessed, score_types)  # shape [N, D_img]
+        if self.postprocessor != None:
+            x_recon = self.postprocessor(x_recon)
+
+
+
+        if self.score_type_encoder == None: 
+            z_concat = z_img
+        else: 
+            z_tab = self.score_type_encoder.forward_batch(score_types, device=images.device)  # shape [D_tab]
+            z_concat = torch.cat([z_img, z_tab], dim=1)  # shape [N, D_img + D_tab]
+        return x_recon, z_concat
+        
+
+        
+
+
+
+def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
+                                                                config: dict):
+    # preprocessor
+    name = config["model"].get("preprocessor", {}).get("name", None)
+    params = config["model"].get("preprocessor", {}).get("params", {})
+    if name == None: 
+        preprocessor = None
+    elif name == "ResNetRGBMaker":
+        preprocessor = PreprocessingResNetRGBMaker(**params)
+    else: 
+        raise NotImplementedError(f"{name =}")
+    
+    # postprocessor_recon: 
+    name = config["model"].get("postprocessor_recon", {}).get("name", None)
+    params = config["model"].get("postprocessor_recon", {}).get("params", {})
+    if name == None: 
+        postprocessor_recon = None
+    elif name == "PostprocessingGrayScaleMaker_v2":
+        postprocessor_recon = PostprocessingGrayScaleMaker_v2(**params)
+    else: 
+        raise NotImplementedError(f"{name =}")    
+
+    # score_type_encoder
+    score_groups_list = []
+    for k, v in config["data"]["score_groups"].items():
+        for s in v: 
+            score_groups_list.extend(v)
+    name = config["model"].get("score_type_encoder", {}).get("name", None)
+    params = config["model"].get("score_type_encoder", {}).get("params", {})
+    if name == None: 
+        score_type_encoder = None
+    elif name == "ROI_type_encoder":
+        score_type_encoder = ROI_type_encoder(classes=score_groups_list, **params)
+    else: 
+        raise NotImplementedError(f"{name =}")    
+    
+    model_AE_mod = MultiModalImageScoreTypeNetworkAE(model_AE, 
+                                                    score_type_encoder=score_type_encoder,
+                                                    preprocessor=preprocessor, 
+                                                    postprocessor=postprocessor_recon)
+    return model_AE_mod
+
+
+
+# ---------------------------------------------------------------------------
+# multi‑head classifier model and helper functions
+# ---------------------------------------------------------------------------
+
+
+def make_score_type_2_head_name_dct(classifier_head_infos: dict):
+    out = {}
+    used_score_types = []
+    for k,v in classifier_head_infos.items():
+        assert set(v["score_types"]) & set(used_score_types) == set(), f"duplicate score type in dct {v} | {used_score_types}"
+        for vv in v["score_types"]:
+            out[vv] = k
+    return out
+
+
+# classifier_head_infos = {
+#     "PIP_2-5_EP": {
+#         "out_dim": 6,
+#         "score_types":   ['PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP'],
+#         "loss_weight": 1.0 
+#     },
+#     "PIP_1_EP": {
+#         "out_dim": 6,
+#         "score_types":   ['IPIEP'],
+#         "loss_weight": 1.0 
+#     }
+# }
+
+
+class ClassifierHeads(nn.Module):
+    def __init__(self,
+                 classifier_head_infos, # = classifier_head_infos,  
+                 latent_dim: int = 480,
+                 mlp_kwargs = {"depth": 0, 
+                               "dropout_op": None}):
+        super(ClassifierHeads, self).__init__()
+        self.classifier_head_infos = classifier_head_infos.copy()
+        
+        # input checks on classifier_head_infos -> No overlaps in score_types
+        self.score_type_2_head_name = make_score_type_2_head_name_dct(classifier_head_infos)
+        self.heads = nn.ModuleDict({k: make_mlp(**{"latent_dim": latent_dim, 
+                                                 "out_dim": v["out_dim"]},  
+                                                 **mlp_kwargs) for k,v in classifier_head_infos.items()})
+        
+    def forward(
+        self,
+        z: torch.Tensor,            # [B, latent_dim]
+        score_types: List[str],
+        *,
+        return_dict: bool = False,  # <-- NEW
+    ) -> (
+        Dict[str, tuple[torch.Tensor, torch.Tensor]]
+        | torch.Tensor
+    ):
+        """
+        Parameters
+        ----------
+        z            : latent vectors, shape [B, latent_dim]
+        score_types  : length-B list with one entry per sample
+        return_dict  : if True  → always return a dict
+                       if False → keep the old behaviour
+        Returns
+        -------
+        * return_dict = True
+            {head_name: (idx, logits)}  where
+                idx    : 1-D LongTensor with the sample positions that
+                         belong to this head, length n_h
+                logits : Tensor [n_h, out_dim_h]
+        * return_dict = False
+            Same tensor output as before (fast path when all samples share
+            one head, or padded tensor+mask when heads differ).
+        """
+        if len(z) != len(score_types):
+            raise ValueError(
+                f"z has {len(z)} rows but score_types has {len(score_types)} items."
+            )
+
+        active_heads = [self.score_type_2_head_name[s] for s in score_types]
+
+        # ------------------------------------------------------------------ #
+        # ── 1. Return the new dict format, used when return_dict = True ─────
+        # ------------------------------------------------------------------ #
+        if return_dict:
+            out: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
+            for head_name, head in self.heads.items():        # ← iterate over *all* heads
+                # positions in the batch that belong to this head
+                idx = torch.as_tensor(
+                    [i for i, h in enumerate(active_heads) if h == head_name],
+                    dtype=torch.long,
+                    device=z.device,
+                )
+
+                if idx.numel():                               # ≥1 example for this head
+                    logits = head(z[idx])                     # [n_h, out_dim_h]
+                else:                                         # no sample ➜ return empties
+                    out_dim = head[-1].out_features
+                    logits = torch.empty((0, out_dim), device=z.device, dtype=z.dtype)  
+                out[head_name] = (idx, logits)                # always present
+
+            return out
+
+        # ------------------------------------------------------------------ #
+        # ── 2. Legacy tensor output  (unchanged) ────────────────────────────
+        # ------------------------------------------------------------------ #
+        if len(set(active_heads)) == 1:          # fast path
+            return self.heads[active_heads[0]](z)
+
+        # different out_dim per head → pad to the largest width
+        max_dim = max(self.heads[h][-1].out_features for h in set(active_heads))
+        logits = z.new_zeros(len(z), max_dim)
+        mask   = torch.zeros_like(logits, dtype=torch.bool)
+
+        for head in set(active_heads):
+            idx   = [i for i, h in enumerate(active_heads) if h == head]
+            out_h = self.heads[head](z[idx])          # [n_h, out_dim_h]
+            logits[idx, : out_h.shape[1]] = out_h
+            mask[idx, : out_h.shape[1]]   = True      # valid columns
+
+        return logits, mask
+
+
+
+
+
+
+    # def __make_mlp(self, in_dim, out_dim, hidden_dim=256, dropout_p=None):
+    #     layers = [nn.Linear(in_dim, hidden_dim),
+    #           #nn.BatchNorm1d(hidden_dim),
+    #           nn.LayerNorm(hidden_dim),
+    #           nn.ReLU(inplace=True)]
+    #     if dropout_p is not None:
+    #         layers.append(nn.Dropout(p=dropout_p, inplace=True))
+    #     layers.append(nn.Linear(hidden_dim, out_dim))
+    #     return nn.Sequential(*layers)
+        
+class EncoderDecoderNetwork(nn.Module):
+    def __init__(self,
+                 encoder,
+                 decoder,
+                 preprocessor = None,
+                 postprocessor = None, 
+                 reducer = None
+                 ):
+        super().__init__()
+        self.preprocessor = preprocessor
+        self.postprocessor = postprocessor
+        self.encoder = encoder
+        self.decoder = decoder
+        self.reducer = reducer
+        
+        
+    def forward(self, x, *args, **kwargs):  # Other model is called with signature (img, score_types)
+        if self.preprocessor == None:
+            x_preprocessed = x
+        else:
+            x_preprocessed = self.preprocessor(x)
+
+        z = self.encoder(x_preprocessed)
+        x_pred = self.decoder(z)
+
+        if self.postprocessor != None:
+            x_pred = self.postprocessor(x_pred)
+
+        if self.reducer != None: 
+            z = self.reducer(z)
+
+
+        return x_pred, z
+
+class PreprocessingResNetRGBMaker(nn.Module):
+    """
+    input  dim (Nb, Nc=1, ...)
+    output dim (Nb, Nc=3, ...)
+    can also normalize channels (which pretrained resnet expects)
+    """
+        
+    def __init__(self, 
+                 mean = (0.485, 0.456, 0.406),
+                 std = (0.229, 0.224, 0.225)
+                 ):
+        super().__init__()
+        self.normalize = torchvision.transforms.Normalize(mean=mean, std=std)
+                    
+    def forward(self, x):
+        # Repeat the single channel to create 3 channels
+        x = x.repeat(1, 3, 1, 1)
+        # Normalize the channels
+        x = self.normalize(x)
+        return x
+
+class PostprocessingGrayScaleMaker(nn.Module):
+    """
+    input  dim (N, 3, H, W)
+    output dim (N, 1, H, W)
+    """
+    def __init__(self, 
+                 mean=(0.485, 0.456, 0.406),
+                 std=(0.229, 0.224, 0.225), 
+                 output_function : Literal["None", "relu", "sigmoid"] = "None"
+                 ):
+        super().__init__()
+        self.mean = torch.tensor(mean).view(1, 3, 1, 1)
+        self.std = torch.tensor(std).view(1, 3, 1, 1)
+        
+        self.output_function_str = output_function
+        if output_function == "None":
+            self.output_function = None
+        elif output_function == "relu":
+            self.output_function = nn.ReLU()
+        elif output_function == "sigmoid":
+            self.output_function = nn.Sigmoid()
+        else: 
+            raise ValueError(f"{output_function=}")
+                
+    def forward(self, x):
+        # Unnormalize the channels
+        x = x * self.std.to(x.device) + self.mean.to(x.device)
+        # Average over the channels
+        x = torch.mean(x, dim=1, keepdim=True)
+        if self.output_function != None:
+            x = self.output_function(x)
+        return x
+
+class PostprocessingGrayScaleMaker_v2(nn.Module):
+    """
+    input  dim (N, 3, H, W)
+    output dim (N, 1, H, W)
+    """
+    def __init__(self, output_function=Literal["sigmoid", "relu", "None"]):
+        super().__init__()
+        self.output_function_str = output_function
+        if output_function == "None":
+            self.output_function = None
+        elif output_function == "relu":
+            self.output_function = nn.ReLU()
+        elif output_function == "sigmoid":
+            self.output_function = nn.Sigmoid()
+        else: 
+            raise ValueError(f"{output_function=}")
+                
+    def forward(self, x):
+        x = torch.mean(x, dim=1, keepdim=False)
+        x.unsqueeze_(1)
+        if self.output_function != None:
+            x = self.output_function(x)
+        return x
+
+def build_ResNetAutoEncoder_v2(arch="resnet18", output_function="sigmoid"):
+    out_ch = 3
+    if arch == 'resnet18':
+        encoder = resnet18(pretrained=True)
+        decoder = resnet18_decoder(out_ch=out_ch)
+    elif arch == 'resnet34':
+        encoder = resnet34(pretrained=True)
+        decoder = resnet34_decoder(out_ch=out_ch)
+    elif arch == 'resnet50':
+        encoder = resnet50(pretrained=True)
+        decoder = resnet50_decoder(out_ch=out_ch)
+    else:
+        raise NotImplementedError
+
+    reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+    preprocessor = PreprocessingResNetRGBMaker()
+    #postprocessor = PostprocessingGrayScaleMaker(output_function="sigmoid")
+    postprocessor = PostprocessingGrayScaleMaker_v2(output_function=output_function)
+
+
+    net = EncoderDecoderNetwork(encoder=encoder,
+                                decoder=decoder,  
+                                preprocessor=preprocessor,
+                                postprocessor=postprocessor,
+                                reducer=reducer)
+    return net
+
+
+
+def build_ResNetAutoEncoder_v2p1(arch="resnet18", output_function="sigmoid"):
+    from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_using_basic_block_decoder import (
+        resnet18_decoder_v2
+    )
+    if arch == 'resnet18':
+        encoder = resnet18(pretrained=True)
+        decoder = resnet18_decoder_v2()
+    else:
+        raise NotImplementedError
+
+    reducer = nn.Sequential(*[nn.AdaptiveAvgPool2d((1, 1)), nn.Flatten(1)])
+    preprocessor = PreprocessingResNetRGBMaker()
+    #postprocessor = PostprocessingGrayScaleMaker(output_function="sigmoid")
+    postprocessor = PostprocessingGrayScaleMaker_v2(output_function=output_function)
+
+
+    net = EncoderDecoderNetwork(encoder=encoder,
+                                decoder=decoder,  
+                                preprocessor=preprocessor,
+                                postprocessor=postprocessor,
+                                reducer=reducer)
+    return net
+    
+class ResNetAutoEncoder(nn.Module):
+    def __init__(self, arch='resnet18'):
+        super().__init__()
+        out_ch=3
+        if arch == 'resnet18':
+            self.encoder = resnet18(pretrained=True)
+            self.decoder = resnet18_decoder(out_ch=out_ch)
+        elif arch == 'resnet34':
+            self.encoder = resnet34(pretrained=True)
+            self.decoder = resnet34_decoder(out_ch=out_ch)
+        elif arch == 'resnet50':
+            self.encoder = resnet50(pretrained=True)
+            self.decoder = resnet50_decoder(out_ch=out_ch)
+        else:
+            raise NotImplementedError
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.latend_dim = self.encoder.fc.in_features
+
+    def forward(self, x): # , *args, **kwargs):  # Other model is called with signature (img, score_types)
+        z = self.encoder(x)
+        z_out = self.avgpool(z)
+        z_out = torch.flatten(z_out, 1)
+        
+        # Option 1: recon before red. 
+        x_hat = self.decoder(z)
+        
+        # Option 2: recon after red. 
+        #x_hat = self.decoder(z_out.unsqueeze(2).unsqueeze(3))  # Then dims will not match... 
+        
+        return x_hat, z_out
+    
+# Just to use the same interface with recon, ... also for this model
+class ResNetNOAutoEncoder(nn.Module):
+    def __init__(self, arch='resnet18'):
+        super().__init__()
+        if arch == 'resnet18':
+            self.encoder = resnet18(pretrained=True)
+        elif arch == 'resnet34':
+            self.encoder = resnet34(pretrained=True)
+        elif arch == 'resnet50':
+            self.encoder = resnet50(pretrained=True)
+        else:
+            raise NotImplementedError
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+    def forward(self, x, *args, **kwargs): # added dummy arguments to allow for same interface
+        z = self.encoder(x)
+        z_out = self.avgpool(z)
+        z_out = torch.flatten(z_out, 1)
+        x_hat = x*0.0 
+        return x_hat, z_out
+    
+class DummyReturnZeroLoss(nn.Module):
+    def __init__(self, device="cuda"):
+        super().__init__()
+        self.device = device
+    def forward(self, *args, **kwargs):
+        return torch.tensor(0.0, device=self.device)
+
+
