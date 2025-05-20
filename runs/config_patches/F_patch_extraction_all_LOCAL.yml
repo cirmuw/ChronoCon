@@ -1,0 +1,45 @@
+
+
+
+# INPUT
+extremity: "foot" # hand or foot 
+
+
+# image_dir: "/home/cwatzenboeck/data/tmp/dev_autoscora/H_images_mirrored_dev"
+# image_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/debugging_ds/H_images_mirrored"
+image_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+img_format_input: ".dcm" # .dcm or .npy
+
+# old name: JOINTS_PATH_PRED_REST100
+landmarks_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/output/F_coordinates__100Tr_1ecc166eb5ed45f5bab247e9d37536aa_with_lm_names.csv"
+
+
+
+# OUTPUT for patches
+#output_dir: "/home/cwatzenboeck/data/tmp/dev_autoscora/H_patches_dev/"
+# output_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/ds_100/H_patches_size1.5/"
+# output_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/ds_100/H_patches_size1.0/"
+output_dir: "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/F_patches_size1.5"
+
+
+#resize_UR_by: 0.0   # 0.1 = 110% of the original size
+#out_dim: [128, 128]  #[192, 192]  # default = [128, 128]
+
+resize_UR_by: 0.5   # 0.1 = 110% of the original size
+out_dim: [192, 192]  #[192, 192]  # default = [128, 128]
+
+seperate_output_folder_structure_by_roi: True
+
+
+plot: False
+plot_show_steps: True
+plot_other_corners_as_well: True
+
+# just process some: 
+image_index_start: 0
+#image_index_end: 10
+
+
+crop_back_border: False # Had really strange effects!!!
+
+# roi_indexes_to_use: [0]

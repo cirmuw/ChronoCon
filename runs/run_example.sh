@@ -53,9 +53,18 @@ set -e
 
 # time python ~/code/RA/ra_utils/ra_utils/autoscora/autoscorRA_Pipeline/patch_extraction/patch_saving_dev_config.py  \
 #             --config config_patches/H_patch_extraction_all.yml
+
+## Feet!!
+#time python ~/code/RA/ra_utils/ra_utils/autoscora/autoscorRA_Pipeline/patch_extraction/patch_saving_dev_config.py  \
+#            --config config_patches/F_patch_extraction_all_LOCAL.yml
+
+
+#time python ~/code/RA/ra_utils/ra_utils/autoscora/autoscorRA_Pipeline/patch_extraction/patch_saving_dev_config.py  \
+#            --config config_patches/H_patch_extraction_all_LOCAL.yml
 ########
 
-
+#######  3) Training for scoring
+# time python ~/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py  --config config_scoring/examples/F_ERO_ResNetMTANAE_lx100_FL.yml
 
 
 

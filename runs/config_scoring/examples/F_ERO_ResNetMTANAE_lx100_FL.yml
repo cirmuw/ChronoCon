@@ -1,0 +1,285 @@
+project: "AutoPIX:"
+experiment_name: "12 F ERO"
+run_name: "RMTANAEv2MH_lx100_FL"
+
+tag: "development"
+SAVE_MODEL: False
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+debugging: False
+evaluate_on_testset: True
+
+loss: 
+  score:
+    name: "FocalLoss"
+    params:
+      gamma: 2.0
+      alpha: Null
+
+#   name: "PaulsOrdinalLoss"
+#   params:
+#     lam: 2.0
+
+loss_weights: 
+  lambda_x: 100.0
+  lambda_y: 1.0
+  lambda_z: 0.0
+  lambda_z_triplet_classes: 0.0
+
+
+
+
+
+training: 
+  use_WeightedRandomSampler: True
+  batch_size: 100
+  num_workers: 6
+  early_stopping_tol: 10
+  epochs: 1000
+
+
+
+
+
+
+data: 
+  image_path_folder: "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/F_patches_size1.5/"
+  pattern: "*/*.npy"
+  
+  score_path_H:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv"
+  score_path_F:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv"
+  
+  sum_wrist_points: false
+
+  use_splits_file: True
+  split_ratio: [0.6, 0.2, 0.2]  # otherwise used split ratio
+  splits_file: "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv"            # path to csv containing columns: "patient_id", "set_type" where "set_type" = "Tr", "Val", "Ts"
+  surgery_patientids_list_path_json: Null #"/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/operated_instances__patientIds_date_region_LR.json"
+    # options for how_to_deal_with_surgery:
+  # - "exclude"
+  # - "keep as is"
+  # - "keep: map over limit to limit plus one"
+  # - "keep: map over limit to limit"  
+  how_to_deal_with_surgery: "exclude"
+
+
+
+  score_groups:
+    # F_JSN_MTP_I:             ["MTPI"]
+    # F_JSN_MTP_II_to_V:       ["MTPII", "MTPIII", "MTPIV", "MTPV"]
+    # F_JSN_IP:                ["IP"]
+    F_ERO_P_MTP_I:       ["MTPIEP"]
+    F_ERO_D_MTP_I:       ["MTPIED"]
+    F_ERO_P_MTP_II_to_V: ["MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP"]
+    F_ERO_D_MTP_II_to_V: ["MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED"]
+    F_ERO_P_IP:          ["IPEP"]
+    F_ERO_D_IP:          ["IPED"]
+
+
+
+
+  network_score_groups:  # for the network  fallback it score_groups if necessary
+    # F_JSN_MTP_I:             ["MTPI"]
+    # F_JSN_MTP_II_to_V:       ["MTPII", "MTPIII", "MTPIV", "MTPV"]
+    # F_JSN_IP:                ["IP"]
+    F_ERO_P_MTP_I:       ["MTPIEP"]
+    F_ERO_D_MTP_I:       ["MTPIED"]
+    F_ERO_P_MTP_II_to_V: ["MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP"]
+    F_ERO_D_MTP_II_to_V: ["MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED"]
+    F_ERO_P_IP:          ["IPEP"]
+    F_ERO_D_IP:          ["IPED"]
+
+
+
+  classifier_head_infos:
+    MTPIEP:
+      out_dim: 6
+      score_types:
+        - MTPIEP
+      loss_weight: 1.0
+    MTPIED:
+      out_dim: 6
+      score_types:
+        - MTPIED
+      loss_weight: 1.0
+    MTPIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIEP
+      loss_weight: 1.0
+    MTPIIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIIEP
+      loss_weight: 1.0
+    MTPIVEP:
+      out_dim: 6
+      score_types:
+        - MTPIVEP
+      loss_weight: 1.0
+    MTPVEP:
+      out_dim: 6
+      score_types:
+        - MTPVEP
+      loss_weight: 1.0
+    MTPIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIED
+      loss_weight: 1.0
+    MTPIIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIIED
+      loss_weight: 1.0
+    MTPIVED:
+      out_dim: 6
+      score_types:
+        - MTPIVED
+      loss_weight: 1.0
+    MTPVED:
+      out_dim: 6
+      score_types:
+        - MTPVED
+      loss_weight: 1.0
+    IPEP:
+      out_dim: 6
+      score_types:
+        - IPEP
+      loss_weight: 1.0
+    IPED:
+      out_dim: 6
+      score_types:
+        - IPED
+      loss_weight: 1.0
+
+    # #------- JSN -------
+    # MTPI:
+    #   out_dim: 5
+    #   score_types:
+    #     - MTPI
+    #   loss_weight: 1.0
+    # MTPII:
+    #   out_dim: 5
+    #   score_types:
+    #     - MTPII
+    #   loss_weight: 1.0
+    # MTPIII:
+    #   out_dim: 5
+    #   score_types:
+    #     - MTPIII
+    #   loss_weight: 1.0
+    # MTPIV:
+    #   out_dim: 5
+    #   score_types:
+    #     - MTPIV
+    #   loss_weight: 1.0
+    # MTPV:
+    #   out_dim: 5
+    #   score_types:
+    #     - MTPV
+    #   loss_weight: 1.0
+    # IP:
+    #   out_dim: 5
+    #   score_types:
+    #     - IP
+    #   loss_weight: 1.0
+
+
+
+
+
+
+
+
+transforms: 
+  # Crop output dimension (required)
+  OUTPUT_DIM: [128, 128]    # could be up to 224 for ResNet
+
+  # RandAffined parameters
+  RandAffined__bool: true
+  RandAffined__prob: 0.5
+  RandAffined__rotation_range_degree: 15  # degrees
+  RandAffined__translate_range_pixels: 19  # pixels
+  RandAffined__scale_range: 0.2
+
+  # RandFlipd parameters
+  RandFlipd__bool: true
+  RandFlipd__prob: 0.5
+
+  # RandGaussianNoised parameters
+  RandGaussianNoised__bool: false
+  RandGaussianNoised__prob: 0.17
+  RandGaussianNoised__std: 0.085
+
+  # Rand2DElasticd parameters
+  # These are tricky, but Paul used them...
+  Rand2DElasticd__bool: true
+  Rand2DElasticd__prob: 0.2
+  Rand2DElasticd__spacing: 12
+  Rand2DElasticd__magnitude: 2.73
+  Rand2DElasticd__shear_range: 0.13  # None
+
+  RBG_channels__bool: False
+
+
+# model_name: "UNetMTANAE + MultiHeadClassifier"
+# model_name: "ResNetAE + MultiHeadClassifier"
+# model_name: "ResNetAE_v2 + MultiHeadClassifier"
+# model_name: "ResNetNoAE + MultiHeadClassifier"
+model_name: "ResNetMTANAEv2 + MultiHeadClassifier"
+  
+ 
+model: 
+  autoencoder: 
+    backbone_name: "resnet18"
+    dilation: false
+    skip_recon: False
+    recon_out_ch: 1
+
+  preprocessor: 
+    name: "ResNetRGBMaker"   # names: "ResNetRGBMaker" or Null
+
+  postprocessor_recon: 
+    name: "PostprocessingGrayScaleMaker_v2"  # "PostprocessingGrayScaleMaker_v2"  Null
+    params: 
+      output_function: "sigmoid"
+
+  score_type_encoder: 
+    name: Null #"ROI_type_encoder"  #
+    # params: 
+ 
+  classifier:
+    model_kw_requires_import: ["dropout_op", "nonlin"]
+    model_dct_keys_to_convert_to_lists:   []  #["pooling_sizes"]
+    model_params:
+      # out_dim: 6  # number of classes  # automatically set in the model
+      hidden_dim: 512  # default 256
+      depth: 1
+      normalization: "layer"
+      norm_op_kwargs: {}
+      dropout_op: "torch.nn.Dropout"
+      dropout_op_kwargs.p: 0.0
+      nonlin: "torch.nn.ReLU"
+      #nonlin: "torch.nn.LeakyReLU"
+      nonlin_kwargs: {}
+
+# TODO: Make network use proper LR (different for decoder...)
+
+optimizer_name: "AdamW"
+optimizer_params:
+  learning_rates: 
+    encoder: !!float  1e-5
+    decoder: !!float  1e-5
+    encoder__OR__decoder: !!float  1e-5
+    classifier: !!float  1e-5
+
+  other_optimizer_kwargs: 
+    weight_decay: !!float 1.0e-6
+
+# scheduler_name: False #"PolyLRSchedulerMultiLR"
+# scheduler_params:
+#   max_steps: 50 
+
+
+
+

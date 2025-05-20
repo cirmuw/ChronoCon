@@ -1,0 +1,36 @@
+project: "Autopix: SvH"
+experiment_name: "landmarks F"
+tag: "development"
+run_name: "g40 a0.03 es100"
+
+SAVE_MODEL: True 
+debugging: False
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+
+data_settings: 
+  training_test_splits_json_H: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/splits_H_TD_25-03-05_three_sets.yml"
+  training_test_splits_json_F: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/splits_F_TD_25-03-05.yml"
+  landmarks_type: "F"  # "F"
+
+
+model_settings: 
+  dim_image: [512,512]
+  get_pixel_spacing: True
+  gamma: 40
+  alpha: 0.037037037037037035   # part of loss function for learnable sigmas  1 / 37 = 0.02702702702702703;  1/27 = 0.037037037037037035 
+
+  heatmap_sigma: 5.0  
+  learnable_sigmas: True
+
+
+training_parameters: 
+  RandAdjustContrast_gamma_lower: 0.7
+  RandAdjustContrast_gamma_upper: 2.5
+  optimizer: "adamW"
+
+  lr: 1.0e-5
+  batch_size: 2
+  epochs: 1000
+
+
+  early_stopping_patience: 100

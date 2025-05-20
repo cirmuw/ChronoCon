@@ -51,7 +51,8 @@ dependencies = [
     "ipython",
     "jupyter", 
     "ipykernel",
-    "mlflow"
+    "mlflow",
+    "pingouin"
     # "landmarker",
 ]
 
@@ -88,7 +89,8 @@ exclude = [
     "training",
     "utils",
     "visualization", 
-    "optuna"
+    "optuna", 
+    "openpyxl"
 ]
 
 [tool.setuptools_scm]

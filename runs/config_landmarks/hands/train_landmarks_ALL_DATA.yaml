@@ -1,0 +1,47 @@
+project: "RADIPOP: HVPG regression"
+experiment_name: "RA"
+tag: "development"
+run_name: "ALL DATA g10 alpha 0.02 real spacing"
+
+SAVE_MODEL: True 
+debugging: False
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+
+data_settings: 
+  # training_test_splits_json_H: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/splits_H_TD_25-03-05_three_sets.yml"
+  # training_test_splits_json_F: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/splits_F_TD_25-03-05.yml"
+  
+  training_test_splits_json_H: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/ALL_TR_DATA_splits_H_TD_25-03-05_three_sets.yml"
+  training_test_splits_json_F: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/ALL_TR_DATA_splits_F_TD_25-03-05.yml"
+  
+  # This is what I used to use:
+  # landmarks_gt_H_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points.csv"
+  # landmarks_gt_F_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points.csv"
+
+  # This is the reduced set with usefull joint names: 
+  #landmarks_gt_H_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/hands_combined/SCN_input/all_hand_annot_100_onlynecessaryjoints_rest_zeroes.csv"
+  #landmarks_gt_F_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_Annotation/output/annotations/feet/all_foot_joints_100.csv"
+  landmarks_type: "H"  # "F"
+
+
+model_settings: 
+  dim_image: [512,512]
+  get_pixel_spacing: True
+  gamma: 10
+  alpha: 0.02702702702702703   # part of loss function for learnable sigmas  1 / 37 = 0.02702702702702703;  1/27 = 0.037037037037037035 
+
+  heatmap_sigma: 5.0  
+  learnable_sigmas: True
+
+
+training_parameters:
+  lr: 1.0e-5
+  batch_size: 2
+  run_full_epochs: True
+  epochs: 140
+
+
+  RandAdjustContrast_gamma_lower: 0.7
+  RandAdjustContrast_gamma_upper: 2.0
+
+
