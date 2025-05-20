@@ -16,6 +16,37 @@ import pydoc
 
 
 
+def get_package_rootdir(package, level=1):
+    # Note: this will only work with level=1 if the git repo has the standard structure
+    path = Path(os.path.abspath(package.__file__))
+    return path.parents[level]
+
+
+def get_git_infos(repo_path):
+    git_folder = Path(repo_path,'.git')
+    if not git_folder.exists():
+        return {"message": f"The given path {repo_path} is not a git repository."}
+    git_repo = git.Repo(repo_path)
+    is_dirty = git_repo.is_dirty()
+    commit_message = git_repo.head.commit.message
+    head_name = Path(git_folder, 'HEAD').read_text().split('\n')[0].split(' ')[-1]
+    head_ref = Path(git_folder,head_name)
+    commit = head_ref.read_text().replace('\n','')
+    r = dict(commit=commit, commit_message=commit_message, dirty=is_dirty)
+    return r
+    
+
+def package_infos(package, level=1):
+    package_root = get_package_rootdir(package, level=level)
+    infos = get_git_infos(package_root)
+    version = pkg_resources.get_distribution(package.__name__).version
+    r = dict(name = package.__name__, 
+             version=version, 
+             package_root=str(package_root))
+    return {**r, **infos}
+
+
+
 
 
 def flatten_dict(d, parent_key='', sep='.'):

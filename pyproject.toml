@@ -57,7 +57,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cir_package1_predict = "ra_utils.example_module:main_function"
+ra_utils__print_package_infos = "ra_utils.tools.print_package_info:main"
 
 [project.optional-dependencies]
 dev = [
