@@ -42,6 +42,11 @@ from ra_utils.data.data_utils import (
     extract_extras_from_filename
 )
 
+from importlib import resources
+import pandas as pd
+import json
+from  ra_utils.data.shap_sums import limit_treatment_number
+
 #--------------------------------------------------------------#
 #------------------------- Score reading ----------------------#
 #--------------------------------------------------------------#
@@ -65,7 +70,10 @@ def read_tabular_data_and_paths(image_path_folder: str = "/home/cwatzenboeck/dat
 
 
 
-def exclude_ROIS_according_surgery_status(df):
+def exclude_ROIS_according_surgery_status(df, surgery_patientids_list=[]):
+    # surgery_patientids_list  ... extra list op patients with surgery which should be excluded I guess
+    
+    
     # TODO Understand why ES for feet is for joints not in range [0,10] but [0,5]
     # But whatever just continue... 
 
@@ -74,13 +82,16 @@ def exclude_ROIS_according_surgery_status(df):
     m_wrist_ES = df["chosen_score"] == "LunatE+RadiusE+ScaphE+TrapE+UlnaE"
     m_wrist_JSN = df["chosen_score"] == "Rad_Carp+Sca_Cap+Tra_Sca"
     m_other_ROI = ~m_wrist_ES & ~m_wrist_JSN
+    m_surgery_according_to_list = df["image_instance_id"].isin(surgery_patientids_list)
 
     # not sure if this is correct logic, but this is what Paul implemented 
     # Thought: What if only some wrist joints have surgery? Do all get 6?
     # Also what is for feet? 
     m_exclude = ((m_wrist_ES  & (df["score"] > 25))  |
                     (m_wrist_JSN & (df["score"] > 15))  |
-                    (m_other_ROI & (df["score"] > 5)) )
+                    (m_other_ROI & (df["score"] > 5)) |
+                    (m_surgery_according_to_list)
+                    ) 
     df_exclude = df[m_exclude]
     df_include = df[~m_exclude] 
 
@@ -541,14 +552,74 @@ def process_single_score_group(chosen_score, df_paths, data_config):
         score_path_H=data_config.get("score_path_H", ""),
         score_path_F=data_config.get("score_path_F", "")
     )
+    # Add something like 412_20230101_H_L
 
-    df_include, df_exclude = exclude_ROIS_according_surgery_status(paths_scores_df)
+
+    with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv") as f:
+        df_scores_meta = pd.read_csv(f)
+        limits_dct = df_scores_meta[["score_name", "limit"]].set_index("score_name").to_dict()["limit"]
+
+    how_to_deal_with_surgery = data_config.get("how_to_deal_with_surgery", "keep: map over limit to limit")
+    verbose = data_config.get("verbose", True)
+    if verbose:
+        print(f"how_to_deal_with_surgery: {how_to_deal_with_surgery}")
+
+    # options for how_to_deal_with_surgery:
+    # - "exclude"
+    # - "keep as is"
+    # - "keep: map over limit to limit plus one"
+    # - "keep: map over limit to limit"
+    
+
+    if how_to_deal_with_surgery == "exclude":
+        paths_scores_df["image_instance_id"] = paths_scores_df["file_name"].apply(lambda x: "_".join(x.split("_")[:4]))
+        surgery_patientids_list_path_json = data_config.get("surgery_patientids_list_path_json")
+        surgery_patientids_list = []
+        if surgery_patientids_list_path_json: 
+            with open(surgery_patientids_list_path_json, "r") as f:
+                surgery_patientids_list = json.load(f)
+        df_include, df_exclude = exclude_ROIS_according_surgery_status(paths_scores_df, surgery_patientids_list=surgery_patientids_list)
+
+    elif how_to_deal_with_surgery == "keep as is":
+        df_include = paths_scores_df
+        df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
+
+    elif how_to_deal_with_surgery == "keep: map over limit to limit plus one":
+        df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
+        df_include = paths_scores_df
+        def foo(row):
+            t = row["chosen_score"]
+            limit = limits_dct[t]
+            s = row["score"]
+            return limit_treatment_number(s, limit, limit_treatment="over_limit_to_limit_plus_1")
+        df_include["score"] = df_include.apply(foo, axis=1)
+    
+    elif how_to_deal_with_surgery == "keep: map over limit to limit":
+        df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
+        df_include = paths_scores_df
+        def foo(row):
+            t = row["chosen_score"]
+            limit = limits_dct[t]
+            s = row["score"]
+            return limit_treatment_number(s, limit, limit_treatment="over_limit_to_limit")
+        df_include["score"] = df_include.apply(foo, axis=1)
+    else:
+        raise ValueError(f"Unknown how_to_deal_with_surgery: {how_to_deal_with_surgery}")
+
+
     df_include["patient_id"] = df_include["file_name"].apply(lambda x: x.split("_")[0])
 
     if data_config.get("use_splits_file", False):
-        df_train, df_val, df_test = split_using_file(df_include, data_config["splits_file"])
+        df_train, df_val, df_test, df_missed = split_using_file(df_include, data_config["splits_file"])
     else:
-        df_train, df_val, df_test = split_using_ratios(df_include, df_paths, data_config.get("split_ratio"))
+        df_train, df_val, df_test = split_training_val_test__on_patient_level(df_include, ratios=data_config["split_ratio"])
+        df_missed = None
+
+    df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
+    df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
+    df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
+
+
 
     return {
         "df_include": df_include,
@@ -556,6 +627,7 @@ def process_single_score_group(chosen_score, df_paths, data_config):
         "df_train": df_train,
         "df_val": df_val,
         "df_test": df_test,
+        "df_included_missed": df_missed
     }
 
 def load_img_SHS_patch_data(data_config: dict):
@@ -574,25 +646,32 @@ def split_using_file(df_include, splits_file_path):
     print(f"Reading splits from {splits_file_path} and splitting accordingly")
     splits = pd.read_csv(splits_file_path)
 
-    train_patients = splits.query('set_type == "Tr"')["patient_id"]
-    val_patients = splits.query('set_type == "Val"')["patient_id"]
-    test_patients = splits.query('set_type == "Ts"')["patient_id"]
+    train_patients = splits.query('set_type == "Tr"')["patient_id"].astype(int)
+    val_patients = splits.query('set_type == "Val"')["patient_id"].astype(int)
+    test_patients = splits.query('set_type == "Ts"')["patient_id"].astype(int)
 
-    df_train = df_include[df_include["patient_id"].isin(train_patients)].reset_index(drop=True)
-    df_val = df_include[df_include["patient_id"].isin(val_patients)].reset_index(drop=True)
-    df_test = df_include[df_include["patient_id"].isin(test_patients)].reset_index(drop=True)
+    m_Tr = df_include["patient_id"].astype(int).isin(train_patients)
+    m_Val = df_include["patient_id"].astype(int).isin(val_patients)
+    m_Ts = df_include["patient_id"].astype(int).isin(test_patients)
+    m_other = ~(m_Tr | m_Val | m_Ts)
 
-    return df_train, df_val, df_test
+    df_train = df_include[m_Tr].reset_index(drop=True)
+    df_val   = df_include[m_Val].reset_index(drop=True)
+    df_test  = df_include[m_Ts].reset_index(drop=True)
+    
+    df_missed = df_include[m_other].reset_index(drop=True)
+
+    return df_train, df_val, df_test, df_missed
 
 
-def split_using_ratios(df_include, df_paths, split_ratios):
-    df_train, df_val, df_test = split_training_val_test__on_patient_level(df_include, ratios=split_ratios)
+# def split_using_ratios(df_include, df_paths, split_ratios):
+#     df_train, df_val, df_test = split_training_val_test__on_patient_level(df_include, ratios=split_ratios)
 
-    df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
-    df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
-    df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
+#     df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
+#     df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
+#     df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
 
-    return df_train, df_val, df_test
+#     return df_train, df_val, df_test
 
 
 def dataset_and_loader(data_tables, config):
