@@ -531,10 +531,19 @@ def load_img_SHS_patch_data_OLD(data_config: dict):
 
 
 def process_several_score_groups(data_config: dict):
-    df_paths = make_paths_dataframe(
-        image_path_folder=data_config["image_path_folder"],
-        pattern=data_config.get("pattern", "*/*.npy")
-    )
+    image_folders = data_config["image_path_folder"]
+    if isinstance(image_folders, str):
+        image_folders = [image_folders]
+    df_paths_list = []
+    for image_path_folder in image_folders:
+        print(f"Loading paths from: {image_path_folder}")
+        df_paths = make_paths_dataframe(
+            image_path_folder=image_path_folder,
+            pattern=data_config.get("pattern", "*/*.npy")
+        )
+        df_paths_list.append(df_paths)
+    df_paths = pd.concat(df_paths_list, ignore_index=True)
+
 
     data_dct = {}
     for name, chosen_score in tqdm(data_config["score_groups"].items(), desc="Processing chosen scores"):
