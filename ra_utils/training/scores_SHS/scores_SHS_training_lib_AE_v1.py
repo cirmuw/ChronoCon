@@ -2007,8 +2007,6 @@ def evaluate_and_log_testset_results_AE_v2(
     np.savez_compressed(out_fn, **outputs_all)
     mlflow.log_artifact(out_fn, artifact_path=f"predictions/{prefix}")
     os.remove(out_fn)
-
-
     # with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
     #     np.savez_compressed(tmp.name, **outputs_all)
     #     mlflow.log_artifact(tmp.name, artifact_path=f"predictions/{prefix}")

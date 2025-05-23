@@ -139,8 +139,8 @@ def main():
         print(opt_cfg["other_optimizer_kwargs"])
         optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
         
-        
-        transform_AE = v2.GaussianNoise(mean=0, sigma = 0.05, clip=True)
+        sigma = config.get("AE_transform", {}).get("GaussianNoise_sigma", 0.05)
+        transform_AE = v2.GaussianNoise(mean=0, sigma = sigma, clip=True)
 
         # scheduler
         scheduler = None

@@ -11,6 +11,7 @@ import mlflow
 import mlflow.pytorch
 import pingouin  as pg
 import pandas as pd
+from scipy.stats import spearmanr
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -44,7 +45,12 @@ def train_epoch(model,
 
 
 
-def calculate_some_classification_metrics(all_preds, all_labels, calc_ICC3: int = 0, add_support: int = 0):
+def calculate_some_classification_metrics(all_preds, all_labels, 
+                                          calc_ICC3: int = 0, 
+                                          add_support: int = 0,
+                                          add_classification_metrics = True, 
+                                          add_spearman=True
+                                          ):
     """
     Parameters
     ----------
@@ -59,30 +65,41 @@ def calculate_some_classification_metrics(all_preds, all_labels, calc_ICC3: int 
     metrics = {
         "rmse":  float(np.sqrt(np.mean((all_preds - all_labels) ** 2))),
         "mse":   float(np.mean((all_preds - all_labels) ** 2)),
-        "mae":   float(np.mean(np.abs(all_preds - all_labels))),
+        "mae":   float(np.mean(np.abs(all_preds - all_labels)))
+    }
+    
+    if add_spearman:
+        spearman_corr, _ = spearmanr(all_preds, all_labels)
+        metrics["spearman_corr"] = float(spearman_corr)
+
+    if add_classification_metrics: 
+        metrics_extras = {
         "accuracy":                float(np.mean(all_preds == all_labels)),
         "accuracy (error < 2)":    float(np.mean(np.abs(all_preds - all_labels) < 2)),
         "error > 1 (percent)":    float(np.mean(np.abs(all_preds - all_labels) > 1))*100,
         "balanced acc.":           float(balanced_accuracy_score(all_labels, all_preds)),
-    }
+        }
+        metrics = {**metrics, **metrics_extras}
 
-    # balanced acc. with error < 2
-    unique = np.unique(all_labels)
-    bal_err_lt2 = np.mean([
-        np.mean(np.abs(all_preds[all_labels == u] - u) < 2) for u in unique
-    ])
-    metrics["balanced acc. (error < 2)"] = float(bal_err_lt2)
+        # balanced acc. with error < 2
+        unique = np.unique(all_labels)
+        bal_err_lt2 = np.mean([
+            np.mean(np.abs(all_preds[all_labels == u] - u) < 2) for u in unique
+        ])
+        metrics["balanced acc. (error < 2)"] = float(bal_err_lt2)
+
+
+        if add_support>1:
+            # # add support (number of samples per class)
+            support = {}
+            for u in np.unique(all_labels):
+                support[u] = int(np.sum(all_labels == u))
+                metrics[f"support_{u}"] = support[u]
+            #metrics["support"] = support
 
     if add_support>0:
-       metrics["n_samples eval"] = int(len(all_labels))
+        metrics["n_samples eval"] = int(len(all_labels))
 
-    if add_support>1:
-        # # add support (number of samples per class)
-        support = {}
-        for u in np.unique(all_labels):
-            support[u] = int(np.sum(all_labels == u))
-            metrics[f"support_{u}"] = support[u]
-        #metrics["support"] = support
 
     # ---------- ICC(3,1) -----------------------------------------------------
     if calc_ICC3:

@@ -777,6 +777,7 @@ class ResNetNOAutoEncoder(nn.Module):
         else:
             raise NotImplementedError
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+        self.latent_dim = self.encoder.latent_dim
 
     def forward(self, x, *args, **kwargs): # added dummy arguments to allow for same interface
         z = self.encoder(x)

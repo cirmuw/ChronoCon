@@ -12,6 +12,44 @@ from sklearn.metrics import (
 )
 
 
+# def combine_predictions(
+#     sources: List[str],
+#     keys_for_df: List[str] = [
+#         'labels',
+#         'preds',
+#         # 'probs',
+#         'file_name',
+#         'score_type',
+#         'JSN_or_ERO',
+#         'extremity',
+#         'patient_id',
+#     ],
+#     check_for_score_type_duplicates: bool = True,
+# ) -> pd.DataFrame:
+#     """
+#     Combine predictions from different sources into a single DataFrame.
+#     """
+#     data = []
+#     seen_score_types = set()
+#     for src in sources:
+#         data_ = np.load(src)
+#         if keys_for_df is not None:
+#             data_ = pd.DataFrame({k: data_[k] for k in keys_for_df})
+#         data.append(data_)
+#         if check_for_score_type_duplicates:
+#             score_types = data_["score_type"].unique()
+#             for st in score_types:
+#                 if st in seen_score_types:
+#                     raise ValueError(f"Duplicate score type found: {st}")
+#                 seen_score_types.add(st)
+
+#     df = pd.concat(data, ignore_index=True)
+#     return df
+
+# import numpy as np
+# import pandas as pd
+# from typing import List
+
 def combine_predictions(
     sources: List[str],
     keys_for_df: List[str] = [
@@ -25,26 +63,50 @@ def combine_predictions(
         'patient_id',
     ],
     check_for_score_type_duplicates: bool = True,
+    include_probs: bool = False,
 ) -> pd.DataFrame:
     """
     Combine predictions from different sources into a single DataFrame.
+
+    Parameters
+    ----------
+    sources : list of str
+        List of file paths to .npz files.
+    keys_for_df : list of str
+        Keys to include in the final DataFrame. If 'probs' is in the list, it must be handled separately.
+    check_for_score_type_duplicates : bool
+        If True, raise an error if the same score_type appears more than once.
+    include_probs : bool
+        If True, try to load and include 2D probs (softmax scores).
     """
     data = []
     seen_score_types = set()
+
     for src in sources:
-        data_ = np.load(src)
-        if keys_for_df is not None:
-            data_ = pd.DataFrame({k: data_[k] for k in keys_for_df})
-        data.append(data_)
+        npz_data = np.load(src, allow_pickle=True)
+        
+        # First build dict of 1D items
+        data_dict = {k: npz_data[k] for k in keys_for_df if k in npz_data and k != "probs"}
+        
+        # Handle probs separately (assume shape [N, 6])
+        if include_probs and "probs" in npz_data:
+            probs_array = npz_data["probs"]
+            # Store each row (6-dim vector) as a list for DataFrame compatibility
+            data_dict["probs"] = [row.tolist() for row in probs_array]
+
+        df = pd.DataFrame(data_dict)
+        data.append(df)
+
         if check_for_score_type_duplicates:
-            score_types = data_["score_type"].unique()
+            score_types = df["score_type"].unique()
             for st in score_types:
                 if st in seen_score_types:
                     raise ValueError(f"Duplicate score type found: {st}")
                 seen_score_types.add(st)
 
-    df = pd.concat(data, ignore_index=True)
-    return df
+    df_all = pd.concat(data, ignore_index=True)
+    return df_all
+
 
 
 def get_main_metrics(df, allowed_classes = ['0', '1', '2', '3', '4', '5'], index_name = "erosion foot"):
@@ -87,7 +149,7 @@ def get_main_metrics(df, allowed_classes = ['0', '1', '2', '3', '4', '5'], index
 
     metrics_df = pd.DataFrame([metrics], index=[index_name])
     metrics_df = metrics_df[['n_samples eval', 'accuracy', 'error > 1 (percent)', 'balanced acc.', 'balanced acc. (error < 2)', 'rmse']]
-    metrics_df = metrics_df.rename(columns={"n_samples eval": "joints"})
+    #metrics_df = metrics_df.rename(columns={"n_samples eval": "joints"})
     metrics_df[f"{name} f1"] = part_macro_avg_f1
 
     return metrics_df, report
