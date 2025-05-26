@@ -12,6 +12,8 @@ import mlflow.pytorch
 import pingouin  as pg
 import pandas as pd
 from scipy.stats import spearmanr
+
+from sklearn.metrics import balanced_accuracy_score, cohen_kappa_score
 from sklearn.metrics import (
     classification_report,
     confusion_matrix,
@@ -21,6 +23,18 @@ from sklearn.metrics import (
 from ra_utils.networks.architecture import (
     model_interface_forward
 )
+
+try:
+    from rpy2.robjects import DataFrame, FloatVector, IntVector
+    from rpy2.robjects.packages import importr
+    r_lme4 = importr("lme4")
+    r_icc = importr("ICC")
+    r_irr = importr("irr")
+    r_iccp = importr("psych")
+    RLIB_AVAILABLE = True
+except ImportError:
+    RLIB_AVAILABLE = False
+    print("Warning: R libraries not available. Some ICC calculations will be disabled.")
 
 
 def train_epoch(model,
@@ -49,7 +63,10 @@ def calculate_some_classification_metrics(all_preds, all_labels,
                                           calc_ICC3: int = 0, 
                                           add_support: int = 0,
                                           add_classification_metrics = True, 
-                                          add_spearman=True
+                                          add_spearman=True, 
+                                          add_kappa: bool = False,                                          
+                                          icc="ICC3",
+                                          calc_psych_ICC: int = 0
                                           ):
     """
     Parameters
@@ -97,9 +114,18 @@ def calculate_some_classification_metrics(all_preds, all_labels,
                 metrics[f"support_{u}"] = support[u]
             #metrics["support"] = support
 
-    if add_support>0:
-        metrics["n_samples eval"] = int(len(all_labels))
 
+    # ---------- Cohen's kappa ------------------------------------------------
+    if add_kappa:
+        try:
+            kappa = cohen_kappa_score(all_labels, all_preds)
+        except Exception:
+            kappa = np.nan
+        metrics["cohen_kappa"] = float(kappa)
+
+    #---- support
+    if add_support > 0:
+        metrics["n_samples eval"] = int(len(all_labels))
 
     # ---------- ICC(3,1) -----------------------------------------------------
     if calc_ICC3:
@@ -113,9 +139,9 @@ def calculate_some_classification_metrics(all_preds, all_labels,
         icc_tbl = pg.intraclass_corr(
             data=df_long, targets="target", raters="Raters", ratings="Rating"
         )
-        icc3_row = icc_tbl.loc[icc_tbl["Type"] == "ICC3"].iloc[0]
+        icc3_row = icc_tbl.loc[icc_tbl["Type"] == icc].iloc[0]
 
-        metrics["ICC3"] = float(icc3_row["ICC"])
+        metrics["ICC"] = float(icc3_row["ICC"])
 
         if calc_ICC3 >= 2:
             # expand with CI, F, dfs, p, and sample count
@@ -129,7 +155,31 @@ def calculate_some_classification_metrics(all_preds, all_labels,
                 "ICC_n":          int(n),
             })
 
+
+    # ---------- ICC via psych::ICC in R --------------------------------------
+    if calc_psych_ICC:
+        df_nt = DataFrame({"preds": FloatVector(all_preds),
+                           "true": FloatVector(all_labels)})
+        res = r_iccp.ICC(df_nt)
+        # Extract labels and values
+        labels = list(res[0][0])
+        icc_type_idx = labels.index(icc)
+        col_names = ["type", "ICC", "F", "df1", "df2", "p", "lower bound", "upper bound"]
+        psych_dict = {l : res[0][i][icc_type_idx] for i,l in enumerate(col_names) }
+        # Basic
+        metrics["ICC_psych"] = float(psych_dict.get("ICC", np.nan))
+        if calc_psych_ICC >= 2:
+            metrics.update({
+                "ICC_psych_lower": float(psych_dict.get("lower bound", np.nan)),
+                "ICC_psych_upper": float(psych_dict.get("upper bound", np.nan)),
+                "ICC_psych_F":     float(psych_dict.get("F", np.nan)),
+                "ICC_psych_df1":   float(psych_dict.get("df1", np.nan)),
+                "ICC_psych_df2":   float(psych_dict.get("df2", np.nan)),
+                "ICC_psych_p":     float(psych_dict.get("p", np.nan))
+            })
+
     return metrics
+
 
 
 

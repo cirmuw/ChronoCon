@@ -91,10 +91,10 @@ F_CV_JOINT_TO_ROIS_PARAMETERS_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/pro
 # Scoring (CSV)
 # ---------------
 PREPROCESSING_OUTPUT_DIR: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output"
-PAT_DF_MANUAL_VERSION: "data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
+PAT_DF_MANUAL_VERSION: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
 PAT_DF_MANUAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/data_split/pat_df_medstream_manual_H_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2019-05-03_21-12-37.csv"
 
-F_PAT_DF_MANUAL_VERSION: "pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
+F_PAT_DF_MANUAL_VERSION: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
 F_PAT_DF_MANUAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/pat_df_manual_FEET/data_split/pat_df_medstream_manual_F_dp_img_of_int_2_summary_cols_segm_sets_RL_stratmean_split6543_chosen345_2021-05-25_13-45-01_fixedComTBD.csv"
 
 H_F_DOUBLE_SCORE_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Preprocessing/output/double_scoring/Re_Scoring_50_v2_FINAL_pseudonymized_colrenamed.csv"
@@ -105,6 +105,8 @@ H_F_DOUBLE_SCORE_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autosc
 PAT_TRAIN_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/train_patients.npy"
 PAT_VAL_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/val_patients.npy"
 PAT_TEST_PATH: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_TDEIMEL_HOME/autoscoRA_Pipeline/evaluation/figures/table_one/test_patients.npy"
+
+
 
 # ===========================
 # Legend (from the docstring)

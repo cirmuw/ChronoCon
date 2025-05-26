@@ -65,6 +65,13 @@ dev = [
     "ruff",
     "pre-commit"
 ]
+rpackages = [
+  # these can’t be installed via pip, but you can document that
+  # users should do:
+  #   conda install -c conda-forge r-lme4 r-matrix r-reformulas r-psych r-irr
+  # or the apt/yum equivalent for Matrix, lme4, etc.
+]
+
 
 [build-system]
 requires = ["setuptools>=67.8.0", "wheel", "setuptools_scm"]
@@ -90,6 +97,7 @@ exclude = [
     "utils",
     "visualization", 
     "optuna", 
+    "rpy2", 
     "openpyxl"
 ]
 
