@@ -1,16 +1,16 @@
 #!/bin/sh
 
 # For now small node is enouth
-#SBATCH -q 3g.20gb
-#SBATCH --cpus-per-task=18
-#SBATCH --gres=gpu:3g.20gb:1
-#SBATCH --mem=128G
+#   #SBATCH -q 3g.20gb
+#   #SBATCH --cpus-per-task=18
+#   #SBATCH --gres=gpu:3g.20gb:1
+#   #SBATCH --mem=128G
 
 # Later this will be needed for full res (40GB)
-#   #SBATCH -q a100
-#   #SBATCH --cpus-per-task=24
-#   #SBATCH --gres=gpu:a100:1
-#   #SBATCH --mem=150G
+#SBATCH -q a100
+#SBATCH --cpus-per-task=24
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=150G
 
 
 # 80GB will probably not be needed ... 
@@ -20,8 +20,8 @@
 #       #SBATCH --mem=150G
 
 # ONLY for DEV
-#SBATCH --time=3-00:00:00
-### #SBATCH --time=0-00:30:00
+####SBATCH --time=3-00:00:00
+#SBATCH --time=0-00:30:00
 
 
 #SBATCH -p gpu

@@ -7,6 +7,6 @@ set -e
 set -x 
 
 singularity build --fakeroot ~/container/FRESH_ra_utils.sif ~/code/RA/ra_utils/singularity/build_ra_utils_container_filled.def
-#rm /msc/home/cwatze93/container/ra_utils.sif
+rm /msc/home/cwatze93/container/ra_utils.sif
 mv ~/container/FRESH_ra_utils.sif   /msc/home/cwatze93/container/ra_utils.sif
 
