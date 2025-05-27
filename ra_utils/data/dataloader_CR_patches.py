@@ -114,7 +114,8 @@ def make_paths_dataframe(image_path_folder: str = "/home/cwatzenboeck/data/AutoP
 def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
     df = df.copy()
     df_tmp = pd.DataFrame(list(df["file_name"].apply(lambda x: extract_extras_from_filename(x, ending=".npy", replace_ending=False, filename_str="file_name"))))
-    df = pd.merge(df, df_tmp, left_on="file_name", right_on="file_name")
+    df_tmp.drop(columns=["file_name"], inplace=True)
+    df = pd.merge(df, df_tmp, left_index=True, right_index=True, how="left")
 
     data = []
     for idx, row in df.iterrows():

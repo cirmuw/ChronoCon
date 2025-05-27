@@ -102,11 +102,11 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
     else:
         raise ValueError(f"Unsupported file extension '{config_file.suffix}'. Supported extensions are .json, .yaml, .yml.")
 
-    if args.debugging:
+    if not debugging_in_jupyter_nb and args.debugging:
         config["debugging"] = True
         print("Debugging mode is enabled with --debugging!! Config will be modified accordingly.")
 
-    if args.path_substitution_config: 
+    if not debugging_in_jupyter_nb and args.path_substitution_config: 
         path_substitution_file = Path(args.path_substitution_config)
         if not path_substitution_file.exists():
             raise FileNotFoundError(f"The path substitution config file {path_substitution_file} does not exist.")
