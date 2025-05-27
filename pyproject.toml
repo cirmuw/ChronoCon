@@ -55,7 +55,7 @@ dependencies = [
     "pingouin",
     # "landmarker",
     "optuna", 
-    "rpy2", 
+#    "rpy2", 
     "openpyxl"
 ]
 
