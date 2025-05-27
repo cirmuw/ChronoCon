@@ -6,7 +6,7 @@ description = "ra_utils is .....  in development"
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
-    { name = "Some Guy", email = "some.guy@meduniwien.ac.at"},
+    { name = "Clemens Watzenboeck", email = "clemens.watzenboeck@meduniwien.ac.at"},
     { name = "Center for Imaging Research; Medical University of Vienna" }
 ]
 classifiers = [
@@ -52,8 +52,11 @@ dependencies = [
     "jupyter", 
     "ipykernel",
     "mlflow",
-    "pingouin"
+    "pingouin",
     # "landmarker",
+    "optuna", 
+    "rpy2", 
+    "openpyxl"
 ]
 
 [project.scripts]
@@ -96,9 +99,6 @@ exclude = [
     "training",
     "utils",
     "visualization", 
-    "optuna", 
-    "rpy2", 
-    "openpyxl"
 ]
 
 [tool.setuptools_scm]
