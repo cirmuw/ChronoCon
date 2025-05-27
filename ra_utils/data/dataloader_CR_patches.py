@@ -761,6 +761,22 @@ def dataset_and_loader_several(data_tables_several, config):
         return_dct[key] = data
     return return_dct
 
+def check_duplicates_in_dataloader(data: Dict[str, Dict[str, DataLoader]], ds_key: str = "test_loader") -> None:
+    """
+    Check if there are duplicate entries in the dataloaders.
+    """
+    for k in data:
+        dl = data[k][ds_key]
+        seen = set()
+        for b in dl:
+            s = [ss for ss in zip(b["patient_id"], b["date_str"], b["left_or_right"], b["score_type"])]
+            for ss in s:
+                if ss in seen:
+                    print("seen", ss)
+                    raise ValueError("Duplicate found in dataloader  {k} ")
+                else:
+                    seen.add(ss)
+
 #--------------------------------------------------------------#
 #------------------------- Other      -------------------------#
 #--------------------------------------------------------------#

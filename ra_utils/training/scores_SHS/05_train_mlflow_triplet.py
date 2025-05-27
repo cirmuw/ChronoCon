@@ -13,7 +13,8 @@ import ra_utils.utils.utils
 
 from ra_utils.data.dataloader_CR_patches import (
     process_several_score_groups,
-    dataset_and_loader_several
+    dataset_and_loader_several,
+    check_duplicates_in_dataloader
 )
 
 from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
@@ -95,6 +96,11 @@ def main():
         # Make dataset and dataloaders
         # data = dataset_and_loader(data_tables, config)
         data = dataset_and_loader_several(data_tables, config)
+        
+        if True: 
+            # check_duplicates_in_dataloader(data, ds_key="train_loader")
+            check_duplicates_in_dataloader(data, ds_key="val_loader")
+            check_duplicates_in_dataloader(data, ds_key="test_loader")
 
         # Load/ make model
         attention_paths_dct = config["data"].get("network_score_groups")
