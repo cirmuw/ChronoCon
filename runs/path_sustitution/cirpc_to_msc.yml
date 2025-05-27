@@ -1,0 +1,6 @@
+"/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/": "/msc/home/cwatze93/data/mlflow/mlflow_RA/"
+"/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/H_patches_size1.5_v2/": "/msc/home/cwatze93/data/RA/preprocessed_H/H_patches_size1.5_v2/"
+"/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/F_patches_size1.5/":    "/msc/home/cwatze93/data/RA/preprocessed_F/F_patches_size1.5/"
+"/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv": "/msc/home/cwatze93/data/RA/tabular/autoscoRA_data/autoscoRA_hands.csv"
+"/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv": "/msc/home/cwatze93/data/RA/tabular/autoscoRA_data/autoscoRA_feet.csv"
+"/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv": "/msc/home/cwatze93/data/RA/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv"

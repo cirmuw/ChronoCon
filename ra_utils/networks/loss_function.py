@@ -22,6 +22,13 @@ def get_score_loss_function(cfg: dict):
         loss = PaulsOrdinalLoss(**params)
     elif name == "PaulsOrdinalLossFocal":
         loss = PaulsOrdinalLossFocal(**params)        
+
+    elif name == "MSELoss":
+        loss = nn.MSELoss(**params)
+    elif name =="MSE+CELoss":
+        loss = MSECELoss(**params)
+
+
         
     else: 
         raise NotImplementedError(f"{name=}")
@@ -218,6 +225,27 @@ def focal_loss(alpha: Optional[Sequence] = None,
 
 #
 #-------------------------------------------------------#
+
+# TODO: 
+# Calculate MSECELoss similar to focal loss?
+
+class MSECELoss(nn.Module):
+    """
+      mse_weight * MSE  + (1-mse_weight) * CE  + consitency_factor * (some term that MSE output is consistent with CE)  .... TODO
+    """
+    def __init__(self, mse_weight=0.5):
+        super(MSECELoss, self).__init__()
+        self.mse_weight = mse_weight
+        assert mse_weight >=0.0
+        assert mse_weight <= 1.0
+
+
+    def forward(self, ce_logits: torch.Tensor, reg_logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        loss_CE = F.cross_entropy(ce_logits, target, reduction="mean")
+        loss_MSE = F.mse_loss(reg_logits, target, reduction="mean")
+        loss = self.mse_weight * loss_CE   + (1- self.mse_weight) * loss_MSE  #  # regularization terms ? |<c> - pred_c|???
+        return loss
+
 
 class PaulsOrdinalLoss(nn.Module):
     def __init__(self, lam=0):

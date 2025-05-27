@@ -46,11 +46,10 @@ def main():
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp11/H_JSN_ResNetMTANAE_lx100_FL.yml", 
-        debugging_in_jupyter_nb=False, silencium=False, return_config_name=True)
-    
-
-    
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp16_reg_head/dev.yml", 
+        debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
+        # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
+        )
 
     # Debugging option:
     # Set different MLFLOW location
@@ -111,6 +110,14 @@ def main():
             for k in classifier_head_infos.keys():
                 v = classifier_head_infos[k]["out_dim"]
                 classifier_head_infos[k]["out_dim"] = v + 1
+
+        # If pure regression -> output-dim has to be 1
+        classifier_name = config["model"].get("classifier", {}).get("name", "LogReg")
+        print(f"{classifier_name = }")
+        if classifier_name == "Reg":
+            for k in classifier_head_infos.keys():
+                classifier_head_infos[k]["out_dim"] = 1
+
 
         model_name = config["model_name"]
         model_AE, model_c = build_models_AE_v1_and2(

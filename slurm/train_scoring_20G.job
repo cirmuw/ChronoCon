@@ -67,7 +67,9 @@ singularity exec --nv   /msc/home/cwatze93/container/ra_utils.sif \
 
 singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
     python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py \
-    --config  $config_file  
+    --config  $config_file  \
+    --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml
+    # --debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir
 #-------------------------
 
 
