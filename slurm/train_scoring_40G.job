@@ -21,7 +21,7 @@
 
 # ONLY for DEV
 ####SBATCH --time=3-00:00:00
-#SBATCH --time=0-00:30:00
+###SBATCH --time=0-00:30:00
 
 
 #SBATCH -p gpu
@@ -34,11 +34,10 @@
 # Exit on error
 set -e 
 
-# export MLFLOW_TRACKING_URI="file:///msc/home/cwatze93/data/mlflow/mlruns_02"
-# export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
+export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
 
 # export CSEG_UTILS_MP_METHOD="spawn"
-# export CSEG_UTILS_MP_METHOD="fork"
+# export CSEG_UTILS_MP_METHOD="fork"    # If this does not work resort to file_sytem!
 # export CSEG_UTILS_MP_METHOD="forkserver"
 
 if [ "$#" -eq 1 ]; then
@@ -68,8 +67,8 @@ singularity exec --nv   /msc/home/cwatze93/container/ra_utils.sif \
 singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
     python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py \
     --config  $config_file  \
-    --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml \
-    --debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir
+    --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml #\
+    #--debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir
 #-------------------------
 
 
