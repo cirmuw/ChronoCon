@@ -14,3 +14,6 @@ def main():
     }
     print("package_infos:::")
     pprint(package_info_parameters)
+
+if __name__ == "__main__":
+    main()
