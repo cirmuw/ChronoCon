@@ -24,7 +24,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
                  config_name=None,
                  append_BEST_VAL_as_last=False): 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print("Running on ", device)
+    if verbose >= VerboseLevel.CHATTY:
+        print("Running on ", device)
 
     #-----------------------------------------------------------------------
     # Load tables with paths and scores (+ split)

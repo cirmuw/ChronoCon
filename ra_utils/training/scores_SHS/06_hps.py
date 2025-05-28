@@ -209,14 +209,15 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
         
         artifact_uri = mlflow.get_artifact_uri()
         print("ARTIFACTS URI = ", artifact_uri)
-        mlflow.log_dict(study.best_params, artifact_file="config_files/best_params.yml")
-       
-        
-        print("DONE WITH ALL!")
-        pprint(study.best_params)
-        
         # NOTE
         # One could log best parameters as artifact (see other HPS file)      
+        mlflow.log_dict(study.best_params, artifact_file="config_files/best_params.yml")
+        print(f"DONE with full HPS direction={direction}, search_metric={search_metric}, n_trials={n_trials}")
+        pprint(study.best_params)
+
+        mlflow.log_dict(config, artifact_file="config_files/hps_config.yml")
+        
+
     
     return None
 #--------------------------------------------------------------------------------------------------------------
