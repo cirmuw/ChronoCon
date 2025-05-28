@@ -419,7 +419,8 @@ def train_loop_AE_v3(
     classes: Optional[List[str]] = None,
     log_model: bool = False,
     verbose: bool = True,
-    ES_metric_key = "Ly"  # which metric to use for early stopping
+    ES_metric_key = "Ly",  # which metric to use for early stopping
+    append_BEST_VAL_as_last = False
 ):
     """
     Similar to v2 but added triplet loss. 
@@ -434,10 +435,12 @@ def train_loop_AE_v3(
     )
     epochs_no_improve = 0
     print("Starting training")
+
+    metrics_Tr, metrics_Val = [], []
     for epoch in range(epochs):
         # ------------------------------------------------------------------
         # 1) Train one epoch -------------------------------------------------
-        train_loss_dct = training_epoch_AE_v3(
+        train_metrics_dct = training_epoch_AE_v3(
             model_AE,
             optimizer,
             train_dataloaders,
@@ -453,14 +456,15 @@ def train_loop_AE_v3(
             transform=transform,
             device=device,
         )
+        metrics_Tr.append(train_metrics_dct)
 
         # log training scalar losses
         
-        _log_scalar_dict("train_", train_loss_dct, step=epoch)
+        _log_scalar_dict("train_", train_metrics_dct, step=epoch)
 
         # ------------------------------------------------------------------
         # 2) Validation ------------------------------------------------------
-        val_metrics = val_epoch_AE_v3(
+        val_metrics_dct = val_epoch_AE_v3(
             model_AE,
             val_loaders,
             model_classifier=model_classifier,
@@ -477,23 +481,24 @@ def train_loop_AE_v3(
             classes=classes,
             return_all_predictions=False,
         )
-        val_loss = val_metrics["L"]
+        val_loss = val_metrics_dct["L"]
+        metrics_Val.append(val_metrics_dct)
 
         # basic console printout -------------------------------------------
         if verbose:
             print(
                 (
                     f"Epoch {epoch}/{epochs} | "
-                    f"train L: {train_loss_dct['L']:.4f} "
+                    f"train L: {train_metrics_dct['L']:.4f} "
                     f"val L: {val_loss:.4f}"
                 )
             )
         if verbose > 1:
             train_losses = "  Train:      " + " | ".join(
-            f"{key}: {value:.3f}" for key, value in train_loss_dct.items() if key != "L"
+            f"{key}: {value:.3f}" for key, value in train_metrics_dct.items() if key != "L"
             )
             val_losses = "  Validation: " + " | ".join(
-            f"{key}: {value:.3f}" for key, value in val_metrics.items() if (
+            f"{key}: {value:.3f}" for key, value in val_metrics_dct.items() if (
                 key.startswith("L") and 
                 key != "L")
             )
@@ -508,23 +513,23 @@ def train_loop_AE_v3(
 
             # build and print the training-relative‐loss line
             train_rel = "     rel. loss contribution Tr.: " + " | ".join(
-                f"{k}: {(w * train_loss_dct[k] / train_loss_dct['L']):.2f}"
+                f"{k}: {(w * train_metrics_dct[k] / train_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
-                if k in train_loss_dct
+                if k in train_metrics_dct
             )
             print(train_rel)
 
             # build and print the validation-relative‐loss line
             val_rel = "     rel. loss contribution Val: " + " | ".join(
-                f"{k}: {(w * val_metrics[k] / val_metrics['L']):.2f}"
+                f"{k}: {(w * val_metrics_dct[k] / val_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
-                if k in val_metrics
+                if k in val_metrics_dct
             )
             print(val_rel)
 
         # log validation classification metrics with legacy helper ----------
         log_metrics_mlflow(
-            val_metrics,
+            val_metrics_dct,
             prefix="val_",
             classes=classes,
             step=epoch,
@@ -533,7 +538,7 @@ def train_loop_AE_v3(
 
         # also log reconstruction / latent / per‑head losses
         extra_loss_keys = {
-            k: v for k, v in val_metrics.items() if k.startswith("L")
+            k: v for k, v in val_metrics_dct.items() if k.startswith("L")
         }
         _log_scalar_dict("val_", extra_loss_keys, step=epoch)
 
@@ -544,10 +549,12 @@ def train_loop_AE_v3(
 
         # ------------------------------------------------------------------
         # 4) Early stopping --------------------------------------------------
-        val_loss_ES = val_metrics[ES_metric_key]  # used to be val_loss
+        val_loss_ES = val_metrics_dct[ES_metric_key]  # used to be val_loss
         if not run_full_epochs:
             improved = val_loss_ES < best_val_loss
             if improved:
+                val_metrics_dct_BEST = val_metrics_dct.copy()
+                train_metrics_dct_BEST = train_metrics_dct.copy()
                 if verbose:
                     improvement = (-(val_loss_ES - best_val_loss) / best_val_loss)*100
                     print(
@@ -570,11 +577,11 @@ def train_loop_AE_v3(
 
                 # artifacts: save best classification report & CM
                 mlflow.log_dict(
-                    val_metrics["classification_report"],
+                    val_metrics_dct["classification_report"],
                     "metrics/best_val_classification_report.json",
                 )
                 mlflow.log_dict(
-                    val_metrics["confusion_matrix"],
+                    val_metrics_dct["confusion_matrix"],
                     "metrics/best_val_confusion_matrix.json",
                 )
             else:
@@ -585,6 +592,13 @@ def train_loop_AE_v3(
                     )
                     break
 
+
+    if append_BEST_VAL_as_last: 
+        metrics_Tr.append(train_metrics_dct_BEST)
+        metrics_Val.append(val_metrics_dct_BEST)
+
+
+
     # ----------------------------------------------------------------------
     # 5) Wrap‑up: restore best weights -------------------------------------
     if not run_full_epochs:
@@ -592,7 +606,7 @@ def train_loop_AE_v3(
         if model_classifier is not None and best_clf_state is not None:
             model_classifier.load_state_dict(best_clf_state)
 
-    return model_AE, model_classifier
+    return model_AE, model_classifier, metrics_Tr, metrics_Val
 
 
 
