@@ -1,0 +1,78 @@
+#!/bin/sh
+
+# For now small node is enouth
+#   #SBATCH -q 3g.20gb
+#   #SBATCH --cpus-per-task=18
+#   #SBATCH --gres=gpu:3g.20gb:1
+#   #SBATCH --mem=128G
+
+# Later this will be needed for full res (40GB)
+#SBATCH -q a100
+#SBATCH --cpus-per-task=24
+#SBATCH --gres=gpu:a100:1
+#SBATCH --mem=150G
+
+
+# 80GB will probably not be needed ... 
+#       #SBATCH -q a100-sxm4-80gb
+#       #SBATCH --cpus-per-task=24
+#       #SBATCH --gres=gpu:a100-sxm4-80gb:1
+#       #SBATCH --mem=150G
+
+# ONLY for DEV
+####SBATCH --time=3-00:00:00
+###SBATCH --time=0-00:30:00
+
+
+#SBATCH -p gpu
+#SBATCH -o /msc/home/cwatze93/logs/%x.o%A.txt
+#SBATCH -e /msc/home/cwatze93/logs/%x.o%A.txt
+#SBATCH --mail-type=ALL
+#  #SBATCH --mail-user=watzenboeckclemens@gmx.net  # does not work?
+#SBATCH --mail-user=clemens.watzenboeck@meduniwien.ac.at
+
+# Exit on error
+set -e 
+
+export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
+
+# export CSEG_UTILS_MP_METHOD="spawn"
+# export CSEG_UTILS_MP_METHOD="fork"    # If this does not work resort to file_sytem!
+# export CSEG_UTILS_MP_METHOD="forkserver"
+
+if [ "$#" -eq 1 ]; then
+    config_file="$1"
+    echo "config_file="
+    echo $config_file
+else
+    echo "A config file must be given!!!"
+    exit -1
+fi
+
+
+#singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
+#   cseg_utils__print_package_infos 
+
+#singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
+#    cseg_utils__hp_search  --config  $config_file
+
+
+#------------------------
+#### DEBUGGING without rebuilding the container 
+export SINGULARITYENV_PYTHONPATH=/msc/home/cwatze93/code/RA/ra_utils:$PYTHONPATH
+singularity exec --nv   /msc/home/cwatze93/container/ra_utils.sif \
+    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/tools/print_package_info.py
+
+
+singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
+    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/06_hps.py \
+    --config  $config_file  \
+    --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml #\
+    #--debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir
+#-------------------------
+
+
+
+
+
+
