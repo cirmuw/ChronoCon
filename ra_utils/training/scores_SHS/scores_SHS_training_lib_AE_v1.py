@@ -417,7 +417,8 @@ def train_loop_AE_v3(
     lambda_z_triplet_classes = 1.0,  
     transform=lambda x: x,
     classes: Optional[List[str]] = None,
-    log_model: bool = False,
+    log_model_full: bool = False,
+    log_model_state_dct: bool = False,
     verbose: bool = True,
     ES_metric_key = "Ly",  # which metric to use for early stopping
     append_BEST_VAL_as_last = False
@@ -569,12 +570,23 @@ def train_loop_AE_v3(
                 epochs_no_improve = 0
 
                 # optional MLflow model snapshot
-                if log_model:
+                if log_model_full:
                     mlflow.pytorch.log_model(model_AE, "best_model_AE")
                     if model_classifier is not None:
                         mlflow.pytorch.log_model(
                             model_classifier, "best_model_classifier"
                         )
+
+
+                if log_model_state_dct: 
+                    torch_ckpt = "model_AE_state_dict.pt"
+                    torch.save(model_AE.state_dict(), torch_ckpt)
+                    mlflow.log_artifact(torch_ckpt, artifact_path="checkpoints")
+                    if model_classifier is not None:
+                        torch_ckpt = "model_classifier_state_dict.pt"
+                        torch.save(model_classifier.state_dict(), torch_ckpt)
+                        mlflow.log_artifact(torch_ckpt, artifact_path="checkpoints")
+
 
                 # artifacts: save best classification report & CM
                 mlflow.log_dict(

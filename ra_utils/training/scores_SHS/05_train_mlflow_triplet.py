@@ -47,7 +47,7 @@ def main():
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp16_reg_head/dev.yml", 
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/config_trial.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
@@ -76,7 +76,10 @@ def main():
         
 
     
-    experiment_id = ra_utils.utils.utils_mlflow.get_or_create_experiment(config["experiment_name"])
+    
+    experiment = mlflow.set_experiment(config["experiment_name"])
+    experiment_id = experiment.experiment_id
+    
 
     with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=True) as run:
 

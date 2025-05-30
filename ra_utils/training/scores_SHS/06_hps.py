@@ -152,19 +152,21 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
         
 
     #------------------------------
-    experiment_id = ra_utils.utils.utils_mlflow.get_or_create_experiment(config["experiment_name"])
+    experiment = mlflow.set_experiment(config["experiment_name"])
+    experiment_id = experiment.experiment_id
+    # experiment_id = ra_utils.utils.utils_mlflow.get_or_create_experiment(config["experiment_name"])
     config_hps = config["hps"]
     
 
 
     # Initiate the parent run and call the hyperparameter tuning child run logic
-    with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=True):
+    with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=False):
         # Initialize the Optuna study
 
         direction = config_hps.get("search_direction", "minimize")
         search_metric = config_hps.get("search_metric", "Ly")
-        n_trials = config.get("n_trials", 10)
-        exception_cost_value = config.get("exception_cost_value", 10)
+        n_trials = config_hps.get("n_trials", 10)
+        exception_cost_value = config_hps.get("exception_cost_value", 10)
 
         print(f"Running hyperparameter search with: direction={direction}, search_metric={search_metric}, n_trials={n_trials}")
         study = optuna.create_study(direction=direction)

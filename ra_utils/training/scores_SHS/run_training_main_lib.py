@@ -16,7 +16,86 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
 from ra_utils.networks.loss_function import get_score_loss_function, get_triplet_loss_fn
 import torchvision.transforms.v2 as v2
 from ra_utils.training.scores_SHS.model_builders import build_models_AE_v1_and2
+import ra_utils.utils.utils_torch
 from ra_utils.utils.verbosity_enums import *
+import ra_utils.utils.utils
+# ------------------------------------------------------------------
+# utility helpers ---------------------------------------------------
+def _state_dict_from_uri(uri: str):
+    """Load a checkpoint's state-dict from either a file path or MLflow URI."""
+    if uri.endswith((".pt", ".pth", ".bin")):          # plain torch file
+        return torch.load(uri, map_location="cpu", weights_only=True)
+    # otherwise we assume an MLflow model URI, e.g. "runs:/<run_id>/best_model_AE"
+    return mlflow.pytorch.load_model(uri).state_dict()
+
+def _load_submodule(submodule, src_sd, prefix, strict=False, msg="", verbose=0):
+    """Copy every tensor whose key starts with `prefix` into `submodule`."""
+    filtered = {k[len(prefix):]: v for k, v in src_sd.items() if k.startswith(prefix)}
+    missing, unexpected = submodule.load_state_dict(filtered, strict=strict)
+    if verbose > 1: 
+        print(f"{msg}  | loaded={len(filtered):4d}  missing={len(missing):3d}  unexpected={len(unexpected):3d}")
+    if verbose > 2:
+        if len(filtered) > 0:
+            print(f"Loaded keys: {list(filtered.keys())[:5]}...")
+        if len(missing) > 0:
+            print(f"Missing keys: {missing[:5]}...")
+        if len(unexpected) > 0:
+            print(f"Unexpected keys: {unexpected[:5]}...")
+
+
+def maybe_partially_init_model_from_state_dict(config: dict, 
+                                                model_AE: nn.Module, 
+                                                model_c: nn.Module, 
+                                                verbose=2):
+
+
+    # ------------------------------------------------------------------
+    # 1) DECODER-ONLY ----------------------------------------------------
+    if config.get("model_initialization", {}).get("load_decoder_only", False):
+        uri = config["model_initialization"]["pth_src_AE"]
+        if verbose: 
+            print(f"→ Loading *reconstruction decoder* from {uri}")
+        ckpt_sd = _state_dict_from_uri(uri)
+        # path inside ckpt: "auto_encoder.decoders.recon.<weight_name>"
+        target = model_AE.auto_encoder.decoders["recon"]
+        _load_submodule(target, ckpt_sd,
+                        prefix="auto_encoder.decoders.recon.",
+                        strict=False,
+                        msg="decoder", 
+                        verbose=verbose)
+
+
+    # ------------------------------------------------------------------
+    # 2) FULL AUTO-ENCODER ----------------------------------------------
+    if config.get("model_initialization", {}).get("load_full_AE", False):
+        uri = config["model_initialization"]["pth_src_AE"]
+        if verbose: 
+            print(f"→ Loading FULL auto-encoder from {uri}")
+        ckpt_sd = _state_dict_from_uri(uri)
+
+        target = model_AE.auto_encoder                     
+        _load_submodule(target, ckpt_sd,
+                        prefix="auto_encoder.",
+                        strict=False,                     
+                        msg="auto_encoder", 
+                        verbose=verbose)
+
+
+    # ------------------------------------------------------------------
+    # 3) CLASSIFIER ------------------------------------------------------
+    if config.get("load_classifier", {}).get("load_full_AE", False):
+        uri = config["model_initialization"]["pth_src_classifier"]
+        if verbose: 
+            print(f"→ Loading classifier from {uri}")
+        ckpt_sd = _state_dict_from_uri(uri)
+
+        _load_submodule(model_c, ckpt_sd,
+                        prefix="",                         # whole ckpt *is* the classifier
+                        strict=False,
+                        msg="classifier", 
+                        verbose=verbose)
+    return None
+
 
 
 
@@ -69,6 +148,9 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
                                         attention_paths_dct = attention_paths_dct
                                         )
 
+    maybe_partially_init_model_from_state_dict(config, model_AE, model_c, verbose=3)
+
+
     model_AE.to(device)
     model_c.to(device)
 
@@ -78,24 +160,44 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     loss_fn_z = nn.L1Loss()
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores", {}))
 
+
+
     # ---- joint optimizer with separate lrs --------------------------------
-    opt_cfg = config["optimizer_params"].copy()
-    lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
-    lr_clf = opt_cfg["learning_rates"]["classifier"]
-    param_groups = [
-        {"params": model_AE.parameters(), "lr": lr_ae},
-        {"params": model_c.parameters(),  "lr": lr_clf},
-    ]
-    print(opt_cfg["other_optimizer_kwargs"])
-    optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
+    # opt_cfg = config["optimizer_params"].copy()
+    # lr_ae  = opt_cfg["learning_rates"]["encoder__OR__decoder"]
+    # lr_clf = opt_cfg["learning_rates"]["classifier"]
+    # param_groups = [
+    #     {"params": model_AE.parameters(), "lr": lr_ae},
+    #     {"params": model_c.parameters(),  "lr": lr_clf},
+    # ]
+    # print(opt_cfg["other_optimizer_kwargs"])
+    # optimizer = torch.optim.AdamW(param_groups, **opt_cfg["other_optimizer_kwargs"])
+    # # scheduler
+    # scheduler = None
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'min', verbose=True)
+
+    optimizer_params = config["optimizer_params"]
+    scheduler_params = config.get("scheduler_params", {})
+
+    optimizer_name = config.get('optimizer_name', "torch.optim.AdamW")
+    optimizer_class = ra_utils.utils.utils.pydoc_locate_targets([optimizer_name], chill=False)[0]  
     
+    scheduler_name = config.get('scheduler_name', None)
+    scheduler_class = ra_utils.utils.utils.pydoc_locate_targets([scheduler_name], chill=False)[0] if scheduler_name else None
+
+    optimizer, scheduler = ra_utils.utils.utils_torch.plan_optimization_v3(
+        [model_AE, model_c], # maybe add loss functions if these are trainable
+        optimizer_class=optimizer_class, optimizer_params=optimizer_params,
+        scheduler_class=scheduler_class, scheduler_params=scheduler_params,
+        verbose = (verbose == VerboseLevel.CHATTY)
+    )
+
+
+
+
+    # AE transform 
     sigma = config.get("AE_transform", {}).get("GaussianNoise_sigma", 0.05)
     transform_AE = v2.GaussianNoise(mean=0, sigma = sigma, clip=True)
-
-    # scheduler
-    scheduler = None
-    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', verbose=True)
-
 
     train_dataloaders = {k: data[k]["train_loader"] for k in data.keys()}
     val_loaders = {k: data[k]["val_loader"] for k in data.keys()}
@@ -125,7 +227,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
         lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),  # used to be 1...              
         transform=transform_AE,
         classes=classes,
-        log_model=config["SAVE_MODEL"],
+        log_model_full=config.get("SAVE_MODEL_FULL", False),
+        log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
         verbose=3,
         ES_metric_key=config["training"].get("early_stopping_metric_key", "L"), 
         append_BEST_VAL_as_last=append_BEST_VAL_as_last
