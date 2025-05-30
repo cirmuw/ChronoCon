@@ -73,7 +73,8 @@ def generate_objective(
             try: # catch cuda.OOM 
                 # Define hyperparameters
                 config_trial = deepcopy(config)
-                ra_utils.utils.optuna.recursive_suggest_trial_parameters(trial, config_trial)
+                ra_utils.utils.optuna.recursive_suggest_trial_parameters(trial, config_trial, 
+                                                                         treat_dot_params_special = config.get("hps_treat_dot_params_special", False))
 
 
                 if verbose in [PRINT_PARAMS, CHATTY]:

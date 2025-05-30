@@ -243,14 +243,15 @@ def recursive_change_optuna_params_to_normal_params(config_part):
             pass  # dont change the non_dicts
 
 
-def recursive_suggest_trial_parameters(trial, config_part):
+def recursive_suggest_trial_parameters(trial, config_part, treat_dot_params_special=True):
     for k, v in config_part.items():
         if isinstance(v, dict):
             if is_pure_optuna_params_dict(v):
                 config_part[k] = generate_optuna_params(trial, v)  # leaf (convert)
-                config_part[k] = update_dot_dicts_with_sub_dicts(config_part[k])
+                if treat_dot_params_special: 
+                    config_part[k] = update_dot_dicts_with_sub_dicts(config_part[k])
             else:  # might have one at a sublevel
-                recursive_suggest_trial_parameters(trial, v)
+                recursive_suggest_trial_parameters(trial, v, treat_dot_params_special=treat_dot_params_special)
         else:
             pass  # dont change the non_dicts
     
