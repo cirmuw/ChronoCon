@@ -193,7 +193,7 @@ def min_max_normalize(img):
     return img
 
 
-def make_trainings_transforms(transforms_config): 
+def make_trainings_transforms(transforms_config, DIM=2): 
 
     transforms = [
         LoadImaged(keys=["img"], reader="NumpyReader"),
@@ -243,7 +243,10 @@ def make_trainings_transforms(transforms_config):
 
 
     # ROI was previously enlarged. Starting from this dim
-    t = CenterSpatialCropd(keys=["img"], roi_size=transforms_config["OUTPUT_DIM"])
+    out_dim = transforms_config["OUTPUT_DIM"]
+    if isinstance(out_dim, int): #make 2d 
+        out_dim = [out_dim]*DIM
+    t = CenterSpatialCropd(keys=["img"], roi_size=out_dim)
     transforms.append(t)
     
     RandFlipd__bool = transforms_config.get("RandFlipd__bool", True)
@@ -284,7 +287,7 @@ def make_trainings_transforms(transforms_config):
     return transforms
 
 
-def make_validation_transforms(transforms_config = {"OUTPUT_DIM": (128, 128)}): 
+def make_validation_transforms(transforms_config = {"OUTPUT_DIM": (128, 128)}, DIM=2): 
     transforms = [
         LoadImaged(keys=["img"], reader="NumpyReader"),
         EnsureChannelFirstd(keys=["img"]),
@@ -292,7 +295,10 @@ def make_validation_transforms(transforms_config = {"OUTPUT_DIM": (128, 128)}):
     ]
 
     # ROI was previously enlarged. Starting from this dim
-    t = CenterSpatialCropd(keys=["img"], roi_size=transforms_config["OUTPUT_DIM"])
+    out_dim = transforms_config["OUTPUT_DIM"]
+    if isinstance(out_dim, int): #make 2d 
+        out_dim = [out_dim]*DIM
+    t = CenterSpatialCropd(keys=["img"], roi_size=out_dim)
     transforms.append(t)
     
     # Create RGB like data for ResNet

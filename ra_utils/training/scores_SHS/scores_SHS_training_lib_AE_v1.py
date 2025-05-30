@@ -481,7 +481,7 @@ def train_loop_AE_v3(
             device=device,
             classes=classes,
             return_all_predictions=False,
-            calc_ICC3=0  # maybe add for HPS...
+            calc_ICC3=1  # maybe add for HPS...
         )
         val_loss = val_metrics_dct["L"]
         metrics_Val.append(val_metrics_dct)

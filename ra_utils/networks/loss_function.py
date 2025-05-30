@@ -112,7 +112,7 @@ class FocalLoss(nn.Module):
 
     def __init__(self,
                  alpha: Optional[Tensor] = None,
-                 gamma: float = 0.,
+                 gamma: float = 2.,
                  reduction: str = 'mean',
                  ignore_index: int = -100):
         """Constructor.
@@ -248,7 +248,7 @@ class MSECELoss(nn.Module):
 
 
 class PaulsOrdinalLoss(nn.Module):
-    def __init__(self, lam=0):
+    def __init__(self, lam=2):
         super(PaulsOrdinalLoss, self).__init__()
         self.lam = lam
 
@@ -269,8 +269,8 @@ class PaulsOrdinalLossFocal(nn.Module):
 
     def __init__(self,
                  alpha: Optional[Tensor] = None,
-                 gamma: float = 0.,
-                 lam: float = 0.,
+                 gamma: float = 2.,
+                 lam: float = 2.,
                  reduction: str = 'mean',
                  ignore_index: int = -100):
         """Constructor.
