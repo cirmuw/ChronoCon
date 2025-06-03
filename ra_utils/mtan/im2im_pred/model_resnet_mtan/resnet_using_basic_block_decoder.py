@@ -199,7 +199,7 @@ class Decoder(nn.Module):
 
 
 
-def resnet18_decoder_v2():
+def resnet18_decoder_v2(*args, **kwargs):
     cfg = {"layers": [2,2,2,2]}
     decoder = Decoder(BasicBlockDec, **cfg) 
     return decoder

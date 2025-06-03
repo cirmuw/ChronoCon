@@ -409,6 +409,10 @@ def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
         postprocessor_recon = None
     elif name == "PostprocessingGrayScaleMaker_v2":
         postprocessor_recon = PostprocessingGrayScaleMaker_v2(**params)
+    elif name == "PostprocessingGrayScaleMaker_v3":
+        postprocessor_recon = PostprocessingGrayScaleMaker_v3(**params)
+    elif name == "PostprocessingGrayScaleMaker":
+        postprocessor_recon = PostprocessingGrayScaleMaker(**params)
     else: 
         raise NotImplementedError(f"{name =}")    
 
@@ -662,7 +666,7 @@ class PostprocessingGrayScaleMaker_v2(nn.Module):
     input  dim (N, 3, H, W)
     output dim (N, 1, H, W)
     """
-    def __init__(self, output_function=Literal["sigmoid", "relu", "None"]):
+    def __init__(self, output_function: Literal["sigmoid", "relu", "None"] = "sigmoid"):
         super().__init__()
         self.output_function_str = output_function
         if output_function == "None":
@@ -680,6 +684,30 @@ class PostprocessingGrayScaleMaker_v2(nn.Module):
         if self.output_function != None:
             x = self.output_function(x)
         return x
+    
+class PostprocessingGrayScaleMaker_v3(nn.Module):
+    """
+    simply use first dim
+    input  dim (N, X, H, W)
+    output dim (N, 1, H, W)
+    """
+    def __init__(self, output_function: Literal["sigmoid", "relu", "None"] = "sigmoid"):
+        super().__init__()
+        self.output_function_str = output_function
+        if output_function == "None":
+            self.output_function = None
+        elif output_function == "relu":
+            self.output_function = nn.ReLU()
+        elif output_function == "sigmoid":
+            self.output_function = nn.Sigmoid()
+        else: 
+            raise ValueError(f"{output_function=}")
+                
+    def forward(self, x):
+        x = x[:, 0:1, ...]
+        if self.output_function != None:
+            x = self.output_function(x)
+        return x    
 
 def build_ResNetAutoEncoder_v2(arch="resnet18", output_function="sigmoid"):
     out_ch = 3

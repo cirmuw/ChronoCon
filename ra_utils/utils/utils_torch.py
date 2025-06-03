@@ -37,15 +37,17 @@ class NamesFilter():
             raise ValueError(f"Unexpected type given: {type(names_filter)} — only str or function are allowed.")
 
         self.filter_fn = filter_fn
-        self.matched = None
-        self.not_matched = None
+        # self.matched = None
+        # self.not_matched = None
+        self.matched = []
+        self.not_matched = []
 
     def __repr__(self) -> str:
         return f"NamesFilter: {self.filter_str_rep}"
 
     def __call__(self, xl: List[Tuple[str, torch.nn.parameter.Parameter]]) -> None:
-        self.matched = []
-        self.not_matched = []
+        # self.matched = []
+        # self.not_matched = []
 
         for x_name, x_param in xl:
             if self.filter_fn(x_name):

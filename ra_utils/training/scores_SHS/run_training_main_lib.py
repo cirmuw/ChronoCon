@@ -19,6 +19,9 @@ from ra_utils.training.scores_SHS.model_builders import build_models_AE_v1_and2
 import ra_utils.utils.utils_torch
 from ra_utils.utils.verbosity_enums import *
 import ra_utils.utils.utils
+
+import ra_utils.utils.utils_torch
+
 # ------------------------------------------------------------------
 # utility helpers ---------------------------------------------------
 def _state_dict_from_uri(uri: str):
@@ -176,6 +179,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     # scheduler = None
     # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode = 'min', verbose=True)
 
+
     optimizer_params = config["optimizer_params"]
     scheduler_params = config.get("scheduler_params", {})
 
@@ -193,11 +197,28 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     )
 
 
+    
+    # #  This works, but not exactly what I want!
+    # param_groups = [
+    #     {"params": model_AE.parameters()},
+    #     {"params": model_c.parameters()},
+    # ]
+    # optimizer = torch.optim.AdamW(param_groups, lr=1e-4)
+    # scheduler = None
+
+
 
 
     # AE transform 
-    sigma = config.get("AE_transform", {}).get("GaussianNoise_sigma", 0.05)
-    transform_AE = v2.GaussianNoise(mean=0, sigma = sigma, clip=True)
+    AE_transform_name = config.get("AE_transform", {}).get("name")
+    if AE_transform_name == None: 
+        transform_AE = lambda x: x
+        print("NO AE transform!!!")
+    elif AE_transform_name == "GaussianNoiseWithClip":    
+        sigma = config.get("AE_transform", {}).get("GaussianNoise_sigma", 0.05)
+        transform_AE = v2.GaussianNoise(mean=0, sigma = sigma, clip=True)
+    else: 
+        raise NotImplementedError(f"{AE_transform_name = }")
 
     train_dataloaders = {k: data[k]["train_loader"] for k in data.keys()}
     val_loaders = {k: data[k]["val_loader"] for k in data.keys()}

@@ -32,7 +32,13 @@ from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet   import resnet18, resnet
 from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnetT  import resnet18_decoder, resnet34_decoder, resnet50_decoder
 
 encoder_by_name = dict(resnet18=resnet18, resnet34=resnet34, resnet50=resnet50)
+
+from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_using_basic_block_decoder import (
+    resnet18_decoder_v2
+)
+
 decoder_by_name = dict(resnet18=resnet18_decoder,
+                       #resnet18 = resnet18_decoder_v2, 
                        resnet34=resnet34_decoder,
                        resnet50=resnet50_decoder)
 
