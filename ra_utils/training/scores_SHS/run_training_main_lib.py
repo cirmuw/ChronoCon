@@ -10,7 +10,7 @@ from ra_utils.data.dataloader_CR_patches import (
 )
 
 from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
-    evaluate_and_log_testset_results_AE_v2,
+    evaluate_and_log_testset_results_AE_v3,
     train_loop_AE_v3
 )
 from ra_utils.networks.loss_function import get_score_loss_function, get_triplet_loss_fn
@@ -142,6 +142,9 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     if classifier_name == "Reg":
         for k in classifier_head_infos.keys():
             classifier_head_infos[k]["out_dim"] = 1
+        config["task_type_y"] = "regression"
+    elif classifier_name == "LogReg":
+        config["task_type_y"] = "classification"
 
 
     model_name = config["model_name"]
@@ -150,6 +153,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
                                         classifier_head_infos = classifier_head_infos, 
                                         attention_paths_dct = attention_paths_dct
                                         )
+    # Maybe also make model_c_reg
+    # TODO
 
     maybe_partially_init_model_from_state_dict(config, model_AE, model_c, verbose=3)
 
@@ -159,6 +164,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 
     # define loss function
     loss_fn_y = get_score_loss_function(config["loss"]["score"])
+    # loss_fn_y_reg = get_score_loss_function(config["loss"].get("score_reg", {}))
     loss_fn_x = nn.MSELoss()
     loss_fn_z = nn.L1Loss()
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores", {}))
@@ -252,7 +258,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
         log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
         verbose=3,
         ES_metric_key=config["training"].get("early_stopping_metric_key", "L"), 
-        append_BEST_VAL_as_last=append_BEST_VAL_as_last
+        append_BEST_VAL_as_last=append_BEST_VAL_as_last,
+        task_type_y = config.get("task_type_y", "classification")
     )
 
 
@@ -265,33 +272,45 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     evaluate_on_testset = config.get("evaluate_on_testset", False)
     if evaluate_on_testset:
         print("Evaluating on test set")
-        evaluate_and_log_testset_results_AE_v2( # TODO maybe add triplet loss
+        evaluate_and_log_testset_results_AE_v3( # TODO maybe add triplet loss
             model_AE=model_AE,
             model_classifier=model_c,
             dataloaders=test_loaders,
             loss_fn_x=loss_fn_x,
             loss_fn_y=loss_fn_y,
             loss_fn_z=loss_fn_z,
+            loss_fn_z_triplet_classes=loss_fn_z_triplet_classes,
+            lambda_x=config.get('loss_weights', {}).get('lambda_x', 0.0), 
+            lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),
+            lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),
+            lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),
             device=device,
             classes=classes,
             transform=transform_AE,
             prefix="test_",
+            task_type_y = config.get("task_type_y", "classification")
         )
 
     if config.get("eval_on_val_set_once_more", True):
         print("Evaluating on val set once more")
-        evaluate_and_log_testset_results_AE_v2(
+        evaluate_and_log_testset_results_AE_v3(
             model_AE=model_AE,
             model_classifier=model_c,
             dataloaders=val_loaders,
             loss_fn_x=loss_fn_x,
             loss_fn_y=loss_fn_y,
             loss_fn_z=loss_fn_z,
+            lambda_x=config.get('loss_weights', {}).get('lambda_x', 0.0), 
+            lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),
+            lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),
+            lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),            
+            loss_fn_z_triplet_classes=loss_fn_z_triplet_classes,
             device=device,
             classes=classes,
             transform=transform_AE,
             prefix="valFinal_",
-            skip_metrics_logging=False # These are already logged in the training loop
+            skip_metrics_logging=False, # These are already logged in the training loop
+            task_type_y = config.get("task_type_y", "classification")
         )
 
     return {"metrics Val": metrics_Val,

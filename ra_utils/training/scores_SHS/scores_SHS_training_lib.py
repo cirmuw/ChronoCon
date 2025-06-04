@@ -89,12 +89,15 @@ def calculate_some_classification_metrics(all_preds, all_labels,
         spearman_corr, _ = spearmanr(all_preds, all_labels)
         metrics["spearman_corr"] = float(spearman_corr)
 
+
+
     if add_classification_metrics: 
         metrics_extras = {
         "accuracy":                float(np.mean(all_preds == all_labels)),
         "accuracy (error < 2)":    float(np.mean(np.abs(all_preds - all_labels) < 2)),
         "error > 1 (percent)":    float(np.mean(np.abs(all_preds - all_labels) > 1))*100,
         "balanced acc.":           float(balanced_accuracy_score(all_labels, all_preds)),
+        # TODO calculate also balanced recall and balanced f1 score 
         }
         metrics = {**metrics, **metrics_extras}
 

@@ -18,11 +18,6 @@ from ra_utils.data.dataloader_CR_patches import (
     check_duplicates_in_dataloader
 )
 
-from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
-    evaluate_and_log_testset_results_AE_v2,
-    train_loop_AE_v2,
-    train_loop_AE_v3
-)
 
 import ra_utils.networks.loss_function
 from ra_utils.networks.loss_function import get_score_loss_function, get_triplet_loss_fn
