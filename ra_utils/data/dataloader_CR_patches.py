@@ -743,7 +743,7 @@ def prepare_dataloaders(datasets, config):
             shuffle=not use_sampler,
             sampler=sampler,
             num_workers=num_workers,
-            drop_last=True
+            drop_last=False
         ),
         "val_loader": DataLoader(
             datasets["dataset_validation"],
