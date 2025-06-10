@@ -111,28 +111,29 @@ def make_paths_dataframe(image_path_folder: str = "/home/cwatzenboeck/data/AutoP
     return image_paths_df
 
 
-def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
-    df = df.copy()
-    df_tmp = pd.DataFrame(list(df["file_name"].apply(lambda x: extract_extras_from_filename(x, ending=".npy", replace_ending=False, filename_str="file_name"))))
-    df_tmp.drop(columns=["file_name"], inplace=True)
-    df = pd.merge(df, df_tmp, left_index=True, right_index=True, how="left")
+# def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
+#     # moved to before split ... df_include
+#     # df = df.copy()
+#     # df_tmp = pd.DataFrame(list(df["file_name"].apply(lambda x: extract_extras_from_filename(x, ending=".npy", replace_ending=False, filename_str="file_name"))))
+#     # df_tmp.drop(columns=["file_name"], inplace=True)
+#     # df = pd.merge(df, df_tmp, left_index=True, right_index=True, how="left")
 
-    data = []
-    for idx, row in df.iterrows():
-        # Each dict is a sample, referencing row["patch"] plus additional metadata
-        data.append({
-            "img": row["image_path"],  # .npy file path on disk
-            "file_name": row["file_name"],
-            "score": row["score"],
-            "score_type": row["chosen_score"],
-            "JSN_or_ERO": row["chosen_score_type"],
-            "extremity": row["extremity"],
-            "patient_id": row["patient_id"], 
-            "date_str": row["date_str"], 
-            "left_or_right": row["left_or_right"],
-            "roi_name": row["roi_name"]
-        })
-    return data
+#     data = []
+#     for idx, row in df.iterrows():
+#         # Each dict is a sample, referencing row["patch"] plus additional metadata
+#         data.append({
+#             "img": row["image_path"],  # .npy file path on disk
+#             "file_name": row["file_name"],
+#             "score": row["score"],
+#             "score_type": row["chosen_score"],
+#             "JSN_or_ERO": row["chosen_score_type"],
+#             "extremity": row["extremity"],
+#             "patient_id": row["patient_id"], 
+#             "date_str": row["date_str"], 
+#             "left_or_right": row["left_or_right"],
+#             "roi_name": row["roi_name"]
+#         })
+#     return data
 
 
 
@@ -559,7 +560,134 @@ def process_several_score_groups(data_config: dict):
     
     return data_dct
 
+from typing import Literal
+def add_patient_class_weights_and_labels(df_input, 
+                                            rule: Literal[None, "mean_round_delta_bin", "median_score", "delta_range", "delta_buckets", "mean_ceil", "mean_round"] = None, 
+                                            agg_cols = ["patient_id", "left_or_right", "chosen_score"], n_buckets=4):
 
+    if rule in (None, "", "none", "None", False):
+        # nothing to do
+        return df_input
+    else:
+        
+
+        # ---------- derive the label per patient/side/score_type ----------
+        def _clean_stat(series, fn):
+            """Apply fn to non-NaNs; keep NaN if the group is empty."""
+            clean = series.dropna()
+            return np.nan if len(clean) == 0 else fn(clean)
+
+        if rule == "median_score":
+            patient_lbl_df = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, pd.Series.median))
+                .reset_index(name="patient_cls_lbl")
+            )
+
+        elif rule == "delta_range":
+            patient_lbl_df = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, lambda s: s.max() - s.min()))
+                .reset_index(name="patient_cls_lbl")
+            )
+
+        elif rule == "delta_buckets":
+            tmp = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, lambda s: float(np.std(s, ddof=0))))
+                .reset_index()
+                .rename(columns={"score": "std_val"})
+            )
+
+            # bucket the std into `n_buckets` roughly-equal-frequency bins
+            tmp["patient_cls_lbl"] = pd.qcut(
+                tmp["std_val"],
+                q=n_buckets,
+                labels=False,
+                duplicates="drop"          # keeps it robust when many std==0
+            )
+
+            patient_lbl_df = tmp.drop(columns="std_val")
+
+        elif rule == "delta_bin":
+            tmp = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, lambda s: int(np.std(s, ddof=0) > 1.0e-5)  ))
+                .reset_index()
+                .rename(columns={"score": "std_val"})
+            )
+
+            # bucket the std into `n_buckets` roughly-equal-frequency bins
+            tmp["patient_cls_lbl"] = pd.qcut(
+                tmp["std_val"],
+                q=n_buckets,
+                labels=False,
+                duplicates="drop"          # keeps it robust when many std==0
+            )
+
+            patient_lbl_df = tmp.drop(columns="std_val")
+
+
+        elif rule == "mean_round":
+            patient_lbl_df = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, lambda s: np.round(s.mean())))
+                .reset_index(name="patient_cls_lbl")
+            )
+
+        elif rule == "mean_round_delta_bin":
+            patient_lbl_df = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(
+                    lambda x: _clean_stat(
+                        x,
+                        lambda s: f"{int(np.round(s.mean()))}_{int(np.std(s, ddof=0) > 1.0e-5)}"
+                    )
+                )
+                .reset_index(name="patient_cls_lbl")
+            )
+        # ---------
+
+        elif rule == "mean_ceil":
+            patient_lbl_df = (
+                df_input
+                .groupby(agg_cols)["score"]
+                .agg(lambda x: _clean_stat(x, lambda s: np.ceil(s.mean())))
+                .reset_index(name="patient_cls_lbl")
+            )
+
+        # ---------------------------------------------------------------
+        else:
+            raise ValueError(
+                f"Unknown patient_level_class_balance_aggregation_rule: {rule}"
+            )
+
+        col = patient_lbl_df["patient_cls_lbl"]
+
+        if pd.api.types.is_float_dtype(col):
+            # only if still float AND every non-NaN value is an integer numerically
+            if (col.dropna() % 1 == 0).all():
+                patient_lbl_df["patient_cls_lbl"] = col.astype(pd.Int64Dtype())
+        # else: column is already an (Int64/Int32/…) integer dtype → leave as-is
+
+
+        # ---------- optional class weights (1 / class frequency) -------
+        class_counts  = patient_lbl_df["patient_cls_lbl"].value_counts(dropna=True)
+        class_weights = (1.0 / class_counts).to_dict()
+        patient_lbl_df["patient_weight"] = (
+            patient_lbl_df["patient_cls_lbl"].map(class_weights).fillna(0.0)
+        )
+
+        # ---------- attach to every image row -------------------------
+        df_input = df_input.merge(patient_lbl_df, on=agg_cols, how="left")
+        return df_input
+    # ------------------------------------------------------------------
 
 
 def process_single_score_group(chosen_score, df_paths, data_config):
@@ -568,7 +696,6 @@ def process_single_score_group(chosen_score, df_paths, data_config):
         score_path_H=data_config.get("score_path_H", ""),
         score_path_F=data_config.get("score_path_F", "")
     )
-    # Add something like 412_20230101_H_L
 
 
     with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv") as f:
@@ -625,6 +752,23 @@ def process_single_score_group(chosen_score, df_paths, data_config):
 
     df_include["patient_id"] = df_include["file_name"].apply(lambda x: x.split("_")[0])
 
+    # Add other infos at this point. Maybe important for sampling weights: 
+    df = df_include.copy()
+    # df_tmp = pd.DataFrame(list(df["file_name"].apply(lambda x: extract_extras_from_filename(x, ending=".npy", replace_ending=False, filename_str="file_name"))))
+    # df_tmp.drop(columns=["file_name"], inplace=True)
+    # df_include = pd.merge(df, df_tmp, left_index=True, right_index=True, how="left")
+    df_tmp = (
+        df_include["file_name"]
+        .apply(extract_extras_from_filename)
+        .apply(pd.Series)                    # explode dict → columns
+    ).drop_duplicates()
+    # keep file_name so the merge key is explicit
+    df_include = df.merge(df_tmp, on="file_name", how="left")
+
+
+
+
+
     if data_config.get("use_splits_file", False):
         df_train, df_val, df_test, df_missed = split_using_file(df_include, data_config["splits_file"])
     else:
@@ -634,6 +778,13 @@ def process_single_score_group(chosen_score, df_paths, data_config):
     df_train = pd.merge(df_paths[["image_path", "file_name"]], df_train, on="file_name")
     df_val   = pd.merge(df_paths[["image_path", "file_name"]], df_val, on="file_name")
     df_test  = pd.merge(df_paths[["image_path", "file_name"]], df_test, on="file_name")
+
+    rule = data_config.get("patient_level_class_balance_aggregation_rule")
+    n_buckets = data_config.get("delta_buckets_k", 4)    # only for delta_buckets
+    df_train = add_patient_class_weights_and_labels(df_train, rule = rule, n_buckets=n_buckets)
+    df_val   = add_patient_class_weights_and_labels(df_val,   rule = rule, n_buckets=n_buckets)
+    df_test  = add_patient_class_weights_and_labels(df_test,  rule = rule, n_buckets=n_buckets)
+
 
 
 
@@ -645,6 +796,8 @@ def process_single_score_group(chosen_score, df_paths, data_config):
         "df_test": df_test,
         "df_included_missed": df_missed
     }
+
+
 
 def load_img_SHS_patch_data(data_config: dict):
     df_paths = make_paths_dataframe(
@@ -690,6 +843,34 @@ def split_using_file(df_include, splits_file_path):
 #     return df_train, df_val, df_test
 
 
+#from ra_utils.data.datasampler_CR_patches import PatientBatchSampler
+
+def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
+    data = []
+    for idx, row in df.iterrows():
+        # Each dict is a sample, referencing row["patch"] plus additional metadata
+        d = {
+            "img": row["image_path"],  # .npy file path on disk
+            "file_name": row["file_name"],
+            "score": row["score"],
+            "score_type": row["chosen_score"],
+            "JSN_or_ERO": row["chosen_score_type"],
+            "extremity": row["extremity"],
+            "patient_id": row["patient_id"], 
+            "date_str": row["date_str"], 
+            "left_or_right": row["left_or_right"],
+            "roi_name": row["roi_name"]
+        }
+        if "patient_cls_lbl" in row.keys():
+            d["patient_cls_lbl"] = row["patient_cls_lbl"]
+        if "patient_weight" in row.keys():
+            d["patient_weight"] = row["patient_weight"]
+        data.append(d)
+
+    return data
+
+
+
 def dataset_and_loader(data_tables, config):
     """
     Create datasets and dataloaders for training, validation, and testing.
@@ -720,44 +901,296 @@ def prepare_datasets(data_tables, config):
     }
 
 
+# ---------------------------------------------------------------------
+#  Samplers
+# ---------------------------------------------------------------------
+from collections import defaultdict
+import random, math
+from torch.utils.data import Sampler, DataLoader, WeightedRandomSampler
+import torch
+
+
+class PatientBatchSampler(Sampler):
+    """
+    Groups indices by patient and yields mini-batches that
+    (almost) always contain a single patient.
+    """
+
+    def __init__(self, patient_ids, batch_size, drop_last=False):
+        self.batch_size = batch_size
+        self.drop_last  = drop_last
+
+        self.patient2idx = defaultdict(list)
+        for idx, pid in enumerate(patient_ids):
+            self.patient2idx[pid].append(idx)
+
+    # --------------------------------------------------
+    def _epoch_batches(self):
+        # shuffle within every patient
+        for bucket in self.patient2idx.values():
+            random.shuffle(bucket)
+
+        patient_order = list(self.patient2idx.keys())
+        random.shuffle(patient_order)
+
+        for pid in patient_order:
+            bucket = self.patient2idx[pid]
+            for i in range(0, len(bucket), self.batch_size):
+                chunk = bucket[i : i + self.batch_size]
+                if len(chunk) == self.batch_size or not self.drop_last:
+                    yield chunk
+
+    # --------------------------------------------------
+    def __iter__(self):
+        yield from self._epoch_batches()
+
+    def __len__(self):
+        n = sum(len(v) for v in self.patient2idx.values())
+        return n // self.batch_size if self.drop_last else math.ceil(n / self.batch_size)
+
+
+# class WeightedPatientBatchSampler(Sampler):
+#     """
+#     Same as PatientBatchSampler but draws patients with replacement
+#     according to a weight per patient_id.
+#     """
+
+#     def __init__(self, dataset, patient_weights, batch_size, drop_last=False):
+#         self.dataset      = dataset
+#         self.batch_size   = batch_size
+#         self.drop_last    = drop_last
+
+#         # patient → list[idx]
+#         self.patient2idx  = defaultdict(list)
+#         for idx, item in enumerate(dataset.data):
+#             self.patient2idx[item["patient_id"]].append(idx)
+
+#         self.patient_ids  = list(self.patient2idx.keys())
+#         self.weights      = [patient_weights.get(pid, 1.0) for pid in self.patient_ids]
+
+#     # --------------------------------------------------
+#     def __iter__(self):
+#         # shuffle inside each bucket every epoch
+#         buckets = {p: idxs.copy() for p, idxs in self.patient2idx.items()}
+#         for idxs in buckets.values():
+#             random.shuffle(idxs)
+
+#         while any(buckets.values()):
+#             pid = random.choices(self.patient_ids, weights=self.weights, k=1)[0]
+#             if not buckets[pid]:
+#                 continue
+#             chunk = buckets[pid][: self.batch_size]
+#             del buckets[pid][: len(chunk)]
+#             if len(chunk) == self.batch_size or not self.drop_last:
+#                 yield chunk
+
+#     # --------------------------------------------------
+#     def __len__(self):
+#         n = sum(len(v) for v in self.patient2idx.values())
+#         return n // self.batch_size if self.drop_last else math.ceil(n / self.batch_size)
+
+# utils.py  (or wherever your samplers live)
+from collections import defaultdict
+import random, math
+from torch.utils.data import Sampler
+import numpy as np
+
+
+class WeightedPatientBatchSampler(Sampler):
+    """
+    • Draws patients with replacement according to `patient_weights`.
+    • Fills a batch with as many images of that patient as possible,
+      but tops up with other patients so the batch has `batch_size`
+      elements (except possibly the final batch if drop_last=False).
+    """
+
+    def __init__(self, dataset, patient_weights, batch_size, drop_last=False):
+        self.dataset    = dataset
+        self.batch_size = batch_size
+        self.drop_last  = drop_last
+
+        # patient_id → [idx, idx, …]
+        self.patient2idx = defaultdict(list)
+        for idx, item in enumerate(dataset.data):
+            self.patient2idx[item["patient_id"]].append(idx)
+
+        self.patient_ids = list(self.patient2idx.keys())
+        self.weights     = np.array(
+            [max(patient_weights.get(pid, 1.0), 0.0) for pid in self.patient_ids],
+            dtype=float
+        )
+        # guarantee the weights sum > 0
+        if self.weights.sum() == 0:
+            self.weights[:] = 1.0
+
+    # ------------------------------------------------------------------
+    def __iter__(self):
+        # fresh copy & shuffle inside each patient every epoch
+        buckets = {p: idxs.copy() for p, idxs in self.patient2idx.items()}
+        for idxs in buckets.values():
+            random.shuffle(idxs)
+
+        current_batch = []
+
+        while any(buckets.values()):
+            # (re)fill batch until we hit batch_size
+            if len(current_batch) < self.batch_size:
+                # sample a patient with replacement, weighted
+                pid = random.choices(self.patient_ids, weights=self.weights, k=1)[0]
+                if not buckets[pid]:
+                    continue  # this patient is empty; pick again
+
+                n_take = min(len(buckets[pid]),
+                             self.batch_size - len(current_batch))
+                current_batch.extend(buckets[pid][: n_take])
+                del buckets[pid][: n_take]
+
+            # emit if full
+            if len(current_batch) == self.batch_size:
+                yield current_batch
+                current_batch = []
+
+        # leftovers
+        if current_batch and not self.drop_last:
+            yield current_batch
+
+    # ------------------------------------------------------------------
+    def __len__(self):
+        n = len(self.dataset)
+        return n // self.batch_size if self.drop_last else math.ceil(n / self.batch_size)
+
+
+
+# ---------------------------------------------------------------------
+#  Data-loader factory
+# ---------------------------------------------------------------------
 def prepare_dataloaders(datasets, config):
-    batch_size = config["training"]["batch_size"]
-    num_workers = config["training"]["num_workers"]
-    use_sampler = config["training"].get("use_WeightedRandomSampler", False)
+    tr_cfg       = config["training"]
+    batch_size   = tr_cfg["batch_size"]
+    num_workers  = tr_cfg["num_workers"]
 
-    sampler = None
-    if use_sampler:
-        labels = [item['score'] for item in datasets["dataset_train"].data]
-        class_count = torch.bincount(torch.tensor(labels))
-        class_weights = 1.0 / class_count.float()
-        sample_weights = [class_weights[label] for label in labels]
+    use_img_sampler        = tr_cfg.get("use_WeightedRandomSampler", False)
+    use_patient_sampler    = tr_cfg.get("use_PatientBatchSampler", False)
+    use_patient_w_sampler  = tr_cfg.get("use_PatientLevelWeightedRandomSampler", False)
 
-        sampler = WeightedRandomSampler(weights=sample_weights,
+    # only one of the three modes may be active
+    assert sum([use_img_sampler,
+                use_patient_sampler,
+                use_patient_w_sampler]) <= 1, "Choose exactly one sampling mode."
+
+    # ---------- classic image-level weighted sampler ----------
+    if use_img_sampler:
+        labels         = [item['score'] for item in datasets["dataset_train"].data]
+        class_count    = torch.bincount(torch.tensor(labels))
+        class_weights  = 1.0 / class_count.float()
+        sample_weights = [class_weights[l] for l in labels]
+
+        sampler = WeightedRandomSampler(sample_weights,
                                         num_samples=len(sample_weights),
                                         replacement=True)
 
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  sampler=sampler,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+
+    # ---------- patient-homogeneous batches, no weights ----------
+    elif use_patient_sampler:
+        patient_ids  = [d["patient_id"] for d in datasets["dataset_train"].data]
+        batch_sampler = PatientBatchSampler(patient_ids,
+                                            batch_size=batch_size,
+                                            drop_last=False)
+
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+
+    # ---------- patient-homogeneous batches, WITH weights ----------
+    elif use_patient_w_sampler:
+        # Build patient → weight dict (default 1.0)
+        patient_weights = {}
+        for d in datasets["dataset_train"].data:
+            pid = d["patient_id"]
+            w   = d.get("patient_weight", 1.0)
+            patient_weights.setdefault(pid, w)
+
+        batch_sampler = WeightedPatientBatchSampler(datasets["dataset_train"],
+                                                    patient_weights=patient_weights,
+                                                    batch_size=batch_size,
+                                                    drop_last=False)
+
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+
+    # ---------- plain shuffle (baseline) ----------
+    else:
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+
+    # validation / test unchanged
+    val_loader = DataLoader(datasets["dataset_validation"],
+                            batch_size=batch_size,
+                            shuffle=False,
+                            num_workers=num_workers)
+
+    test_loader = DataLoader(datasets["dataset_test"],
+                             batch_size=batch_size,
+                             shuffle=False,
+                             num_workers=num_workers)
+
     return {
-        "train_loader": DataLoader(
-            datasets["dataset_train"],
-            batch_size=batch_size,
-            shuffle=not use_sampler,
-            sampler=sampler,
-            num_workers=num_workers,
-            drop_last=False
-        ),
-        "val_loader": DataLoader(
-            datasets["dataset_validation"],
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-        ),
-        "test_loader": DataLoader(
-            datasets["dataset_test"],
-            batch_size=batch_size,
-            shuffle=False,
-            num_workers=num_workers,
-        ),
+        "train_loader": train_loader,
+        "val_loader":   val_loader,
+        "test_loader":  test_loader,
     }
+
+# def prepare_dataloaders(datasets, config):
+#     batch_size = config["training"]["batch_size"]
+#     num_workers = config["training"]["num_workers"]
+#     use_sampler = config["training"].get("use_WeightedRandomSampler", False)
+#     use_PatientLevelWeightedRandomSampler = config["training"].get("use_PatientLevelWeightedRandomSampler", False)
+#     assert not (use_sampler & use_PatientLevelWeightedRandomSampler)
+
+
+#     sampler = None
+#     if use_sampler:
+#         labels = [item['score'] for item in datasets["dataset_train"].data]
+#         class_count = torch.bincount(torch.tensor(labels))
+#         class_weights = 1.0 / class_count.float()
+#         sample_weights = [class_weights[label] for label in labels]
+
+#         sampler = WeightedRandomSampler(weights=sample_weights,
+#                                         num_samples=len(sample_weights),
+#                                         replacement=True)
+
+#     return {
+#         "train_loader": DataLoader(
+#             datasets["dataset_train"],
+#             batch_size=batch_size,
+#             shuffle=not use_sampler,
+#             sampler=sampler,
+#             num_workers=num_workers,
+#             drop_last=False
+#         ),
+#         "val_loader": DataLoader(
+#             datasets["dataset_validation"],
+#             batch_size=batch_size,
+#             shuffle=False,
+#             num_workers=num_workers,
+#         ),
+#         "test_loader": DataLoader(
+#             datasets["dataset_test"],
+#             batch_size=batch_size,
+#             shuffle=False,
+#             num_workers=num_workers,
+#         ),
+#     }
 
 
 def dataset_and_loader_several(data_tables_several, config):

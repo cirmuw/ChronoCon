@@ -119,7 +119,7 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp16_reg_head/dev.yml", 
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/HPS__F_JSN_dev3.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
@@ -160,6 +160,8 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
         # Initialize the Optuna study
 
         direction = config_hps.get("search_direction", "minimize")
+        extract_objective_value_from_validation_metrics_dct_OPTION = config_hps.get("extract_objective_value_from_validation_metrics_dct_OPTION")
+        
         search_metric = config_hps.get("search_metric", "Ly")
         n_trials = config_hps.get("n_trials", 10)
         exception_cost_value = config_hps.get("exception_cost_value", 10)
@@ -169,7 +171,14 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
 
         # Execute the hyperparameter optimization trials.
         # Note the addition of the `champion_callback` inclusion to control our logging
-        extract_objective_value_from_validation_metrics_dct = lambda metrics_dct: metrics_dct[-1][search_metric]
+        # extract_objective_value_from_validation_metrics_dct_OPTION: "classification_report.macro avg"
+        # search_metric: "f1-score"
+        if extract_objective_value_from_validation_metrics_dct_OPTION == None:
+            extract_objective_value_from_validation_metrics_dct = lambda metrics_dct: metrics_dct[-1][search_metric]
+        elif extract_objective_value_from_validation_metrics_dct_OPTION == "classification_report.macro avg":
+            extract_objective_value_from_validation_metrics_dct = lambda metrics_dct: metrics_dct[-1]["classification_report"]["macro avg"][search_metric]
+        else: 
+            raise NotImplementedError
         objective = generate_objective(config,
                                        experiment_id=experiment_id, 
                                        verbose=VerboseLevel.CHATTY, #  VerboseLevel.QUIET, #PRINT_PARAMS,# CHATTY, # change later

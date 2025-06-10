@@ -240,9 +240,9 @@ class MSECELoss(nn.Module):
         assert mse_weight <= 1.0
 
 
-    def forward(self, ce_logits: torch.Tensor, reg_logits: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def forward(self, ce_logits: torch.Tensor, reg_input: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         loss_CE = F.cross_entropy(ce_logits, target, reduction="mean")
-        loss_MSE = F.mse_loss(reg_logits, target, reduction="mean")
+        loss_MSE = F.mse_loss(reg_input, target, reduction="mean")
         loss = self.mse_weight * loss_CE   + (1- self.mse_weight) * loss_MSE  #  # regularization terms ? |<c> - pred_c|???
         return loss
 

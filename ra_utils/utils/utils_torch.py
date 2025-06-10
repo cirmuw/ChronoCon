@@ -218,7 +218,7 @@ def plan_optimization_v3(models,  # Now takes a list of models
     # Now create the parameter groups for the optimizer
     opt_params_ = []
     # learning_rates and filters are aligned by order:
-    # filters[i] corresponds to the i-th entry in learning_rates
+    # filters[i] corresponds to the i-th entry in learning_rates    
     lr_values = list(learning_rates.values())  # To ensure consistent indexing
     for i, initial_lr in enumerate(lr_values):
         # If the learning rate is very small, we might skip

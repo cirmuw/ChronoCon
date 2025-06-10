@@ -74,25 +74,51 @@ def extract_landmarks_from_df(dfm, image_idx=0, landmark_names=None, x_suffix="-
     return landmarks
 
 
-def extract_extras_from_filename(filename: str, ending = ".dcm", replace_ending=True, filename_str="filename"): 
-    x = filename.split(ending)[0].split("_")
-    d = {
-        filename_str: filename.replace(ending,"") if replace_ending else filename, 
-        "id": x[0],
-        "date_str": x[1],
-        "region": x[2],
-        "left_or_right": x[3],
-        # I dont know what the rest means:  dp_MTwo_InvNo_RotNo_BOk_OPNo_app_ComNo
-        "x4": x[4],
-        "x5": x[5],
-        "x6": x[6],
-        "x7": x[7],
-        "x8": x[8],     
-        "x9": x[9],    
-        "x10": x[10],    
-        "x11": x[11]                                        
-    }
-    return d
+# def extract_extras_from_filename(filename: str, ending = ".dcm", replace_ending=True, filename_str="filename"): 
+#     x = filename.split(ending)[0].split("_")
+#     d = {
+#         filename_str: filename.replace(ending,"") if replace_ending else filename, 
+#         "id": x[0],
+#         "date_str": x[1],
+#         "region": x[2],
+#         "left_or_right": x[3],
+#         # I dont know what the rest means:  dp_MTwo_InvNo_RotNo_BOk_OPNo_app_ComNo
+#         "x4": x[4],
+#         "x5": x[5],
+#         "x6": x[6],
+#         "x7": x[7],
+#         "x8": x[8],     
+#         "x9": x[9],    
+#         "x10": x[10],    
+#         "x11": x[11]                                        
+#     }
+#     return d
+
+
+from pathlib import Path
+
+def extract_extras_from_filename(
+        filename: str,
+        ending=".npy",
+        replace_ending=False,
+        filename_str="file_name"
+):
+    # strip the file suffix you expect
+    stem = Path(filename).name
+    if ending and stem.endswith(ending):
+        stem = stem[: -len(ending)]
+    parts = stem.split("_")
+
+    keys = [
+        "id", "date_str", "region", "left_or_right",
+        "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11"
+    ]
+
+    record = {filename_str: filename if not replace_ending else stem}
+    # fill missing parts with None so we SEE them
+    for k, key in enumerate(keys):
+        record[key] = parts[k] if k < len(parts) else None
+    return record
 
 def extract_extras_from_abspath(abs_path):
     filename = str(abs_path).replace("._","").split(str("/"))[-1]
