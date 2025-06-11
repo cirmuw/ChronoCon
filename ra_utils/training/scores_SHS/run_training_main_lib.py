@@ -248,10 +248,12 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
         device=device,
         epochs=epochs,
         patience=config["training"].get("early_stopping_tol", 100),
-        lambda_x=config.get('loss_weights', {}).get('lambda_x', 0.0),   # used to be 1...   
-        lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),   # used to be 1...   
-        lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),   # used to be 1...   
-        lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),  # used to be 1...              
+        lambda_x=config.get('loss_weights', {}).get('lambda_x', 0.0),   
+        lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),      
+        lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),   
+        lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),
+        lambda_y_delta = config.get('loss_weights', {}).get('lambda_y_delta', 0.0),   
+        lambda_y_reg_extra = config.get('loss_weights', {}).get('lambda_y_reg_extra', 0.0),   
         transform=transform_AE,
         classes=classes,
         log_model_full=config.get("SAVE_MODEL_FULL", False),
@@ -284,6 +286,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
             lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),
             lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),
             lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),
+            lambda_y_delta = config.get('loss_weights', {}).get('lambda_y_delta', 0.0),   
+            lambda_y_reg_extra = config.get('loss_weights', {}).get('lambda_y_reg_extra', 0.0),   
             device=device,
             classes=classes,
             transform=transform_AE,
@@ -304,6 +308,8 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
             lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0),
             lambda_z=config.get('loss_weights', {}).get('lambda_z', 0.0),
             lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0),            
+            lambda_y_delta = config.get('loss_weights', {}).get('lambda_y_delta', 0.0),   
+            lambda_y_reg_extra = config.get('loss_weights', {}).get('lambda_y_reg_extra', 0.0),               
             loss_fn_z_triplet_classes=loss_fn_z_triplet_classes,
             device=device,
             classes=classes,

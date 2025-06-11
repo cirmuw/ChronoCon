@@ -859,7 +859,8 @@ def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
             "patient_id": row["patient_id"], 
             "date_str": row["date_str"], 
             "left_or_right": row["left_or_right"],
-            "roi_name": row["roi_name"]
+            "roi_name": row["roi_name"],
+            "patient_scoretype_key":  f"{row['extremity']}_{row['left_or_right']}_{row['roi_name']}_{row['patient_id']}_{row['chosen_score']}" # everything except the time
         }
         if "patient_cls_lbl" in row.keys():
             d["patient_cls_lbl"] = row["patient_cls_lbl"]
@@ -896,6 +897,10 @@ def prepare_datasets(data_tables, config):
         ),
         "dataset_test": Dataset(
             data=df_scores_to_dct_list(data_tables["df_test"]),
+            transform=transform_val
+        ),
+        "dataset_train_with_val_transforms": Dataset(
+            data=df_scores_to_dct_list(data_tables["df_train"]),
             transform=transform_val
         ),
     }
@@ -1096,6 +1101,14 @@ def prepare_dataloaders(datasets, config):
                                   num_workers=num_workers,
                                   drop_last=False)
 
+        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  sampler=sampler,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+
+
     # ---------- patient-homogeneous batches, no weights ----------
     elif use_patient_sampler:
         patient_ids  = [d["patient_id"] for d in datasets["dataset_train"].data]
@@ -1104,6 +1117,10 @@ def prepare_dataloaders(datasets, config):
                                             drop_last=False)
 
         train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+        
+        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
 
@@ -1124,10 +1141,20 @@ def prepare_dataloaders(datasets, config):
         train_loader = DataLoader(datasets["dataset_train"],
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
+        
+        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
 
     # ---------- plain shuffle (baseline) ----------
     else:
         train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+        
+        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=num_workers,
@@ -1148,6 +1175,7 @@ def prepare_dataloaders(datasets, config):
         "train_loader": train_loader,
         "val_loader":   val_loader,
         "test_loader":  test_loader,
+        "train_loader_wih_val_transforms": train_loader_wih_val_transforms
     }
 
 # def prepare_dataloaders(datasets, config):

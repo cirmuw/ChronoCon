@@ -411,10 +411,12 @@ def train_loop_AE_v3(
     epochs: int = 1000,
     patience: int = 10,
     run_full_epochs: bool = False,
-    lambda_x: float = 1.0,
-    lambda_y: float = 1.0,
-    lambda_z: float = 1.0,
-    lambda_z_triplet_classes = 1.0,  
+    lambda_x: float = 0.0,
+    lambda_y: float = 0.0,
+    lambda_z: float = 0.0,
+    lambda_z_triplet_classes = 0.0,  
+    lambda_y_delta: float = 0.0,
+    lambda_y_reg_extra: float = 0.0, 
     transform=lambda x: x,
     classes: Optional[List[str]] = None,
     log_model_full: bool = False,
@@ -455,6 +457,8 @@ def train_loop_AE_v3(
             lambda_y=lambda_y,
             lambda_z=lambda_z,
             lambda_z_triplet_classes = lambda_z_triplet_classes, 
+            lambda_y_delta=lambda_y_delta,
+            lambda_y_reg_extra = lambda_y_reg_extra, 
             transform=transform,
             device=device,
             task_type_y = task_type_y
@@ -479,6 +483,8 @@ def train_loop_AE_v3(
             lambda_y=lambda_y,
             lambda_z=lambda_z,
             lambda_z_triplet_classes = lambda_z_triplet_classes, 
+            lambda_y_delta=lambda_y_delta,
+            lambda_y_reg_extra = lambda_y_reg_extra, 
             transform = lambda x: x, # No denoising in val. loop  #transform,
             device=device,
             classes=classes,
@@ -512,9 +518,9 @@ def train_loop_AE_v3(
 
         if verbose > 2:
             # define the names of your component losses in order
-            loss_keys = ["Lx", "Ly", "Lz", "Lz_triplet_classes"]
+            loss_keys = ["Lx", "Ly", "Lz", "Lz_triplet_classes", "Ly_delta", "Ly_reg_extra"]
             # collect the corresponding lambda weights
-            lambda_vals = [lambda_x, lambda_y, lambda_z, lambda_z_triplet_classes]
+            lambda_vals = [lambda_x, lambda_y, lambda_z, lambda_z_triplet_classes, lambda_y_delta, lambda_y_reg_extra]
 
             # build and print the training-relative‐loss line
             train_rel = "     rel. loss contribution Tr.: " + " | ".join(
@@ -1072,10 +1078,12 @@ def val_epoch_AE_v3(
     loss_fn_y: Optional[torch.nn.Module] = None,
     loss_fn_z: Optional[torch.nn.Module] = None,
     loss_fn_z_triplet_classes: Optional[torch.nn.Module] = None,
-    lambda_x: float = 1.0,
-    lambda_y: float = 1.0,
-    lambda_z: float = 1.0,
-    lambda_z_triplet_classes: float = 1.0,
+    lambda_x: float = 0.0,
+    lambda_y: float = 0.0,
+    lambda_z: float = 0.0,
+    lambda_z_triplet_classes: float = 0.0,
+    lambda_y_delta: float = 0,
+    lambda_y_reg_extra: float = 0,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -1105,6 +1113,11 @@ def val_epoch_AE_v3(
     loss_fn_y = dummy if loss_fn_y is None else loss_fn_y.to(device).eval()
     loss_fn_z = dummy if loss_fn_z is None else loss_fn_z.to(device).eval()
     loss_fn_z_triplet_classes = dummy if loss_fn_z_triplet_classes is None else loss_fn_z_triplet_classes.to(device).eval()
+    loss_fn_y_reg_extra = dummy if lambda_y_reg_extra < 1.0e-8  else  nn.MSELoss()
+    loss_fn_y_delta = dummy     if lambda_y_delta     < 1.0e-8  else  ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
+        
+        
+    
 
     model_AE.eval().to(device)
     if model_classifier is not None:
@@ -1122,7 +1135,7 @@ def val_epoch_AE_v3(
         head_counts = defaultdict(int)
         max_out_dim = 1  # trivial – no classifier
 
-    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0)
+    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
     n_samples = 0
 
     # containers for classification statistics
@@ -1148,6 +1161,7 @@ def val_epoch_AE_v3(
                 X = batch["img"].to(device)
                 Y = batch["score"].to(device)
                 score_types = batch["score_type"]  # list[str] – one per sample
+                instance_label = np.array(batch["patient_scoretype_key"])
                 B = X.size(0)
 
                 # ----------------------------------------------------------
@@ -1162,14 +1176,15 @@ def val_epoch_AE_v3(
                 # 1.2 Classification path (if present)
                 # ----------------------------------------------------------
                 loss_y = torch.tensor(0.0, device=device)
-
+                loss_y_reg_extra = torch.tensor(0.0, device=device)
+                loss_y_delta = torch.tensor(0.0, device=device)
 
 
                 if task_type_y == "classification":
                     batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
                     batch_preds = torch.empty(B, dtype=torch.long, device=device)
                 elif task_type_y == "regression":
-                    batch_preds = torch.empty(B, dtype=torch.float32, device=device)
+                    batch_preds = torch.empty(B, dtype=torch.float32, device=device)                
                 else: 
                     raise NotImplementedError(f"{task_type_y = }")
 
@@ -1183,17 +1198,28 @@ def val_epoch_AE_v3(
 
                         # ---- loss ------------------------------------------------
                         head_target = Y[idx]
+                        head_instance_label = instance_label[idx.cpu().numpy()]
                         if task_type_y == "regression":
                             loss_fn_y_input = logits.squeeze(-1) #logits[:,0]
+                            score_estimation = loss_fn_y_input                              
                             head_target = head_target.float().to(device)
                         if task_type_y == "classification":
                             loss_fn_y_input = logits
+                            score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")                              
                         
-                        head_loss = loss_fn_y(loss_fn_y_input, head_target)
+
+                        head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
+                        head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
+                        head_loss_y_delta = loss_fn_y_delta(score_estimation, head_target.float().to(device), head_instance_label)
+                        
+                        
                         w = model_classifier.classifier_head_infos[head_name].get(
                             "loss_weight", 1.0
                         )
                         loss_y += head_loss * cnt * w  # Σ (loss_i * w)
+                        loss_y_reg_extra += head_loss_y_extra * cnt * w
+                        loss_y_delta += head_loss_y_delta * cnt * w
+
 
                         # per‑head running sums (raw, un‑weighted)
                         running_head_loss[head_name] += head_loss.item() * cnt
@@ -1211,6 +1237,8 @@ def val_epoch_AE_v3(
 
                     # convert Σ(loss*count) ➜ mean per sample of *whole batch*
                     loss_y = loss_y / B
+                    loss_y_reg_extra = loss_y_reg_extra / B
+                    loss_y_delta = loss_y_delta / B
                 else:
                     # no classifier – leave loss_y = 0, predictions dummy‑filled
                     if task_type_y == "classification":
@@ -1224,12 +1252,21 @@ def val_epoch_AE_v3(
                 # ----------------------------------------------------------
                 # 1.3 Total weighted loss & running sums
                 # ----------------------------------------------------------
-                loss_total = lambda_x * loss_x + lambda_y * loss_y + lambda_z * loss_z + lambda_z_triplet_classes * loss_z_triplet_classes
+                loss_total = (lambda_x * loss_x + 
+                              lambda_y * loss_y + 
+                              lambda_z * loss_z + 
+                              lambda_z_triplet_classes * loss_z_triplet_classes + 
+                              lambda_y_delta * loss_y_delta + 
+                              lambda_y_reg_extra * loss_y_reg_extra
+                             )                               
 
                 running_loss["Lx"] += loss_x.item() * B
                 running_loss["Ly"] += loss_y.item() * B
                 running_loss["Lz"] += loss_z.item() * B
                 running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+                running_loss["Ly_delta"] += loss_y_delta.item() * B
+                running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+                
                 running_loss["L"] += loss_total.item() * B
                 n_samples += B
 
@@ -1595,7 +1632,8 @@ def training_epoch_AE_v2(
 
 import ra_utils.iterfaces.score_net_output
 
-
+import ra_utils.loss.online_mining_delta_loss
+import ra_utils.networks.score_estimator
 
 def training_epoch_AE_v3(
     model_AE,
@@ -1611,6 +1649,8 @@ def training_epoch_AE_v3(
     lambda_y: float = 1.0,
     lambda_z: float = 1.0,
     lambda_z_triplet_classes: float = 0.0,
+    lambda_y_delta: float = 0.0,
+    lambda_y_reg_extra: float = 0.0,
     transform=lambda x: x,
     device="cuda",
     debugging: bool = False, 
@@ -1632,6 +1672,12 @@ def training_epoch_AE_v3(
     loss_fn_y = dummy if loss_fn_y is None else loss_fn_y.to(device).train()
     loss_fn_z = dummy if loss_fn_z is None else loss_fn_z.to(device).train()
     loss_fn_z_triplet_classes = dummy if loss_fn_z_triplet_classes is None else loss_fn_z_triplet_classes.to(device).train()
+    loss_fn_y_reg_extra = dummy if lambda_y_reg_extra < 1.0e-8  else  nn.MSELoss()
+    loss_fn_y_delta = dummy     if lambda_y_delta     < 1.0e-8  else  ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
+        
+    
+        
+
 
     if model_classifier is not None:
         model_classifier.train().to(device)
@@ -1641,7 +1687,7 @@ def training_epoch_AE_v3(
         head_counts = defaultdict(int)          # Σ count
 
     # running sums for global losses
-    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0)
+    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
     samples_tr = 0
 
     # ---------------------------- epoch loop ------------------------------- #
@@ -1650,6 +1696,7 @@ def training_epoch_AE_v3(
             X      = batch["img"].to(device)
             y      = batch["score"].to(device)
             s_type = batch["score_type"]             # list[str]
+            instance_label = np.array(batch["patient_scoretype_key"])
 
             B = X.size(0)
             samples_tr += B
@@ -1663,6 +1710,8 @@ def training_epoch_AE_v3(
 
             # -- classifier heads ---------------------------------------------- #
             loss_y = torch.tensor(0.0, device=device)
+            loss_y_delta = torch.tensor(0.0, device=device)
+            loss_y_reg_extra = torch.tensor(0.0, device=device)
             if model_classifier is not None:
                 out_dict = model_classifier(z, s_type, return_dict=True)
 
@@ -1673,12 +1722,20 @@ def training_epoch_AE_v3(
                         continue                     # no contribution this batch
 
                     head_target = y[idx]
+                    head_instance_label = instance_label[idx.cpu().numpy()]
                     if task_type_y == "regression":
                         loss_fn_y_input = logits.squeeze(-1)
+                        score_estimation = loss_fn_y_input
                         head_target = head_target.float().to(device)
                     if task_type_y == "classification":
                         loss_fn_y_input = logits
+                        score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")
+                        
+                        
                     head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
+                    head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
+                    head_loss_y_delta = loss_fn_y_delta(score_estimation, head_target.float().to(device), head_instance_label)
+
 
                     w = model_classifier.classifier_head_infos[head_name].get(
                         "loss_weight", 1.0
@@ -1686,6 +1743,9 @@ def training_epoch_AE_v3(
 
                     # weighted sum for global Ly
                     loss_y += head_loss * cnt * w
+                    loss_y_reg_extra += head_loss_y_extra * cnt * w
+                    loss_y_delta += head_loss_y_delta * cnt * w
+                    
 
                     # running stats for this head (raw, un-weighted)
                     running_head_loss[head_name] += head_loss.item() * cnt
@@ -1693,13 +1753,19 @@ def training_epoch_AE_v3(
 
                 # convert Σ(loss*count) ➜ mean per sample of *whole batch*
                 loss_y = loss_y / B
+                loss_y_reg_extra = loss_y_reg_extra / B
+                loss_y_delta = loss_y_delta / B
 
             # -- reconstruction & latent losses -------------------------------- #
             loss_x = loss_fn_x(X_pred, X)
             loss_z = loss_fn_z(z, z * 0)
 
             # -- total loss & optimisation ------------------------------------- #
-            loss = lambda_x * loss_x + lambda_y * loss_y + lambda_z * loss_z + lambda_z_triplet_classes * loss_z_triplet_classes
+            loss = (lambda_x * loss_x + lambda_y * loss_y + lambda_z * loss_z + 
+                    lambda_z_triplet_classes * loss_z_triplet_classes +
+                    lambda_y_delta * loss_y_delta + 
+                    lambda_y_reg_extra * loss_y_reg_extra
+                    )
             loss.backward()
             optimizer.step()
 
@@ -1708,6 +1774,9 @@ def training_epoch_AE_v3(
             running_loss["Ly"] += loss_y.item() * B
             running_loss["Lz"] += loss_z.item() * B
             running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+            running_loss["Ly_delta"] += loss_y_delta.item() * B
+            running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+            
             running_loss["L"]  += loss.item()  * B
 
             if debugging:
@@ -2144,6 +2213,8 @@ def evaluate_and_log_testset_results_AE_v3(
     lambda_y:   float = 0.0,
     lambda_z:   float = 0.0,
     lambda_z_triplet_classes: float = 0.0,
+    lambda_y_delta: float = 0.0, 
+    lambda_y_reg_extra: float = 0.0, 
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -2168,6 +2239,8 @@ def evaluate_and_log_testset_results_AE_v3(
         lambda_y=lambda_y,
         lambda_z=lambda_z,
         lambda_z_triplet_classes=lambda_z_triplet_classes,
+        lambda_y_delta = lambda_y_delta,  
+        lambda_y_reg_extra = lambda_y_reg_extra, 
         transform=transform,
         device=device,
         classes=classes,
