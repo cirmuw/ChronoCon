@@ -1228,12 +1228,12 @@ def val_epoch_AE_v3(
                         # ---- store preds & logits ------------------------------
                         if task_type_y == "classification":
                             batch_logits[idx, : logits.shape[1]] = logits
-                            #batch_preds[idx] = logits.argmax(dim=1)
-                        # elif task_type_y == "regression":
-                        #   batch_preds[idx] = logits.squeeze(-1) # these are not logits
+                            batch_preds[idx] = logits.argmax(dim=1)
+                        elif task_type_y == "regression":
+                            batch_preds[idx] = logits.squeeze(-1) # these are not logits
                         else: 
                             raise NotImplementedError(f"{task_type_y = }")
-                        batch_preds[idx] = score_estimation
+
 
                     # convert Σ(loss*count) ➜ mean per sample of *whole batch*
                     loss_y = loss_y / B
