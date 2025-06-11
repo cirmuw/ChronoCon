@@ -1140,6 +1140,7 @@ def val_epoch_AE_v3(
 
     # containers for classification statistics
     all_preds = []
+    all_preds_float = []
     all_labels = []
     all_logits: list[np.ndarray] | None = [] if task_type_y=="classification" else None
 
@@ -1179,7 +1180,7 @@ def val_epoch_AE_v3(
                 loss_y_reg_extra = torch.tensor(0.0, device=device)
                 loss_y_delta = torch.tensor(0.0, device=device)
 
-
+                batch_preds_float = torch.empty(B, dtype=torch.float32, device=device)   
                 if task_type_y == "classification":
                     batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
                     batch_preds = torch.empty(B, dtype=torch.long, device=device)
@@ -1233,7 +1234,7 @@ def val_epoch_AE_v3(
                             batch_preds[idx] = logits.squeeze(-1) # these are not logits
                         else: 
                             raise NotImplementedError(f"{task_type_y = }")
-
+                        batch_preds_float[idx] = score_estimation
 
                     # convert Σ(loss*count) ➜ mean per sample of *whole batch*
                     loss_y = loss_y / B
@@ -1248,6 +1249,7 @@ def val_epoch_AE_v3(
                         batch_preds.fill_(0)
                     else: 
                         raise NotImplementedError(f"{task_type_y = }")
+                    batch_preds_float.fill_(0.0)
 
                 # ----------------------------------------------------------
                 # 1.3 Total weighted loss & running sums
@@ -1274,6 +1276,7 @@ def val_epoch_AE_v3(
                 # 1.4 Collect per‑sample statistics for later metrics
                 # ----------------------------------------------------------
                 all_preds.extend(batch_preds.cpu().numpy())
+                all_preds_float.extend(batch_preds_float.cpu().numpy())
                 all_labels.extend(Y.cpu().numpy())                        
                 if task_type_y == "classification":
                     all_logits.extend(batch_logits.cpu().numpy())
@@ -1305,6 +1308,7 @@ def val_epoch_AE_v3(
     }
 
     all_preds_np = np.array(all_preds)
+    all_preds_np_float = np.array(all_preds_float)
     all_labels_np = np.array(all_labels)
     all_logits_np = np.array(all_logits) if task_type_y == "classification" else None         
     if task_type_y == "classification":
@@ -1377,6 +1381,7 @@ def val_epoch_AE_v3(
         outputs_all_samples = {
             "labels": all_labels_np,
             "preds": all_preds_np,
+            "preds_float": all_preds_np_float,
             **all_extras,
         }
         if task_type_y == "classification":
