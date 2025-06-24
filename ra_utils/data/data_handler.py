@@ -95,11 +95,11 @@ class DataHandler_CR_autoscoRA(object):
         files_H = list(self.filepaths["folder_H_images"].glob("*.dcm"))
         files_F = list(self.filepaths["folder_F_images"].glob("*.dcm"))
         
-        files_H_with_extras = [extract_extras_from_abspath(file) for file in files_H]
-        files_F_with_extras = [extract_extras_from_abspath(file) for file in files_F]
+        files_H_with_extras = [extract_extras_from_abspath(file, ending=".dcm") for file in files_H]
+        files_F_with_extras = [extract_extras_from_abspath(file, ending=".dcm") for file in files_F]
         
-        df_images_H = pd.DataFrame(files_H_with_extras)
-        df_images_F = pd.DataFrame(files_F_with_extras)
+        df_images_H = pd.DataFrame(files_H_with_extras).rename(columns={"file_name": "filename"})
+        df_images_F = pd.DataFrame(files_F_with_extras).rename(columns={"file_name": "filename"})
         return df_images_H, df_images_F
 
     def load_autoscoRA_lables(self):
