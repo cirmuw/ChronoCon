@@ -1,0 +1,175 @@
+
+experiment_name: 17 dev2
+eval_on_val_set_once_more: true
+evaluate_on_testset: true
+run_name: DEV_CLS
+
+SAVE_MODEL_FULL: False
+SAVE_MODEL_state_dct: False
+
+
+model_initialization: 
+  load_full_AE: True
+  load_decoder_only: False
+  # pth_src_AE: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/163028900189502019/a9d6792480e2419c88b807131c009a28/artifacts/best_model_AE/data/model.pth"
+  pth_src_AE: "/msc/home/cwatze93/data/mlflow/mlflow_RA/367399016697843995/585819c3c149445cbeb2e8f688ff9044/artifacts/checkpoints/model_AE_state_dict.pt"  # 02_AE_ResNet18_lr2  -> encoder and decoder lr 1e-4
+  # pth_src_AE: "/msc/home/cwatze93/data/mlflow/mlflow_RA/367399016697843995/5a44996a8cfd44368376c60dcfd89b4a/artifacts/checkpoints/model_AE_state_dict.pt"  # 02_AE_ResNet18_lr1  -> encoder (lr 1e-6) and decoder lr 1e-4
+
+  load_classifier: False
+  pth_src_classifier: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/163028900189502019/f6409f82686e488b92472e94e463144c/artifacts/checkpoints/model_classifier_state_dict.pt"
+
+data:
+  classifier_head_infos:
+    IP:
+      out_dim: 5
+      score_types:
+      - IP
+  how_to_deal_with_surgery: exclude
+  image_path_folder:
+  - /home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/H_patches_size1.5_v2/
+  - /home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/F_patches_size1.5/
+  pattern: '*/*.npy'
+  score_groups:
+    F_JSN_IP:
+    - IP
+  score_path_F: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv
+  score_path_H: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv
+  split_ratio:
+  - 0.6
+  - 0.2
+  - 0.2
+  splits_file: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv
+  sum_wrist_points: false
+  surgery_patientids_list_path_json: null
+  use_splits_file: true
+
+
+debugging: False
+# hps:
+#   exception_cost_value: -1
+#   n_trials: 200
+#   search_direction: maximize
+#   search_metric: balanced acc.
+
+# scores_output_interface_option: "MHClassifer2Reg" # "None", "MHClassifer2Reg"
+# task_type_y: "regression"  # task_type: Literal["classification","regression"]="regression"   
+
+
+
+loss:
+  score:
+    name: FocalLoss  # FocalLoss  MSELoss  "MSE+CELoss"  "CrossEntropyLoss"
+    params: {}
+
+  # score:
+  #   name: FocalLoss  # FocalLoss  MSELoss  "MSE+CELoss"  ""
+  #   params: 
+  #     alpha: null
+  #     gamma: 2.0
+
+  # score_reg:
+  #   name: "MSELoss"
+  #   params: {}
+
+  triplet_scores:
+    name: "OnlineBatchAllTripletLoss"     # or OnlineBatchAllTripletLoss
+    params:
+      margin: 0.1
+      metric: "cosine"
+      label_margin_scale: 0.1
+      squared: false          # optional
+
+
+loss_weights:
+  lambda_x: !!float 1e2
+  lambda_y: !!float 1e0  
+  lambda_z: 0.0 #!!float 1e-2 
+  lambda_z_triplet_classes: !!float 1e-0 
+
+
+
+mlflow_runs_dir: /home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/
+model:
+  autoencoder:
+    backbone_name: resnet18
+    dilation: false
+    recon_out_ch: 1
+    skip_recon: false
+  classifier:
+    name: "LogReg"  # Reg or LogReg
+    model_dct_keys_to_convert_to_lists: []
+    model_kw_requires_import:
+    - dropout_op
+    - nonlin
+    model_params:
+      depth: 1
+      dropout_op: torch.nn.Dropout
+      dropout_op_kwargs.p: 0.0
+      hidden_dim: 512
+      nonlin: torch.nn.ReLU
+      nonlin_kwargs: {}
+      norm_op_kwargs: {}
+      normalization: layer
+  postprocessor_recon:
+    name: PostprocessingGrayScaleMaker_v3 # Null #PostprocessingGrayScaleMaker # Null #PostprocessingGrayScaleMaker_v2
+    params:
+      output_function: "sigmoid" #"sigmoid" #   "None"   # "sigmoid" "relu" "None"
+  preprocessor:
+    name: ResNetRGBMaker # ResNetRGBMaker  # Null ResNetRGBMaker
+  score_type_encoder:
+    name: null
+model_name: ResNetMTANAEv2 + MultiHeadClassifier
+
+
+AE_transform: 
+  name: GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
+  GaussianNoise_sigma: 0.05
+
+
+optimizer_name: "torch.optim.AdamW"
+
+optimizer_params:
+  learning_rates:
+    #"auto_encoder.decoders":  !!float 1e-4
+    "auto_encoder":  !!float  1e-04
+    heads: !!float  1e-04
+  other_optimizer_kwargs:
+    weight_decay: !!float 1e-5 
+
+
+scheduler_name: "torch.optim.lr_scheduler.ReduceLROnPlateau"
+scheduler_params:
+   mode: 'min'
+   verbose: True
+
+
+
+project: 'AutoPIX:'
+tag: development
+training:
+  batch_size: 100
+  early_stopping_tol: 10 # 5
+  epochs: 1000
+  num_workers: 6
+  use_WeightedRandomSampler: true
+transforms:
+  OUTPUT_DIM:
+  - 128
+  - 128
+  RBG_channels__bool: False   #<<<<<  
+  Rand2DElasticd__bool: false
+  Rand2DElasticd__magnitude: 2.73
+  Rand2DElasticd__prob: 0.2
+  Rand2DElasticd__shear_range: 0.13
+  Rand2DElasticd__spacing: 12
+  RandAffined__bool: true
+  RandAffined__prob: 0.5
+  RandAffined__rotation_range_degree: 15
+  RandAffined__scale_range: 0.2
+  RandAffined__translate_range_pixels: 19
+  RandFlipd__bool: true
+  RandFlipd__prob: 0.5
+  
+  RandGaussianNoised__bool: false
+  RandGaussianNoised__prob: 0.17
+  RandGaussianNoised__std: 0.085

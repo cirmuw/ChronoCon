@@ -1,0 +1,34 @@
+
+
+
+# INPUT
+extremity: "hand" # hand or foot 
+
+
+# image_dir: "/home/cwatzenboeck/data/tmp/dev_autoscora/H_images_mirrored_dev"
+image_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/debugging_ds/H_images_mirrored"
+img_format_input: ".dcm" # .dcm or .npy
+
+# old name: JOINTS_PATH_PRED_REST100
+landmarks_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/output/H_coordinates__bb72a1aaf7f9476885d559d7baba9b8e_DB_with_lm_names.csv"
+
+
+
+# OUTPUT for patches
+#output_dir: "/home/cwatzenboeck/data/tmp/dev_autoscora/H_patches_dev/"
+output_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/debugging_ds/H_patches_size1.5/"
+
+
+#resize_UR_by: 0.0   # 0.1 = 110% of the original size
+#out_dim: [128, 128]  #[192, 192]  # default = [128, 128]
+
+resize_UR_by: 0.5   # 0.1 = 110% of the original size
+out_dim: [192, 192]  #[192, 192]  # default = [128, 128]
+
+plot: False
+plot_show_steps: True
+plot_other_corners_as_well: False
+
+# just process some: 
+# image_index_start: 1
+# image_index_end: 10
