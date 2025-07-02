@@ -6,6 +6,7 @@ import napari
 import pandas as pd
 import pydicom
 import numpy as np
+from qtpy.QtCore import QTimer   
 
 COLOR_CYCLE = [
     '#1f77b4',
@@ -61,76 +62,6 @@ def create_label_menu(points_layer, labels):
     return label_widget
 
 
-# def point_annotator(
-#         im_path: str,
-#         labels: List[str],
-# ):
-#     """Create a GUI for annotating points in a series of images.
-
-#     Parameters
-#     ----------
-#     im_path : str
-#         glob-like string for the images to be labeled.
-#     labels : List[str]
-#         list of the labels for each keypoint to be annotated (e.g., the body parts to be labeled).
-#     """
-#     stack = imread(im_path)
-
-#     viewer = napari.view_image(stack)
-#     points_layer = viewer.add_points(
-#         ndim=3,
-#         features=pd.DataFrame({'label': pd.Categorical([], categories=labels)}),
-#         border_color='label',
-#         border_color_cycle=COLOR_CYCLE,
-#         symbol='o',
-#         face_color='transparent',
-#         border_width=0.5,  # fraction of point size
-#         size=12,
-#     )
-#     points_layer.border_color_mode = 'cycle'
-
-#     # add the label menu widget to the viewer
-#     label_widget = create_label_menu(points_layer, labels)
-#     viewer.window.add_dock_widget(label_widget)
-
-#     @viewer.bind_key('.')
-#     def next_label(event=None):
-#         """Keybinding to advance to the next label with wraparound"""
-#         feature_defaults = points_layer.feature_defaults
-#         default_label = feature_defaults['label'][0]
-#         ind = list(labels).index(default_label)
-#         new_ind = (ind + 1) % len(labels)
-#         new_label = labels[new_ind]
-#         feature_defaults['label'] = new_label
-#         points_layer.feature_defaults = feature_defaults
-#         points_layer.refresh_colors()
-
-#     def next_on_click(layer, event):
-#         """Mouse click binding to advance the label when a point is added"""
-#         if layer.mode == 'add':
-#             # By default, napari selects the point that was just added.
-#             # Disable that behavior, as the highlight gets in the way
-#             # and also causes next_label to change the color of the
-#             # point that was just added.
-#             layer.selected_data = set()
-#             next_label()
-
-#     points_layer.mode = 'add'
-#     points_layer.mouse_drag_callbacks.append(next_on_click)
-
-#     @viewer.bind_key(',')
-#     def prev_label(event):
-#         """Keybinding to decrement to the previous label with wraparound"""
-#         feature_defaults = points_layer.feature_defaults
-#         default_label = feature_defaults['label'][0]
-#         ind = list(labels).index(default_label)
-#         n_labels = len(labels)
-#         new_ind = ((ind - 1) + n_labels) % n_labels
-#         feature_defaults['label'] = labels[new_ind]
-#         points_layer.feature_defaults = feature_defaults
-#         points_layer.refresh_colors()
-
-#     napari.run()
 
 
 def point_annotator(
@@ -157,43 +88,68 @@ def point_annotator(
     # --- Empty points layer (2-D) ---
     points_layer = viewer.add_points(
         ndim=2,
-        features=pd.DataFrame({'label': pd.Categorical([], categories=labels)}),
-        border_color='label',
+        features=pd.DataFrame(
+            {"label": pd.Categorical([], categories=labels)}
+        ),
+        border_color="label",
         border_color_cycle=COLOR_CYCLE,
-        symbol='o',
-        face_color='transparent',
+        symbol="o",
+        face_color="transparent",
         border_width=0.5,
         size=12,
+        text={
+            "string": "{label}",               
+            "size": 8,                       
+            "color": "blue", 
+            "anchor": "upper_left",           
+            "translation": np.array([10, 10]), 
+        },
     )
-    points_layer.border_color_mode = 'cycle'
+    points_layer.border_color_mode = "cycle"
+
 
     # --- Label-selection widget ---
     label_widget = create_label_menu(points_layer, labels)
     viewer.window.add_dock_widget(label_widget)
 
-    # --- Helpers to cycle through labels ---
-    @viewer.bind_key('.')
-    def next_label(event=None):
+
+    def _cycle(n=1):
+        """Advance the default label by *n*, wrapping around."""
         f = points_layer.feature_defaults
         idx = labels.index(f['label'][0])
-        f['label'] = labels[(idx + 1) % len(labels)]
+        f['label'] = labels[(idx + n) % len(labels)]
         points_layer.feature_defaults = f
         points_layer.refresh_colors()
 
-    def next_on_click(layer, event):
-        if layer.mode == 'add':
-            layer.selected_data = set()
-            next_label()
 
-    points_layer.mode = 'add'
-    points_layer.mouse_drag_callbacks.append(next_on_click)
+    @viewer.bind_key('.')          # manual next / previous remain unchanged
+    def next_label(event=None): _cycle(+1)
 
     @viewer.bind_key(',')
-    def prev_label(event=None):
-        f = points_layer.feature_defaults
-        idx = labels.index(f['label'][0])
-        f['label'] = labels[(idx - 1) % len(labels)]
-        points_layer.feature_defaults = f
-        points_layer.refresh_colors()
+    def prev_label(event=None): _cycle(-1)
+
+    # ----------------------------------------------------------------------
+    def advance_on_click(layer, event):
+        """Cycle the default label **after** a click has created a point."""
+        if layer.mode != 'add':
+            return
+
+        layer.selected_data = set()     # keep the new point un-selected
+
+        yield                           # ------------ mouse pressed ----------
+
+        # if the user drags, we keep yielding until the button comes up
+        while event.type == 'mouse_move':
+            yield
+
+        # now we're in the *mouse-release* event → point already exists
+        # but we still delay the cycle with a 0-ms QTimer so napari
+        # finishes its own housekeeping first.
+        QTimer.singleShot(0, lambda: _cycle(+1))
+
+    # attach the callback
+    points_layer.mode = 'add'
+    points_layer.mouse_drag_callbacks.append(advance_on_click)
 
     napari.run()
+
