@@ -56,11 +56,16 @@ dependencies = [
     # "landmarker",
     "optuna", 
 #    "rpy2", 
-    "openpyxl"
+    "openpyxl", 
+    "pyqt5",
+    "napari>=0.4.3",
+    "magicgui>=0.2.5",            # new
+    "dask-image",                 # new
 ]
 
 [project.scripts]
 ra_utils__print_package_infos = "ra_utils.tools.print_package_info:main"
+ra_utils__annotate_landmarks_hand = "ra_utils.tools.landmark_annotation_hands_v2:main"
 
 [project.optional-dependencies]
 dev = [
