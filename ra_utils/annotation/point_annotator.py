@@ -424,7 +424,7 @@ def point_annotator_multi(
     Landmarks auto‑save before every navigation so you never lose work.
     """
 
-    labels = [ f"{i} {name}" for i, name in enumerate(labels) ]
+    #labels = [ f"{i} {name}" for i, name in enumerate(labels) ]
 
     # ────────────────────────────────────────────────────────────────────
     # normalise input                                                   
