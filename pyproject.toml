@@ -56,11 +56,22 @@ dependencies = [
     # "landmarker",
     "optuna", 
 #    "rpy2", 
-    "openpyxl"
+    "openpyxl", 
+    "pyqt5",
+    "napari>=0.4.3",
+    "magicgui>=0.2.5",           
+    "dask-image",                 
+    "numexpr>=2.8.4"
 ]
 
 [project.scripts]
 ra_utils__print_package_infos = "ra_utils.tools.print_package_info:main"
+ra_utils__annotate_landmarks = "ra_utils.tools.landmark_annotation:main"
+ra_utils__annotate_landmarks_prepopulation = "ra_utils.tools.landmark_annotation_prepopulation:main"
+ra_utils__annotate_landmarks_combine_annotations = "ra_utils.tools.landmark_annotation_combine_annotations:main"
+
+# ra_utils__annotate_landmarks_foot = "ra_utils.tools.landmark_annotation_foot:main"
+# ra_utils__annotate_landmarks_feet = "ra_utils.tools.landmark_annotation_feet:main"
 
 [project.optional-dependencies]
 dev = [
