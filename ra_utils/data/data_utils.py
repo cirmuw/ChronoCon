@@ -124,9 +124,9 @@ def extract_extras_from_filename(
         record[key] = parts[k] if k < len(parts) else None
     return record
 
-def extract_extras_from_abspath(abs_path, ending=".npy"):
+def extract_extras_from_abspath(abs_path, ending=".npy", replace_ending=False):
     filename = str(abs_path).replace("._","").split(str("/"))[-1]
-    return {**{"image": abs_path, **extract_extras_from_filename(filename, ending=ending)}}
+    return {**{"image": abs_path, **extract_extras_from_filename(filename, ending=ending, replace_ending=replace_ending)}}
 
 
 
