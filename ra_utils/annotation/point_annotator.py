@@ -18,7 +18,7 @@ COLOR_CYCLE = [
     '#9467bd',
     '#8c564b',
     '#e377c2',
-    '#7f7f7f',
+    # '#7f7f7f', gray is not so visible
     '#bcbd22',
     '#17becf'
 ]
