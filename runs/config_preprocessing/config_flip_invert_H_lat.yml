@@ -1,0 +1,35 @@
+
+
+# raw_image_paths_H_with_scores: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/crawler_out_msc1/raw_image_paths_H_with_scores.csv"
+# raw_image_paths_F_with_scores: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/crawler_out_msc1/raw_image_paths_F_with_scores.csv"
+
+# needs column: "file_path"
+# file_paths_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/crawler_out_msc1/raw_image_paths_H_with_scores.csv"
+file_paths_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/crawler_out_msc1/out/crawler_metadata_with_derived_columns.csv"
+
+
+# replace in file_path
+reroot_file_path_dir__from: "/msc/home/cwatze93/data/RA/ARTHRITIS/"
+
+# reroot_file_path_dir__to: "/data/rawdata/ARTHRITIS/"   # on laptop
+reroot_file_path_dir__to: "/home/cwatzenboeck/data/AutoPIX_cirdata/rawdata__ARTHRITIS/"  # cirpc
+
+
+out_dir: "/data/rawdata_derivatives/ARTHRITIS/images/H_lat_inverted_mirrored"
+
+
+laterality: ["L", "R"]
+view: ["lat"]
+PhotometricInterpretation: ["MONOCHROME1", "MONOCHROME2"]
+body_part: ["H"]
+
+
+debugging: False 
+
+
+flip_RtoL: True
+flip_LtoR: False
+invert_M1toM2: True
+invert_M2toM1: False
+
+
