@@ -72,13 +72,18 @@ def main():
     
     df_file_names_src = config["file_paths_csv"]
     df_file_names = pd.read_csv(df_file_names_src)
-    reroot_file_path_dir__from = config["reroot_file_path_dir__from"]
-    reroot_file_path_dir__to = config["reroot_file_path_dir__to"]
-    
-    print(f"Rerooting file paths from {reroot_file_path_dir__from} to {reroot_file_path_dir__to}")
-    df_file_names["file_path"] = df_file_names["file_path"].apply(lambda x: x.replace(reroot_file_path_dir__from, reroot_file_path_dir__to))
 
     
+    file_path_column = config.get("file_path_column", "file_path")
+    if config.get("reroot_file_path_column", None) not in [None, False, ""]:
+        reroot_file_path_dir__from = config["reroot_file_path_dir__from"]
+        reroot_file_path_dir__to = config["reroot_file_path_dir__to"]
+        print(f"Rerooting file paths (column = {file_path_column}) from {reroot_file_path_dir__from} to {reroot_file_path_dir__to}")
+        df_file_names[file_path_column] = df_file_names[file_path_column].apply(lambda x: x.replace(reroot_file_path_dir__from, reroot_file_path_dir__to))
+
+    
+    print(f"Using file names from {df_file_names_src} (column = {file_path_column}).")
+    print(f"Number of file names: {len(df_file_names)}")
     idx_start = config.get("idx_start", None)
     idx_end = config.get("idx_end", None)
 
@@ -89,17 +94,28 @@ def main():
     else:
         print("Using all file names (no index slicing applied).")
 
+
+    idx_list = config.get("idx_list", None)
+    if idx_list is not None:
+        print(f"Using file names from index list {idx_list}.")
+        df_file_names = df_file_names.iloc[idx_list]
+        
+
     save_dst_dir = config["save_dst_dir"]
     
     
-    DICOM_PATHS = df_file_names["file_path"].tolist()
+    DICOM_PATHS = df_file_names[file_path_column].tolist()
     
     LANDMARK_NAMES = config["LANDMARK_NAMES"]    
 
     
     # maybe display double scoring results: 
     if config.get("AddGT", False):
-        df_double_scoring = df_double_scoring = make_df_double_scoring(df_file_names)
+        try:
+            df_double_scoring = df_double_scoring = make_df_double_scoring(df_file_names)
+        except Exception as e:
+            print(f"Error creating double scoring DataFrame: {e}")
+            df_double_scoring = None
     else: 
         df_double_scoring = None
     
