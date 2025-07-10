@@ -75,7 +75,7 @@ def main():
 
     
     file_path_column = config.get("file_path_column", "file_path")
-    if config.get("reroot_file_path_column", None) not in [None, False, ""]:
+    if config.get("reroot_file_path_column", True) not in [None, False, ""]:
         reroot_file_path_dir__from = config["reroot_file_path_dir__from"]
         reroot_file_path_dir__to = config["reroot_file_path_dir__to"]
         print(f"Rerooting file paths (column = {file_path_column}) from {reroot_file_path_dir__from} to {reroot_file_path_dir__to}")
