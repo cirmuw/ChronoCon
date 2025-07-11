@@ -14,7 +14,7 @@ from  ra_utils.utils.config_parser import load_config
 
 def main():
     config, config_name = load_config(
-        default_config="/home/clemens/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/day0/config_F.yml", 
+        default_config="/home/clemens/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/03_corrections/config_F.yml", 
         debugging_in_jupyter_nb=False, silencium=True, return_config_name=True, 
     )
 
@@ -34,7 +34,9 @@ def main():
 
 
     # Merge with prepopulation file (landmarks predictions of model)
-    df = pd.read_csv(config["prepopulation_file"])
+    prepopulation_file = config["prepopulation_file"]
+    print(f"USING PREDICTIONS FROM: ", prepopulation_file)
+    df = pd.read_csv(prepopulation_file)
     df["file_name"] = df["img"] + ".dcm"
     dfm = pd.merge(df, file_paths_csv, on="file_name", how="right")
     
