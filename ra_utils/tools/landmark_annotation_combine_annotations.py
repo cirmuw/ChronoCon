@@ -14,7 +14,7 @@ from  ra_utils.utils.config_parser import load_config
 
 def main():
     config, config_name = load_config(
-        default_config="/home/clemens/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/combined_results/config_F.yml", 
+        default_config="/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/combined_results/config_F_Ts.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
     )
 
@@ -27,7 +27,6 @@ def main():
     destination_path = Path(save_dst_csv)
     assert not destination_path.exists(), f"The file {destination_path} already exists."
 
-    df_other_lm_files = pd.concat([pd.read_csv(f) for f in other_lm_files], ignore_index=True)
 
 
     files = []
@@ -42,7 +41,10 @@ def main():
     df = df[["img", "x", "y", "label"]]  
     print(f"Loaded {len(files) = }")
 
-
+    dupes = df[df.duplicated(subset=["img", "label"], keep=False)]
+    if len(dupes) > 0:
+        print("Duplicates: ")
+        print(dupes.sort_values(["img", "label"]).head())
 
 
     df_wide = (
@@ -57,7 +59,12 @@ def main():
 
 
     columns = ["img"] + sum([[f"{l}-X", f"{l}-Y"] for l in LANDMARK_NAMES], [])
-    df_combined = pd.concat([df_wide[columns], df_other_lm_files[columns]], ignore_index=True)
+    
+    if len(other_lm_files) > 0: 
+        df_other_lm_files = pd.concat([pd.read_csv(f) for f in other_lm_files], ignore_index=True)
+        df_combined = pd.concat([df_wide[columns], df_other_lm_files[columns]], ignore_index=True)
+    else: 
+        df_combined = df_wide[columns]
     df_combined.to_csv(save_dst_csv, index=False)
     print("Saved to ", save_dst_csv)
 
