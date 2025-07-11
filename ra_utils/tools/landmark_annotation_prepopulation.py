@@ -34,7 +34,9 @@ def main():
 
 
     # Merge with prepopulation file (landmarks predictions of model)
-    df = pd.read_csv(config["prepopulation_file"])
+    prepopulation_file = config["prepopulation_file"]
+    print(f"USING PREDICTIONS FROM: ", prepopulation_file)
+    df = pd.read_csv(prepopulation_file)
     df["file_name"] = df["img"] + ".dcm"
     dfm = pd.merge(df, file_paths_csv, on="file_name", how="right")
     
