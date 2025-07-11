@@ -57,11 +57,13 @@ def main():
 
     df_wide = df_wide.reset_index()
 
-
-    columns = ["img"] + sum([[f"{l}-X", f"{l}-Y"] for l in LANDMARK_NAMES], [])
+    landmarks_columns = sum([[f"{l}-X", f"{l}-Y"] for l in LANDMARK_NAMES], [])
+    columns = ["img"] + landmarks_columns
     
     if len(other_lm_files) > 0: 
         df_other_lm_files = pd.concat([pd.read_csv(f) for f in other_lm_files], ignore_index=True)
+        m = (df_other_lm_files[landmarks_columns] ==  0).all(axis=1)
+        df_other_lm_files = df_other_lm_files[~m]
         df_combined = pd.concat([df_wide[columns], df_other_lm_files[columns]], ignore_index=True)
     else: 
         df_combined = df_wide[columns]
