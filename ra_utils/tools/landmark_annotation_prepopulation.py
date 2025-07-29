@@ -55,10 +55,10 @@ def main():
             if answer_overwrite.lower() != "y":
                 print(f"Skipping file {dst_name}.")
                 continue
-
+    
         df_part_reformated.to_csv(dst_name, index=False)
         print(f"Saved to {dst_name}")
-
+    print(f"USED PREDICTIONS FROM: ", prepopulation_file)
 
 if __name__ == "__main__":
     main()

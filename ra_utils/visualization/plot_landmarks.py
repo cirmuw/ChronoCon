@@ -161,7 +161,7 @@ def plot_landmarks(
                 color=label_color,
                 va="bottom",
                 ha="left",
-                bbox=dict(boxstyle="round,pad=0.15", fc="black", ec="none", alpha=0.5),
+                bbox=dict(boxstyle="round,pad=0.15", fc="black", ec="none", alpha=0.0),
             )
 
     return fig

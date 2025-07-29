@@ -1,0 +1,41 @@
+project: "Autopix: SvH"
+experiment_name: "landmarks H"
+tag: "development"
+#run_name: "TDand03 g10 alpha 0.02 real spacing newLabels"
+run_name: "511-42-19 g10 a0.02 es100 01 new labels" # H
+
+SAVE_MODEL: True 
+debugging: True
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+
+data_settings: 
+  df_autoscoRA_labels_F_header: "infer"  # "infer" or Null
+  df_autoscoRA_labels_H_header: "infer"
+  training_test_splits_json_H: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/new_splits_nbodner/splits_H_TD-580_different_val_set.yml"
+  training_test_splits_json_F: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/splits/new_splits_nbodner/splits_F_TD-580_different_val_set.yml"
+  landmarks_csv_F: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/combined_results/out/F_TD_and_00-05.csv"
+  landmarks_csv_H: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/tabular_data_cw/annotation_dir/combined_results/out/H_files_TD_TrTs1Ts2_add00-05_new_labels.csv"
+  landmarks_type: "H"  # "F"
+
+
+model_settings: 
+  dim_image: [512,512]
+  gamma: 10
+  alpha: 0.023255813953488372   # part of loss function for learnable sigmas  1 / 37 = 0.02702702702702703;  1/27 = 0.037037037037037035   1/43 = 0.023255813953488372
+
+  heatmap_sigma: 5.0  
+  learnable_sigmas: True
+
+  get_pixel_spacing: True
+  pixel_spacing_default: [0.1, 0.1]  # should be [0.141, 0.141] but in original runs I used 0.1,0.1 -> keep for comparison
+
+training_parameters: 
+  lr: 1.0e-5
+  batch_size: 2
+  epochs: 1000
+
+
+  RandAdjustContrast_gamma_lower: 0.7
+  RandAdjustContrast_gamma_upper: 2.0
+
+  early_stopping_patience: 100

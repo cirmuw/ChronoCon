@@ -112,7 +112,7 @@ def get_transforms(config):
 
 def main():
     config = load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_11.yaml",
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/feet/F_train_landmarks_102_debugging.yaml",
         debugging_in_jupyter_nb=False, 
         silencium=False
     )
@@ -155,6 +155,7 @@ def main():
 
         # TODO:
         # It would be good to also log the splits file
+        
 
 
         # Load paths
@@ -165,10 +166,18 @@ def main():
             "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
             folder_F_images=base_dir /
             "autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-            df_lm_labels_H=base_dir / "landmark_data/100_all_H_joints36/points.csv",
-            df_lm_labels_F=base_dir / "landmark_data/100_all_F_joints27/points.csv",
-            df_autoscoRA_labels_F=base_dir / "autoscoRA_data/autoscoRA_feet.csv",
-            df_autoscoRA_labels_H=base_dir / "autoscoRA_data/autoscoRA_hands.csv",
+            
+            df_lm_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
+                                                               "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points_with_names.csv"),
+            df_lm_labels_F= config.get("data_settings", {}).get("landmarks_csv_F",
+                                                              "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points_with_names.csv"),
+            
+            df_autoscoRA_labels_F=config.get("data_settings", {}).get("landmarks_csv_F", 
+                                                                      base_dir / "autoscoRA_data/autoscoRA_feet.csv"),
+            
+            df_autoscoRA_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
+                                                                      base_dir / "autoscoRA_data/autoscoRA_hands.csv"),
+            
             training_test_splits_json_H=config["data_settings"]["training_test_splits_json_H"],
             training_test_splits_json_F=config["data_settings"]["training_test_splits_json_F"],
             df_autoscoRA_labels_F_header = config["data_settings"].get("df_autoscoRA_labels_F_header", None),  # infer is default; use None when no header is available
@@ -191,7 +200,8 @@ def main():
                 pixel_spacings_test1,
                 pixel_spacings_test2
             ) = dataHandler.get_landmarks_dataset_H(
-                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False)
+                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
+                pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
             )
         elif config["data_settings"].get("landmarks_type", "H") == "F":
             print("Loading data for Feet landmarks")
@@ -206,7 +216,8 @@ def main():
                 pixel_spacings_test1,
                 pixel_spacings_test2
             ) = dataHandler.get_landmarks_dataset_F(
-                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False)
+                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
+                pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
             )            
         else: 
             raise ValueError("landmarks_type must be either 'H' or 'F'")
@@ -361,7 +372,8 @@ def main():
             epochs=1000,
             patience=10,
             scheduler=None,
-            run_full_epochs=False
+            run_full_epochs=False, 
+            save_model = True
         ):
             """
             If run_full_epochs=True, training proceeds through all `epochs` without early stopping,
@@ -410,8 +422,9 @@ def main():
                         epochs_no_improve = 0
 
                         # Log these weights as the best so far
-                        mlflow.pytorch.log_model(model, artifact_path="best_model")
-                        mlflow.pytorch.log_model(heatmap_generator, "best_heatmap_generator")
+                        if save_model: 
+                            mlflow.pytorch.log_model(model, artifact_path="best_model")
+                            mlflow.pytorch.log_model(heatmap_generator, "best_heatmap_generator")
                     else:
                         epochs_no_improve += 1
 
@@ -444,12 +457,13 @@ def main():
             epochs=epochs,
             patience=config["training_parameters"].get("early_stopping_patience", 10),
             scheduler=lr_scheduler, 
-            run_full_epochs=config["training_parameters"].get("run_full_epochs", False)
+            run_full_epochs=config["training_parameters"].get("run_full_epochs", False), 
+            save_model=config["SAVE_MODEL"]
         )
 
-
-        mlflow.pytorch.log_model(model, artifact_path="final_model")
-        mlflow.pytorch.log_model(heatmap_generator, "final_heatmap_generator")
+        if config["SAVE_MODEL"]: 
+            mlflow.pytorch.log_model(model, artifact_path="final_model")
+            mlflow.pytorch.log_model(heatmap_generator, "final_heatmap_generator")
 
         artifact_uri = mlflow.get_artifact_uri()
         print("ARTIFACTS URI = ", artifact_uri)

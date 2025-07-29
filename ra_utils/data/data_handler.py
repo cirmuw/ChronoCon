@@ -95,6 +95,10 @@ class DataHandler_CR_autoscoRA(object):
         files_H = list(self.filepaths["folder_H_images"].glob("*.dcm"))
         files_F = list(self.filepaths["folder_F_images"].glob("*.dcm"))
         
+        # ignore the files starting with "._"
+        files_H = [f for f in files_H if not f.name.startswith("._")]
+        files_F = [f for f in files_F if not f.name.startswith("._")]
+        
         files_H_with_extras = [extract_extras_from_abspath(file, ending=".dcm", replace_ending=True) for file in files_H]
         files_F_with_extras = [extract_extras_from_abspath(file, ending=".dcm", replace_ending=True) for file in files_F]
         
@@ -149,7 +153,7 @@ class DataHandler_CR_autoscoRA(object):
     # --------------------------------------------------------------
     # Helper method: Extract image paths and landmark arrays from df
     # --------------------------------------------------------------
-    def _extract_image_paths_and_landmarks(self, df_subset: pd.DataFrame, get_pixel_spacing=False, landmark_names=None):
+    def _extract_image_paths_and_landmarks(self, df_subset: pd.DataFrame, get_pixel_spacing=False, landmark_names=None, pixel_spacing_default = [0.1, 0.1]):
         """
         Given a subset of self.df_images_and_landmarks_H (or F),
         return a list of image-path strings, a 3D numpy array of landmarks,
@@ -180,13 +184,13 @@ class DataHandler_CR_autoscoRA(object):
                     try:
                         ps = ds.PixelSpacing  # typically [RowSpacing, ColSpacing]
                     except (AttributeError, KeyError):
-                        print(f"[WARNING] PixelSpacing missing in {dcm_path}, using [0.1, 0.1].")
-                        ps = [0.1, 0.1]
+                        print(f"[WARNING] PixelSpacing missing in {dcm_path}, using {pixel_spacing_default}.")
+                        ps = pixel_spacing_default
 
                 except InvalidDicomError:
                     # If pydicom cannot parse the file at all
-                    print(f"[WARNING] {dcm_path} is not a valid DICOM. Using [0.1, 0.1].")
-                    ps = [0.1, 0.1]
+                    print(f"[WARNING] {dcm_path} is not a valid DICOM. Using {pixel_spacing_default}.")
+                    ps = pixel_spacing_default
 
                 pixel_spacings.append(ps)
 
@@ -200,7 +204,7 @@ class DataHandler_CR_autoscoRA(object):
     # --------------------------------------------------------------
     #  get_landmarks_dataset_H
     # --------------------------------------------------------------
-    def get_landmarks_dataset_H(self, get_pixel_spacing=False):
+    def get_landmarks_dataset_H(self, get_pixel_spacing=False, pixel_spacing_default = [0.1, 0.1]):
         """
         Returns the dataset splits for the 'hands' data as a tuple:
             (image_paths_train,   image_paths_test1,   image_paths_test2,
@@ -240,13 +244,13 @@ class DataHandler_CR_autoscoRA(object):
         # Extract for each subset
         landmark_names = self.landmark_names_H
         (image_paths_train, landmarks_train, pixel_spacing_train) = \
-            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         (image_paths_test1, landmarks_test1, pixel_spacing_test1) = \
-            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         (image_paths_test2, landmarks_test2, pixel_spacing_test2) = \
-            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         return (
             image_paths_train, 
@@ -305,7 +309,7 @@ class DataHandler_CR_autoscoRA(object):
     # --------------------------------------------------------------
     #  get_landmarks_dataset_F
     # --------------------------------------------------------------
-    def get_landmarks_dataset_F(self, get_pixel_spacing=False):
+    def get_landmarks_dataset_F(self, get_pixel_spacing=False, pixel_spacing_default = [0.1, 0.1]):
         """
         Returns the dataset splits for the 'feet' data as a tuple:
             (image_paths_train,   image_paths_test1,   image_paths_test2,
@@ -334,13 +338,13 @@ class DataHandler_CR_autoscoRA(object):
 
         landmark_names = self.landmark_names_F
         (image_paths_train, landmarks_train, pixel_spacing_train) = \
-            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_train, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         (image_paths_test1, landmarks_test1, pixel_spacing_test1) = \
-            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_test1, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         (image_paths_test2, landmarks_test2, pixel_spacing_test2) = \
-            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names)
+            self._extract_image_paths_and_landmarks(df_test2, get_pixel_spacing=get_pixel_spacing, landmark_names=landmark_names, pixel_spacing_default = pixel_spacing_default)
 
         return (
             image_paths_train, 
