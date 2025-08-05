@@ -113,8 +113,12 @@ class DataHandler_CR_autoscoRA(object):
 
     def load_everything(self):
         self.df_lm_labels_H, self.df_lm_labels_F = self.load_H_and_F_landmark_df()
-        self.landmark_names_H = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_H.columns[1:]])) if self.df_autoscoRA_labels_H_header == "infer" else None          
-        self.landmark_names_F = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_F.columns[1:]])) if self.df_autoscoRA_labels_F_header == "infer" else None          
+        
+        self.landmark_names_H = [re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_H.columns[1:]][::2] if self.df_autoscoRA_labels_H_header == "infer" else None          
+        self.landmark_names_F = [re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_F.columns[1:]][::2] if self.df_autoscoRA_labels_F_header == "infer" else None          
+        
+        #self.landmark_names_H = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_H.columns[1:]])) if self.df_autoscoRA_labels_H_header == "infer" else None          
+        #self.landmark_names_F = list(set([re.sub("((-X)|(-Y)|(_0)|_1)$", '', i) for i in self.df_lm_labels_F.columns[1:]])) if self.df_autoscoRA_labels_F_header == "infer" else None          
         self.df_images_H, self.df_images_F       = self.load_H_and_F_paths_from_folder()
         self.df_autoscoRA_labels_H, self.df_autoscoRA_labels_F = self.load_autoscoRA_lables()
         
