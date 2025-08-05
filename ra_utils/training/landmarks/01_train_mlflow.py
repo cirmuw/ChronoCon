@@ -84,6 +84,7 @@ from ra_utils.training.landmarks.lib import (
 )
 
 
+from ra_utils.data.data_handler_landmarks_generic import DataHandler_CR_autoscoRA_generic
 
 def main():
     config = load_config(
@@ -131,11 +132,35 @@ def main():
         # TODO:
         # It would be good to also log the splits file
         
+        
+        settings = config["data_settings"]
+        dataHandler = DataHandler_CR_autoscoRA_generic(
+            folder_images=settings["folder_images"],
+            df_lm_labels=settings["landmarks_csv"],
+            training_test_splits_json=settings["training_test_splits_json"],
+            df_autoscoRA_labels_header=settings.get("df_autoscoRA_labels_header", "infer")
+        )
+
+        (
+            image_paths_train,
+            image_paths_test1,
+            image_paths_test2,
+            landmarks_train,
+            landmarks_test1,
+            landmarks_test2,
+            pixel_spacings_train,
+            pixel_spacings_test1,
+            pixel_spacings_test2
+        ) = dataHandler.get_landmarks_dataset(
+            get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
+            pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
+        )
+        lm_names = dataHandler.landmark_names
 
 
         # Load paths
-        dataHandler = init_datahandler_from_config(config=config, 
-                                                   base_dir="/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/")
+        # dataHandler = init_datahandler_from_config(config=config, 
+        #                                            base_dir="/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/")
 
         # base_dir = Path(
         #     "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/")
@@ -165,40 +190,40 @@ def main():
         # )
 
 
-        if config["data_settings"].get("landmarks_type", "H") == "H":
-            print("Loading data for Hands landmarks")
-            (
-                image_paths_train,
-                image_paths_test1,
-                image_paths_test2,
-                landmarks_train,
-                landmarks_test1,
-                landmarks_test2,
-                pixel_spacings_train,
-                pixel_spacings_test1,
-                pixel_spacings_test2
-            ) = dataHandler.get_landmarks_dataset_H(
-                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
-                pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
-            )
-        elif config["data_settings"].get("landmarks_type", "H") == "F":
-            print("Loading data for Feet landmarks")
-            (
-                image_paths_train,
-                image_paths_test1,
-                image_paths_test2,
-                landmarks_train,
-                landmarks_test1,
-                landmarks_test2,
-                pixel_spacings_train,
-                pixel_spacings_test1,
-                pixel_spacings_test2
-            ) = dataHandler.get_landmarks_dataset_F(
-                get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
-                pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
-            )            
-        else: 
-            raise ValueError("landmarks_type must be either 'H' or 'F'")
+        # if config["data_settings"].get("landmarks_type", "H") == "H":
+        #     print("Loading data for Hands landmarks")
+        #     (
+        #         image_paths_train,
+        #         image_paths_test1,
+        #         image_paths_test2,
+        #         landmarks_train,
+        #         landmarks_test1,
+        #         landmarks_test2,
+        #         pixel_spacings_train,
+        #         pixel_spacings_test1,
+        #         pixel_spacings_test2
+        #     ) = dataHandler.get_landmarks_dataset_H(
+        #         get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
+        #         pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
+        #     )
+        # elif config["data_settings"].get("landmarks_type", "H") == "F":
+        #     print("Loading data for Feet landmarks")
+        #     (
+        #         image_paths_train,
+        #         image_paths_test1,
+        #         image_paths_test2,
+        #         landmarks_train,
+        #         landmarks_test1,
+        #         landmarks_test2,
+        #         pixel_spacings_train,
+        #         pixel_spacings_test1,
+        #         pixel_spacings_test2
+        #     ) = dataHandler.get_landmarks_dataset_F(
+        #         get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
+        #         pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
+        #     )            
+        # else: 
+        #     raise ValueError("landmarks_type must be either 'H' or 'F'")
 
 
         if not isinstance(pixel_spacings_train, (list, tuple, np.ndarray)) or pixel_spacings_train is None:
@@ -212,7 +237,7 @@ def main():
         dim_image = config["model_settings"]["dim_image"]
         train_transformd, inference_transformd = get_transforms(config)
 
-        ds_train, ds_test1, ds_test2 = ra_utils.data.dataloader_CR_landmarks.get_landmark_datasets(
+        ds_train, ds_test1, ds_test2 = ra_utils.data.dataloader_CR_landmarks.get_landmark_datasets_v2(
             image_paths_train=image_paths_train,
             image_paths_test1=image_paths_test1,
             image_paths_test2=image_paths_test2,

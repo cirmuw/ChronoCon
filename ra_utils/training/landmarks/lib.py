@@ -246,27 +246,21 @@ def init_datahandler_from_config(config: dict,
                                  base_dir="/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/"):
     base_dir = Path(base_dir)
     dataHandler = ra_utils.data.data_handler.DataHandler_CR_autoscoRA(
-        folder_H_images=base_dir /
-        "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-        folder_F_images=base_dir /
-        "autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-        
-        df_lm_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
-                                                            "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points_with_names.csv"),
-        df_lm_labels_F= config.get("data_settings", {}).get("landmarks_csv_F",
-                                                            "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points_with_names.csv"),
-        
-        df_autoscoRA_labels_F=config.get("data_settings", {}).get("landmarks_csv_F", 
-                                                                    base_dir / "autoscoRA_data/autoscoRA_feet.csv"),
-        
-        df_autoscoRA_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
-                                                                    base_dir / "autoscoRA_data/autoscoRA_hands.csv"),
+        folder_H_images=base_dir / "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
+        folder_F_images=base_dir / "autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms",
+        df_lm_labels_H=config.get("data_settings", {}).get("landmarks_csv_H",  "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points_with_names.csv"),
+        df_lm_labels_F= config.get("data_settings", {}).get("landmarks_csv_F", "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points_with_names.csv"),
+        df_autoscoRA_labels_F=config.get("data_settings", {}).get("landmarks_csv_F", base_dir / "autoscoRA_data/autoscoRA_feet.csv"),
+        df_autoscoRA_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", base_dir / "autoscoRA_data/autoscoRA_hands.csv"),
         
         training_test_splits_json_H=config["data_settings"]["training_test_splits_json_H"],
         training_test_splits_json_F=config["data_settings"]["training_test_splits_json_F"],
         df_autoscoRA_labels_F_header = config["data_settings"].get("df_autoscoRA_labels_F_header", None),  # infer is default; use None when no header is available
         df_autoscoRA_labels_H_header = config["data_settings"].get("df_autoscoRA_labels_H_header", None)
-        # training_test_splits_json_H = base_dir / "landmark_data/splits/splits_H_TD_25-03-05_three_sets.yml",
-        # training_test_splits_json_F = base_dir / "landmark_data/splits/splits_F_TD_25-03-05.yml",
     )
     return dataHandler
+
+
+
+
+

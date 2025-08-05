@@ -44,6 +44,9 @@ def read_dict_from_file(filename: str) -> dict:
         raise ValueError(f"Unsupported file extension '{ext}'. Please use a .yml, .yaml, or .json file.")
 
 
+
+
+
 class DataHandler_CR_autoscoRA(object):
     def __init__(self, 
                  folder_H_images = "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
