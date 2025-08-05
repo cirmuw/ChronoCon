@@ -116,6 +116,12 @@ def main():
         config["experiment_name"])
 
     with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=True):
+        package_info_parameters = {
+            "package_infos -- ra_utils": ra_utils.utils.utils.package_infos(ra_utils),
+            "package_infos -- landmarker": ra_utils.utils.utils.package_infos(landmarker)
+        }
+        mlflow.log_params(package_info_parameters)
+        
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         print("Running on ", device)
 
@@ -129,10 +135,7 @@ def main():
         # Log config file
         mlflow.log_dict(config, "config.yml")
 
-        # TODO:
-        # It would be good to also log the splits file
-        
-        
+        # Get the splits        
         settings = config["data_settings"]
         dataHandler = DataHandler_CR_autoscoRA_generic(
             folder_images=settings["folder_images"],
@@ -140,7 +143,6 @@ def main():
             training_test_splits_json=settings["training_test_splits_json"],
             df_autoscoRA_labels_header=settings.get("df_autoscoRA_labels_header", "infer")
         )
-
         (
             image_paths_train,
             image_paths_test1,
@@ -156,74 +158,7 @@ def main():
             pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
         )
         lm_names = dataHandler.landmark_names
-
-
-        # Load paths
-        # dataHandler = init_datahandler_from_config(config=config, 
-        #                                            base_dir="/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/")
-
-        # base_dir = Path(
-        #     "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/")
-        # dataHandler = ra_utils.data.data_handler.DataHandler_CR_autoscoRA(
-        #     folder_H_images=base_dir /
-        #     "autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-        #     folder_F_images=base_dir /
-        #     "autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms",
-            
-        #     df_lm_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
-        #                                                        "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_H_joints36/points_with_names.csv"),
-        #     df_lm_labels_F= config.get("data_settings", {}).get("landmarks_csv_F",
-        #                                                       "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/points_with_names.csv"),
-            
-        #     df_autoscoRA_labels_F=config.get("data_settings", {}).get("landmarks_csv_F", 
-        #                                                               base_dir / "autoscoRA_data/autoscoRA_feet.csv"),
-            
-        #     df_autoscoRA_labels_H=config.get("data_settings", {}).get("landmarks_csv_H", 
-        #                                                               base_dir / "autoscoRA_data/autoscoRA_hands.csv"),
-            
-        #     training_test_splits_json_H=config["data_settings"]["training_test_splits_json_H"],
-        #     training_test_splits_json_F=config["data_settings"]["training_test_splits_json_F"],
-        #     df_autoscoRA_labels_F_header = config["data_settings"].get("df_autoscoRA_labels_F_header", None),  # infer is default; use None when no header is available
-        #     df_autoscoRA_labels_H_header = config["data_settings"].get("df_autoscoRA_labels_H_header", None)
-        #     # training_test_splits_json_H = base_dir / "landmark_data/splits/splits_H_TD_25-03-05_three_sets.yml",
-        #     # training_test_splits_json_F = base_dir / "landmark_data/splits/splits_F_TD_25-03-05.yml",
-        # )
-
-
-        # if config["data_settings"].get("landmarks_type", "H") == "H":
-        #     print("Loading data for Hands landmarks")
-        #     (
-        #         image_paths_train,
-        #         image_paths_test1,
-        #         image_paths_test2,
-        #         landmarks_train,
-        #         landmarks_test1,
-        #         landmarks_test2,
-        #         pixel_spacings_train,
-        #         pixel_spacings_test1,
-        #         pixel_spacings_test2
-        #     ) = dataHandler.get_landmarks_dataset_H(
-        #         get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
-        #         pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
-        #     )
-        # elif config["data_settings"].get("landmarks_type", "H") == "F":
-        #     print("Loading data for Feet landmarks")
-        #     (
-        #         image_paths_train,
-        #         image_paths_test1,
-        #         image_paths_test2,
-        #         landmarks_train,
-        #         landmarks_test1,
-        #         landmarks_test2,
-        #         pixel_spacings_train,
-        #         pixel_spacings_test1,
-        #         pixel_spacings_test2
-        #     ) = dataHandler.get_landmarks_dataset_F(
-        #         get_pixel_spacing=config["model_settings"].get("get_pixel_spacing", False), 
-        #         pixel_spacing_default = config["model_settings"].get("pixel_spacing_default", [0.1, 0.1])
-        #     )            
-        # else: 
-        #     raise ValueError("landmarks_type must be either 'H' or 'F'")
+        mlflow.log_param("landmark_names", lm_names)
 
 
         if not isinstance(pixel_spacings_train, (list, tuple, np.ndarray)) or pixel_spacings_train is None:
@@ -317,8 +252,10 @@ def main():
             ds_train, batch_size=batch_size, shuffle=True, num_workers=0)
         val_loader = DataLoader(
             ds_test1, batch_size=batch_size, shuffle=False, num_workers=0)
-        test_loader = DataLoader(
-            ds_test2, batch_size=batch_size, shuffle=False, num_workers=0)
+        
+        # Testset is not needed 
+        # test_loader = DataLoader(
+        #     ds_test2, batch_size=batch_size, shuffle=False, num_workers=0)
 
 
 
