@@ -72,7 +72,7 @@ from sklearn.model_selection import KFold
 from ra_utils.data.splits_utils import generate_split_dictionary
 
 from ra_utils.utils.config_parser import load_config
-import os
+import os, sys
 import mlflow
 import mlflow.pytorch
 
@@ -83,6 +83,9 @@ from ra_utils.training.landmarks.lib import (
     init_datahandler_from_config
 )
 
+import ra_utils.utils
+import ra_utils.utils.utils
+
 
 from ra_utils.data.data_handler_landmarks_generic import DataHandler_CR_autoscoRA_generic
 
@@ -92,6 +95,11 @@ def main():
         debugging_in_jupyter_nb=False, 
         silencium=False
     )
+
+    command_signature = " ".join(sys.argv)
+    print(f"Script called with: {command_signature}")  # or use logging
+    # Optionally log as MLflow param (will be stored with the run)
+    mlflow.set_tag("command_line_call", command_signature)
 
     # Debugging option:
     # Set different MLFLOW location
@@ -172,7 +180,7 @@ def main():
         dim_image = config["model_settings"]["dim_image"]
         train_transformd, inference_transformd = get_transforms(config)
 
-        ds_train, ds_test1, ds_test2 = ra_utils.data.dataloader_CR_landmarks.get_landmark_datasets_v2(
+        ds_train, ds_test1, ds_test2 = ra_utils.data.dataloader_CR_landmarks.get_landmark_datasets(
             image_paths_train=image_paths_train,
             image_paths_test1=image_paths_test1,
             image_paths_test2=image_paths_test2,
