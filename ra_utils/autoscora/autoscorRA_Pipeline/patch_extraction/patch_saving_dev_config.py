@@ -34,9 +34,13 @@ print("running patch_saving.py at " + start_time)
 
 
 config = ra_utils.utils.config_parser.load_config(
-    default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_patches/F_patch_extraction_all_LOCAL.yml",  # for debugging
+    default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_patches/F_patch_extraction_580_LOCAL.yml",  # for debugging
     debugging_in_jupyter_nb=False, silencium=False)
 
+import matplotlib
+matplotlib_backend = config.get("matplotlib_backend", "agg")  # agg, "TkAgg"
+matplotlib.use(matplotlib_backend)
+import matplotlib.pyplot as plt
 
 
 extremity = config["extremity"]  # "foot"  # "hand"
@@ -85,8 +89,10 @@ modification = {'rotate_degrees': 0,
                 'resize_UR_by': config.get("resize_UR_by", 0),
                 'resize_DP_by': None}
 
+
+
 if not os.path.isdir(patch_dir_root):
-    os.mkdir(patch_dir_root)
+    os.makedirs(patch_dir_root, exist_ok=True)
     print("created directory:", patch_dir_root)
 
 # iterator elements
@@ -153,13 +159,16 @@ for img in tqdm(img_names[lo:hi]):
         rel_shift_DP = -params[roi]['center_shift_DP'][1]/ref_to_length_DP
 
         if roi in roi_finger:
-            corners = pe.finger_centers_to_corners(points=finger_points[img][roi], ref_size=extremity_ref,
-                                                    ref_to_size_factor=ref_to_length_DP, center_shift=rel_shift_DP)
+            corners, extra_points_for_debugging = pe.finger_centers_to_corners(points=finger_points[img][roi], ref_size=extremity_ref,
+                                                    ref_to_size_factor=ref_to_length_DP, center_shift=rel_shift_DP, 
+                                                    return_extra_points=True)
         elif roi in roi_wrist:
-            corners = pe.finger_centers_to_corners(points=wrist_points[img][roi], ref_size=extremity_ref,
-                                                    ref_to_size_factor=ref_to_length_DP, center_shift=rel_shift_DP)
+            corners, extra_points_for_debugging = pe.finger_centers_to_corners(points=wrist_points[img][roi], ref_size=extremity_ref,
+                                                    ref_to_size_factor=ref_to_length_DP, center_shift=rel_shift_DP,
+                                                    return_extra_points=True)
         elif roi in roi_cmcgroup:
             corners = {}
+            extra_points_for_debugging = None
 
         else:
             raise Exception(roi + " not in roi_finger, roi_wrist, or roi_cmcgroup")
@@ -180,9 +189,13 @@ for img in tqdm(img_names[lo:hi]):
         patch = pe.patch_cutter(img=array, rectangle_measures=None, rectangle_corners=modified_corners,
                                 square=True, resize_patch=out_dim,
                                 padd_patch=None, base_crop=int(3),
-                                plot=config.get("plot", False), show_steps=config.get("plot_show_steps", True), print_log=False, 
+                                plot=config.get("plot", False), 
+                                plot_type = config.get("plot_type", "show_steps"),
+                                print_log=False, 
                                 other_corners_to_plot=corners_original if config.get("plot_other_corners_as_well", False) else None,
                                 crop_back_border=config.get("crop_back_border", True),
+                                extra_points_for_debugging = extra_points_for_debugging, 
+                                roi_name = roi
                                 )
 
         # save patch
