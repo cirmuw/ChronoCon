@@ -1,0 +1,21 @@
+
+Bootstrap: docker
+From: pytorch/pytorch:2.5.1-cuda11.8-cudnn9-devel 
+%post
+    apt-get update && apt-get install git libsm6 libxext6 -y
+    mkdir -p /data/dataset
+    mkdir /project/
+
+    # This is depricated... Landmakrs code is in   https://github.com/cirmuw/landmarks_utils
+    # first install forked version of landmarks code (git@github.com:ClemensWatzenboeck/landmarker.git)
+    # pip install git+https://github.com/ClemensWatzenboeck/landmarker.git@main
+
+    # Install ra_utils package (https://gitlab.cir.meduniwien.ac.at:8888/cwatzenboeck/ra_utils.git)
+    pip install git+https://gitlab+deploy-token-1:XXXXXXXXXXXXXXXXXXXX@gitlab.cir.meduniwien.ac.at:8888/cwatzenboeck/ra_utils.git@master
+
+%environment
+    export LC_ALL=C
+%runscript
+    exec /bin/bash "$@"
+%startscript
+    exec /bin/bash "$@"
