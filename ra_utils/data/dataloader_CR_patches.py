@@ -1101,7 +1101,7 @@ def prepare_dataloaders(datasets, config):
                                   num_workers=num_workers,
                                   drop_last=False)
 
-        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_size=batch_size,
                                   shuffle=False,
                                   sampler=sampler,
@@ -1120,7 +1120,7 @@ def prepare_dataloaders(datasets, config):
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
         
-        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
 
@@ -1142,7 +1142,7 @@ def prepare_dataloaders(datasets, config):
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
         
-        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_sampler=batch_sampler,
                                   num_workers=num_workers)
 
@@ -1154,7 +1154,7 @@ def prepare_dataloaders(datasets, config):
                                   num_workers=num_workers,
                                   drop_last=False)
         
-        train_loader_wih_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=num_workers,
@@ -1175,7 +1175,7 @@ def prepare_dataloaders(datasets, config):
         "train_loader": train_loader,
         "val_loader":   val_loader,
         "test_loader":  test_loader,
-        "train_loader_wih_val_transforms": train_loader_wih_val_transforms
+        "train_loader_with_val_transforms": train_loader_with_val_transforms
     }
 
 # def prepare_dataloaders(datasets, config):

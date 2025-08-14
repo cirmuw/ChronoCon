@@ -771,10 +771,10 @@ def patch_cutter(
                     #              color='red', fontsize='x-small')
                     ax1.scatter(arr[i, 0], arr[i, 1], marker='x', color='red')
                 
-            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=1))
+            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=3))
             if other_corners_to_plot is not None:
                 corner_arr = np.array(list(other_corners_to_plot.values()))
-                ax1.add_patch(patches.Polygon(corner_arr, closed=True, fill=False, edgecolor='blue', linewidth=1))
+                ax1.add_patch(patches.Polygon(corner_arr, closed=True, fill=False, edgecolor='blue', linewidth=3))
 
             # ax1.set_ylim(ax1.get_ylim()[::-1])
             ax2 = fig1.add_subplot(322)
@@ -819,24 +819,29 @@ def patch_cutter(
 
             fig1 = plt.figure(figsize=(10, 5))
             ax1 = fig1.add_subplot(121)
+            ax1.set_xticks([])
+            ax1.set_yticks([])
             ax1.imshow(img, cmap="gray")
             ax1.scatter(corner_arr[:, 0], corner_arr[:, 1], s=3)
-            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=1))
+            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=3))
             
             # Add the centers and other debugging points
             if extra_points_for_debugging is not None:
                 arr = np.array([coordinates for _, coordinates in extra_points_for_debugging.items()])
                 names = [n for n, _ in extra_points_for_debugging.items()]
                 for i in np.arange(0, len(extra_points_for_debugging)):
-                    ax1.scatter(arr[i, 0], arr[i, 1], marker='x', color='red')
+                    ax1.scatter(arr[i, 0], arr[i, 1], marker='x', color='lightgreen', s=35)
 
             if other_corners_to_plot is not None:
                 corner_arr_other = np.array(list(other_corners_to_plot.values()))
-                ax1.add_patch(patches.Polygon(corner_arr_other, closed=True, fill=False, edgecolor='blue', linewidth=1))
-            
+                ax1.add_patch(patches.Polygon(corner_arr_other, closed=True, fill=False, edgecolor='purple', linewidth=3))
+
+
             ax1.set_title(f"Input Image with ROI  {roi_name}")
 
             ax2 = fig1.add_subplot(122)
+            ax2.set_xticks([])
+            ax2.set_yticks([])
             ax2.imshow(patch, cmap="gray")
             patch_title_insert = "patch cropped"
             if square:

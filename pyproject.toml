@@ -27,6 +27,7 @@ dependencies = [
     "nbstripout",
     "torch",
     "torchvision",
+    "torchmetrics",
     "monai",
     "pydicom",
     "tqdm",
