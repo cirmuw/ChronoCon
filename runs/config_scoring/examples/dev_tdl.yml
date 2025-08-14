@@ -65,6 +65,45 @@ data:
   splits_file: "..."            # path to csv containing columns: "patient_id", "set_type" where "set_type" = "Tr", "Val", "Ts"
   split_ratio: [0.6, 0.2, 0.2]  # otherwise used split ratio
 
+###################
+  network_score_groups:
+    H_ERO_P_PIP:     ["IPIEP", "PIPIIEP", "PIPIIIEP", "PIPIVEP", "PIPVEP"]
+    H_ERO_D_PIP:     ["IPIED", "PIPIIED", "PIPIIIED", "PIPIVED", "PIPVED"]
+    H_ERO_P_MCP:     ["MCPIEP", "MCPIIEP", "MCPIIIEP", "MCPIVEP", "MCPVEP"]
+    H_ERO_D_MCP:     ["MCPIED", "MCPIIED", "MCPIIIED", "MCPIVED", "MCPVED"]
+    H_ERO_BASE_MC:   ["Base_MCIE"]
+    # H_ERO_CARPALS:   ["LunatE", "RadiusE", "ScaphE", "TrapE", "UlnaE"]
+    H_ERO_LUNATE:    ["LunatE"]
+    H_ERO_RADIUS:    ["RadiusE"]
+    H_ERO_SCAPHOID:  ["ScaphE"]
+    H_ERO_TRAPEZIUM: ["TrapE"]
+    H_ERO_ULNA:      ["UlnaE"]
+
+    # score_groups_H_JSN:
+    H_JSN_PIP:               ["PIPII", "PIPIII", "PIPIV", "PIPV"]
+    H_JSN_MCP:               ["MCPI", "MCPII", "MCPIII", "MCPIV", "MCPV"]
+    H_JSN_CMC:               ["CMCIII", "CMCIV", "CMCV"]
+    #H_JSN_CARPAL_JOINTS:     ["Rad_Carp", "Sca_Cap", "Tra_Sca"]
+    H_JSN_Rad_Carp:          ["Rad_Carp"]
+    H_JSN_Tra_Sca:           ["Tra_Sca"]
+    H_JSN_Sca_Cap:           ["Sca_Cap"]
+
+    # score_groups_F_JSN:
+    F_JSN_MTP_I:             ["MTPI"]
+    F_JSN_MTP_II_to_V:       ["MTPII", "MTPIII", "MTPIV", "MTPV"]
+    F_JSN_IP:                ["IP"]
+
+    # score_groups_F_ERO:
+    F_ERO_P_MTP_I:       ["MTPIEP"]
+    F_ERO_D_MTP_I:       ["MTPIED"]
+    F_ERO_P_MTP_II_to_V: ["MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP"]
+    F_ERO_D_MTP_II_to_V: ["MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED"]
+    F_ERO_P_IP:          ["IPEP"]
+    F_ERO_D_IP:          ["IPED"]
+
+
+
+##################
   #scores: ['IPIEP', 'PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP']
 
 
@@ -82,6 +121,7 @@ data:
         
 
   # scores: ['Base_MCIE', 'IPIED', 'IPIEP', 'LunatE', 'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP', 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE']
+
 
 
   score_groups0:

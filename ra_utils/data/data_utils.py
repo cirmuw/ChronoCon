@@ -103,6 +103,10 @@ def extract_extras_from_filename(
         replace_ending=False,
         filename_str="file_name"
 ):
+    if ending and not filename.endswith(ending):
+        raise ValueError(f"Expected filename to end with '{ending}', but got '{filename}'")
+
+    
     # strip the file suffix you expect
     stem = Path(filename).name
     if ending and stem.endswith(ending):
@@ -120,9 +124,9 @@ def extract_extras_from_filename(
         record[key] = parts[k] if k < len(parts) else None
     return record
 
-def extract_extras_from_abspath(abs_path):
+def extract_extras_from_abspath(abs_path, ending=".npy", replace_ending=False):
     filename = str(abs_path).replace("._","").split(str("/"))[-1]
-    return {**{"image": abs_path, **extract_extras_from_filename(filename)}}
+    return {**{"image": abs_path, **extract_extras_from_filename(filename, ending=ending, replace_ending=replace_ending)}}
 
 
 

@@ -4,8 +4,101 @@ import pandas as pd
 import ra_utils
 
 import landmarker
-from landmarker.data import LandmarkDataset
+from landmarker.data import LandmarkDataset, LandmarkDatasetOnTheFly
+from typing import Union, List
 
+def get_landmark_datasets_v2(
+    image_paths_train,
+    image_paths_test1,
+    image_paths_test2,
+    landmarks_train,
+    landmarks_test1,
+    landmarks_test2,
+    train_transform=None,
+    inference_transform=None,
+    dim_img=(512,512),    
+    pixel_spacings_train=None,
+    pixel_spacings_test1=None,
+    pixel_spacings_test2=None,
+    class_names: Union[List[str], None] = None,
+    **kwargs
+    ):
+    return (
+        LandmarkDatasetOnTheFly(
+            image_paths_train,
+            landmarks_train,
+            pixel_spacing=pixel_spacings_train,
+            transform=train_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_train) > 0 else None,
+        LandmarkDatasetOnTheFly(
+            image_paths_test1,
+            landmarks_test1,
+            pixel_spacing=pixel_spacings_test1,
+            transform=inference_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_test1) > 0 else None,
+        LandmarkDatasetOnTheFly(
+            image_paths_test2,
+            landmarks_test2,
+            pixel_spacing=pixel_spacings_test2,
+            transform=inference_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_test2) > 0 else None,
+    )
+
+
+def get_landmark_datasets(
+    image_paths_train,
+    image_paths_test1,
+    image_paths_test2,
+    landmarks_train,
+    landmarks_test1,
+    landmarks_test2,
+    train_transform=None,
+    inference_transform=None,
+    dim_img=(512,512),    
+    pixel_spacings_train=None,
+    pixel_spacings_test1=None,
+    pixel_spacings_test2=None,
+    class_names: Union[List[str], None] = None,
+    **kwargs
+    ):
+    return (
+        LandmarkDataset(
+            image_paths_train,
+            landmarks_train,
+            pixel_spacing=pixel_spacings_train,
+            transform=train_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_train) > 0 else None,
+        LandmarkDataset(
+            image_paths_test1,
+            landmarks_test1,
+            pixel_spacing=pixel_spacings_test1,
+            transform=inference_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_test1) > 0 else None,
+        LandmarkDataset(
+            image_paths_test2,
+            landmarks_test2,
+            pixel_spacing=pixel_spacings_test2,
+            transform=inference_transform,
+            dim_img=dim_img,
+            class_names=class_names,
+            **kwargs,
+        ) if len(image_paths_test2) > 0 else None,
+    )
 
 
 
@@ -22,6 +115,7 @@ def get_landmark_datasets(
     pixel_spacings_train=None,
     pixel_spacings_test1=None,
     pixel_spacings_test2=None,
+    class_names: Union[List[str], None] = None,
     **kwargs
     ):
     return (
@@ -31,6 +125,7 @@ def get_landmark_datasets(
             pixel_spacing=pixel_spacings_train,
             transform=train_transform,
             dim_img=dim_img,
+            class_names=class_names,
             **kwargs,
         ) if len(image_paths_train) > 0 else None,
         LandmarkDataset(
@@ -39,6 +134,7 @@ def get_landmark_datasets(
             pixel_spacing=pixel_spacings_test1,
             transform=inference_transform,
             dim_img=dim_img,
+            class_names=class_names,
             **kwargs,
         ) if len(image_paths_test1) > 0 else None,
         LandmarkDataset(
@@ -47,6 +143,7 @@ def get_landmark_datasets(
             pixel_spacing=pixel_spacings_test2,
             transform=inference_transform,
             dim_img=dim_img,
+            class_names=class_names,
             **kwargs,
         ) if len(image_paths_test2) > 0 else None,
     )

@@ -107,9 +107,9 @@ def import_joints_from_csv_to_dict(file=const.JOINTS_PATH_GT_100, img_colname="i
     # use img_colname column as row index
     joints_df.set_index(img_colname, inplace=True)
     # Drop columns not ending in -X or -Y (no coordinates)
-    joints_df = joints_df.loc[:, joints_df.columns.str.endswith(('-X', '-Y'))]
+    joints_df = joints_df.loc[:, joints_df.columns.str.endswith(('-X', '-Y'))] #, '_X', '_Y', '_y', '_x', '-x', '-y'))]
     # get names of joints (in csv one column key per coordinate (e.g, MCP1-P-X, MCP1-Y,...) but want one key per point)
-    joint_names = list(set([re.sub("((-X)|(-Y))$", '', i) for i in joints_df.keys()]))
+    joint_names = list(set([re.sub("[-_][XYxy]$", '', i) for i in joints_df.keys()]))
     # dict with row index as key and rows in {col: cell} dicts as values: {img_name: {col: cell, ...}, ...}
     joints_dict_raw = joints_df.to_dict(orient='index')
     # reformat dict to {img_name: {joint: np.array([x,y]), ...}, ...}

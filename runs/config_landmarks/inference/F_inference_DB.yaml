@@ -1,0 +1,32 @@
+
+
+debugging: True
+
+model: 
+  reload_from_state_dict: False
+  mlflow_runs_dir:  "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/" 
+  #run_id: "ba6753effad7435d92b2b1d0cf4c33e6"
+
+  run_id: "1ecc166eb5ed45f5bab247e9d37536aa"  # Rerun on all 100 cases 
+  model_artifact_name: "final_model"  #  "final_model" or "best_model"
+  heatmap_generator_artifact_name: "final_heatmap_generator"  # "final_heatmap_generator"  "best_heatmap_generator"
+
+  # Alternative: Load from state_dict -> to be implemented...
+  # state_dict_landmarks: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/models/F_2025-03-25_SCN.pt"
+  # state_dict_heatmap: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/models/F_2025-03-25_heatmap_gen.pt"
+
+
+
+
+input:
+  image_folder: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/F_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+  # landmarks_type: "F"
+  dim_image:  [512,512]  # better load from mlflow config, ...  Must be same as model was trained on!!
+  N_landmarks: 27 # 36
+  store_img: False
+  renaming_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/100_all_F_joints27/columns_mapping.csv"   # should columns (landmarks be renamed?)
+
+output_dst: 
+  "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/output/F_coordinates__100Tr_1ecc166eb5ed45f5bab247e9d37536aa_DB.csv"
+  
+

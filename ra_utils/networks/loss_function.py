@@ -226,9 +226,86 @@ def focal_loss(alpha: Optional[Sequence] = None,
 #
 #-------------------------------------------------------#
 
+#### Alternative implementation of combining regression with classification loss
+# Benefit: Simply add one dimension to the classifier  output dim = Nb, (1+Nc). First part is the value. The rest are the logits.
+#  Most stuff should simply work with this drop in replacement
+class MSEandCELoss(nn.Module):
+    """
+    outputs shape  : (N, 1 + N_classes)        # scalar regression + class-logits
+    targets shape  : (N, 1) or (N,)            # scalar ground truth
+    """
+
+    def __init__(self, mse_weight=1.0, class_weight=1.0, class_bounds=[10, 20]):
+        super().__init__()
+        self.mse_weight   = mse_weight
+        self.class_weight = class_weight
+        self.class_bounds = class_bounds
+
+        self.mse_loss   = nn.MSELoss()
+        self.class_loss = nn.CrossEntropyLoss()   # expects logits (N, C) and labels (N,)
+
+    def forward(self, outputs, targets):
+        """
+        outputs  : tensor (N, 1 + C)
+        targets  : tensor (N, 1) or (N,)
+        """
+        # ----- split regression head vs. classification head -----
+        pred_scalar = outputs[:, 0]        # (N,)
+        pred_logits = outputs[:, 1:]       # (N, C)
+
+        # make sure targets is 1-D float (same dtype as regression)
+        targets = targets.view(-1).float()
+
+        # ----- bucketize continuous targets into class indices -----
+        # 0  …  < bounds[0]
+        # 1  …  [bounds[0], bounds[1])
+        # …
+        # C …  >= bounds[-1]
+        bounds = torch.tensor(self.class_bounds,
+                              dtype=targets.dtype,
+                              device=targets.device)
+        target_classes = torch.bucketize(targets, bounds)   # long tensor (N,)
+
+
+        # ----- compute individual losses -----
+        mse  = self.mse_loss(pred_scalar, targets)
+        ce   = self.class_loss(pred_logits, target_classes)
+
+        # ----- weighted sum -----
+        return self.mse_weight * mse + self.class_weight * ce
+    
+ 
+ 
+
+class MSEandFocalLoss(MSEandCELoss):
+    def __init__(
+        self,
+        mse_weight: float = 1.0,
+        class_weight: float = 1.0,
+        class_bounds: list[int] | tuple[int, ...] = (10, 20),
+        *,
+        focal_gamma: float = 2.0,
+        focal_alpha: Optional[torch.Tensor | list[float]] = None,
+        focal_reduction: str = "mean",
+    ):
+        super().__init__(                    # keep everything from parent
+            mse_weight=mse_weight,
+            class_weight=class_weight,
+            class_bounds=class_bounds,
+        )
+        self.class_loss = FocalLoss(         # override CE with focal
+            alpha=focal_alpha,
+            gamma=focal_gamma,
+            reduction=focal_reduction,
+        )
+
+
+
+
+
+
 # TODO: 
 # Calculate MSECELoss similar to focal loss?
-
 class MSECELoss(nn.Module):
     """
       mse_weight * MSE  + (1-mse_weight) * CE  + consitency_factor * (some term that MSE output is consistent with CE)  .... TODO

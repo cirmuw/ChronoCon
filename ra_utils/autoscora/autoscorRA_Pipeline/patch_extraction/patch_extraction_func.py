@@ -12,9 +12,10 @@ import cv2
 import imutils
 import warnings
 import json
-import matplotlib
 from copy import deepcopy
-matplotlib.use(const.MATPLOTLIB_BACKEND)
+#matplotlib.use(const.MATPLOTLIB_BACKEND)
+import matplotlib
+matplotlib.use("TkAgg")  # Or "Qt5Agg"
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 import matplotlib.gridspec as gridspec
@@ -409,8 +410,11 @@ def ref_size_from_bone_lengths(joints, extremity="hand"):
 
     return ref_size
 
+from copy import copy, deepcopy
 
-def finger_centers_to_corners(points, ref_size, ref_to_size_factor=float(1), center_shift=float(0)):
+def finger_centers_to_corners(points, ref_size, ref_to_size_factor=float(1), center_shift=float(0), 
+                              return_extra_points=False
+                              ):
 
     """
     turns finger joint coords to patch corner coords
@@ -421,6 +425,7 @@ def finger_centers_to_corners(points, ref_size, ref_to_size_factor=float(1), cen
     :param ref_size: float, hand/foot reference size (derived from bone lengths)
     :param ref_to_size_factor: float, ref_size * ref_to_size_factor = patch side length
     :param center_shift: float, shift of center of joint
+    :param return_extra_points: bool, default=false, return centers and orientation points
     along orientation axis (distal -> proximal (DP)) to reach center of patch
     CAVE: Sign of center_shift matters -> + = DP or - = PD
     + vs. - depends on patch: distal patch of a joint: shift towards distal = neg sign
@@ -434,6 +439,7 @@ def finger_centers_to_corners(points, ref_size, ref_to_size_factor=float(1), cen
 
     # get coords of centers to use to calculate corners
     center = points["center"]
+    center_original = copy(center)
     axis_prox = points["axis_prox"]
     axis_dist = points["axis_dist"]
 
@@ -463,6 +469,15 @@ def finger_centers_to_corners(points, ref_size, ref_to_size_factor=float(1), cen
                      "corner_UP": corner_UP,
                      "corner_UD": corner_UD
                      }
+
+    if return_extra_points:
+        extra_points = {
+            "center_original": center_original, 
+            "center": center,
+            "axis_prox": axis_prox, 
+            "axis_dist": axis_dist,
+        } 
+        return return_object, extra_points
 
     return return_object
 
@@ -571,14 +586,23 @@ def roi_modifier(rectangle_measures=None, rectangle_corners=None, modification_o
                                                           orientation_type="degree", returned_values="corners_dict")
     return return_corners
 
-
-def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
-                 square=False, resize_patch=None, padd_patch=None, base_crop=int(3),
-                 plot=False, show_steps=True, print_log=False, 
-                 other_corners_to_plot=None,  # plot additional corners
-                 crop_back_border=True
-                 ):
-
+from typing import Literal, Optional
+def patch_cutter(
+    img, 
+    rectangle_measures=None, 
+    rectangle_corners=None,
+    square=False, 
+    resize_patch=None, 
+    padd_patch=None, 
+    base_crop=int(3),
+    plot=False, 
+    plot_type: Literal["show_steps", "show_input_and_output", "show_only_output"] = "show_steps",
+    print_log=False, 
+    other_corners_to_plot=None,  # plot additional corners
+    crop_back_border=True,
+    extra_points_for_debugging: Optional[dict] = None, 
+    roi_name = ""
+    ):
     """
     :param img: numpy array
     :param rectangle_measures:
@@ -592,6 +616,9 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
     :param print_log: bool, if False suppresses print() output
     :return:
     """
+    
+    
+    
     if rectangle_measures is None and rectangle_corners is None:
         raise ValueError("rectangle_measures is None AND rectangle_corners is None: only one allowed to be None")
 
@@ -720,7 +747,7 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
 
     # plot
     if plot:
-        if show_steps:
+        if plot_type == "show_steps": 
             # prep plot
             corner_arr = np.array([coordinates for corner, coordinates in rectangle_corners.items()])
             corner_names = [corner for corner, coordinates in rectangle_corners.items()]
@@ -729,16 +756,25 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
             ax1 = fig1.add_subplot(321)
             ax1.imshow(img, cmap="gray")
             ax1.scatter(corner_arr[:, 0], corner_arr[:, 1], s=3)
-            for i in np.arange(0, len(corner_names)):
-                ax1.annotate(corner_names[i], (corner_arr[i, 0], corner_arr[i, 1]), color='red',
-                             fontsize='x-small')
+            # for i in np.arange(0, len(corner_names)):
+            #     ax1.annotate(corner_names[i], (corner_arr[i, 0], corner_arr[i, 1]), color='red',
+            #                  fontsize='x-small')
+            
+            # Add the centers and other points of interrest to the plot: 
+
+            if extra_points_for_debugging != None: 
+                arr = np.array([coordinates for _, coordinates in extra_points_for_debugging.items()])
+                names = [n for n, _ in extra_points_for_debugging.items()]
+                for i in np.arange(0, len(extra_points_for_debugging)):
+                    # ax1.annotate(names[i], 
+                    #              (arr[i, 0], arr[i, 1]), 
+                    #              color='red', fontsize='x-small')
+                    ax1.scatter(arr[i, 0], arr[i, 1], marker='x', color='red')
+                
+            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=3))
             if other_corners_to_plot is not None:
-                corner_arr = np.array([coordinates for corner, coordinates in other_corners_to_plot.items()])
-                corner_names = [corner for corner, coordinates in other_corners_to_plot.items()]
-                ax1.scatter(corner_arr[:, 0], corner_arr[:, 1], s=3)
-                for i in np.arange(0, len(corner_names)):
-                    ax1.annotate(corner_names[i], (corner_arr[i, 0], corner_arr[i, 1]), color='blue',
-                                fontsize='x-small')
+                corner_arr = np.array(list(other_corners_to_plot.values()))
+                ax1.add_patch(patches.Polygon(corner_arr, closed=True, fill=False, edgecolor='blue', linewidth=3))
 
             # ax1.set_ylim(ax1.get_ylim()[::-1])
             ax2 = fig1.add_subplot(322)
@@ -763,7 +799,7 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
 
             fig1.tight_layout()
 
-        else:
+        elif plot_type == "show_only_output":
             fig1 = plt.figure()
             ax1 = fig1.add_subplot(111)
             ax1.imshow(patch, cmap="gray")
@@ -775,7 +811,48 @@ def patch_cutter(img, rectangle_measures=None, rectangle_corners=None,
             if resize_patch is not None:
                 patch_title_insert = patch_title_insert + ", resized"
             ax1.set_title(patch_title_insert)
+            
+        elif plot_type == "show_input_and_output":
+            # prepare corner and debug point arrays
+            corner_arr = np.array([coordinates for corner, coordinates in rectangle_corners.items()])
+            corner_names = [corner for corner, coordinates in rectangle_corners.items()]
 
+            fig1 = plt.figure(figsize=(10, 5))
+            ax1 = fig1.add_subplot(121)
+            ax1.set_xticks([])
+            ax1.set_yticks([])
+            ax1.imshow(img, cmap="gray")
+            ax1.scatter(corner_arr[:, 0], corner_arr[:, 1], s=3)
+            ax1.add_patch(patches.Polygon(corner_arr, closed=True, edgecolor='green', fill=False, linewidth=3))
+            
+            # Add the centers and other debugging points
+            if extra_points_for_debugging is not None:
+                arr = np.array([coordinates for _, coordinates in extra_points_for_debugging.items()])
+                names = [n for n, _ in extra_points_for_debugging.items()]
+                for i in np.arange(0, len(extra_points_for_debugging)):
+                    ax1.scatter(arr[i, 0], arr[i, 1], marker='x', color='lightgreen', s=35)
+
+            if other_corners_to_plot is not None:
+                corner_arr_other = np.array(list(other_corners_to_plot.values()))
+                ax1.add_patch(patches.Polygon(corner_arr_other, closed=True, fill=False, edgecolor='purple', linewidth=3))
+
+
+            ax1.set_title(f"Input Image with ROI  {roi_name}")
+
+            ax2 = fig1.add_subplot(122)
+            ax2.set_xticks([])
+            ax2.set_yticks([])
+            ax2.imshow(patch, cmap="gray")
+            patch_title_insert = "patch cropped"
+            if square:
+                patch_title_insert += ", cropped to square"
+            if padd_patch is not None:
+                patch_title_insert += ", padded"
+            if resize_patch is not None:
+                patch_title_insert += ", resized"
+            ax2.set_title(patch_title_insert)
+
+            fig1.tight_layout()
         plt.show()
 
     return patch

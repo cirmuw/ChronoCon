@@ -41,7 +41,8 @@ def main():
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
+        #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp20_H_PIP_MCP_JSN/ODL_FCE_v01_debugging.yml",
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
@@ -67,6 +68,14 @@ def main():
     if config["debugging"]:
         print("overwriting some config params")
         config["training"]["epochs"] = 1
+        config["SAVE_MODEL_FULL"] = False
+        config["SAVE_MODEL_state_dct"] = False
+        if config.get("RESET_IMAGE_FOLDER_WHEN_DEBUGGING", True):
+            config["data"]["image_path_folder"] = [
+                "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/H_patches_size1.5_DEBUGGING/",
+                "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/F_patches_size1.5_DEBUGGING/"
+            ]
+        
         
 
     

@@ -114,14 +114,21 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     # data_tables = load_img_SHS_patch_data(config["data"])
     data_tables = process_several_score_groups(config["data"])
 
+    # Check that elements exist
+    for k,v  in data_tables.items():
+        assert len(v["df_include"]) >0, f"score group {k} has no items. Check the image paths or score groups!"
+    
+
     # Make dataset and dataloaders
     # data = dataset_and_loader(data_tables, config)
     data = dataset_and_loader_several(data_tables, config)
     
     if True: 
         # check_duplicates_in_dataloader(data, ds_key="train_loader")
+        print("Checking for duplicates")
         check_duplicates_in_dataloader(data, ds_key="val_loader")
         check_duplicates_in_dataloader(data, ds_key="test_loader")
+        print("Done - Checking for duplicates\n ")
 
     # Load/ make model
     attention_paths_dct = config["data"].get("network_score_groups")
@@ -164,7 +171,6 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 
     # define loss function
     loss_fn_y = get_score_loss_function(config["loss"]["score"])
-    # loss_fn_y_reg = get_score_loss_function(config["loss"].get("score_reg", {}))
     loss_fn_x = nn.MSELoss()
     loss_fn_z = nn.L1Loss()
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores", {}))

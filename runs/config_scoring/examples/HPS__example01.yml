@@ -1,0 +1,352 @@
+project: "AutoPIX:"
+experiment_name: "20 hps"
+run_name: "MCPIIIEP_r03_F1"
+
+tag: "development"
+SAVE_MODEL: False
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+debugging: True
+evaluate_on_testset: False
+
+
+hps:
+  n_trials: 2
+
+  # search_metric: "Ly"
+  # search_direction: "minimize"
+  # exception_cost_value: 99
+  
+  extract_objective_value_from_validation_metrics_dct_OPTION: "classification_report.macro avg"
+  search_metric: "f1-score"
+  search_direction: "maximize"
+  exception_cost_value: -99
+
+  # search_metric: "ICC"
+  # search_direction: "maximize"
+  # exception_cost_value: -99
+
+model_initialization: 
+  load_full_AE: True
+  load_decoder_only: False
+  pth_src_AE: "/msc/home/cwatze93/data/mlflow/mlflow_RA/367399016697843995/585819c3c149445cbeb2e8f688ff9044/artifacts/checkpoints/model_AE_state_dict.pt"  # 02_AE_ResNet18_lr2  -> encoder and decoder lr 1e-4
+  load_classifier: False
+  pth_src_classifier: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/163028900189502019/f6409f82686e488b92472e94e463144c/artifacts/checkpoints/model_classifier_state_dict.pt"
+
+
+
+
+# loss: 
+#   score:
+#     name: "FocalLoss"
+#     params:
+#       gamma: 2.0
+#       alpha: Null
+
+
+loss: 
+  score: 
+    fixed_parameters: {}
+    optuna_hp_ranges: 
+      - type: "suggest_categorical"
+        params: 
+          name: "name"
+          choices:
+            - "FocalLoss"
+            - "CrossEntropyLoss"
+            - "PaulsOrdinalLoss"
+            - "PaulsOrdinalLossFocal"
+
+  triplet_scores: 
+    name: "OnlineBatchAllTripletLoss"
+    params:
+      fixed_parameters: 
+        squared: false          # optional
+      optuna_hp_ranges:
+        - type: "suggest_categorical"
+          params: 
+            name: "metric"
+            choices:
+              - "euclidean"
+              - "cosine"
+
+        - type: "suggest_float"
+          params: 
+            name: "label_margin_scale"
+            low: 0.0
+            high: 3            
+        - type: "suggest_float"
+          params: 
+            name: "margin"
+            low: 0.0
+            high: 3       
+
+#   name: "PaulsOrdinalLoss"
+#   params:
+#     lam: 2.0
+
+# loss_weights: 
+#   lambda_x: 100.0
+#   lambda_y: 1.0
+#   lambda_z: 0.0
+#   lambda_z_triplet_classes: 0.0
+
+loss_weights:
+  fixed_parameters: {}
+    # lambda_z_triplet_classes: 0.0
+  optuna_hp_ranges:
+    - type: "suggest_loguniform"
+      params:
+        name: "lambda_x"
+        low: !!float 1e-3
+        high: !!float 1e3
+    - type: "suggest_loguniform"
+      params:
+        name: "lambda_y"
+        low: !!float 1e-4
+        high: !!float 1e1
+    - type: "suggest_loguniform"
+      params:
+        name: "lambda_z"
+        low: !!float 1e-9
+        high: !!float 1e1
+    - type: "suggest_loguniform"
+      params:
+        name: "lambda_z_triplet_classes"
+        low: !!float 1e-10
+        high: !!float 1e2
+
+
+
+training: 
+  use_WeightedRandomSampler: True
+  batch_size: 100
+  num_workers: 6
+  early_stopping_tol: 20
+  epochs: 20
+
+
+
+
+
+
+data: 
+  image_path_folder: 
+    - "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/H_patches_size1.5_v2/"
+    - "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/F_patches_size1.5/"
+  pattern: "*/*.npy"
+  
+  score_path_H:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv"
+  score_path_F:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv"
+  
+  sum_wrist_points: false
+
+  use_splits_file: True
+  split_ratio: [0.6, 0.2, 0.2]  # otherwise used split ratio
+  splits_file: "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv"            # path to csv containing columns: "patient_id", "set_type" where "set_type" = "Tr", "Val", "Ts"
+  surgery_patientids_list_path_json: Null # "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/operated_instances__patientIds_date_region_LR.json"
+    # options for how_to_deal_with_surgery:
+  # - "exclude"
+  # - "keep as is"
+  # - "keep: map over limit to limit plus one"
+  # - "keep: map over limit to limit"  
+  how_to_deal_with_surgery: "exclude"
+
+
+
+  score_groups:
+    MCPIIEP:     ["MCPIIEP"]
+  network_score_groups:
+    ALL: ['MCPIIEP']
+
+  classifier_head_infos:
+    MCPIIEP:
+      out_dim: 6
+      score_types:
+        - MCPIIEP
+
+
+transforms: 
+  fixed_parameters:
+    # NEVER CHANGE!
+    RBG_channels__bool: False
+
+    # OK to change: 
+    # Crop output dimension (required)
+    OUTPUT_DIM: [128, 128]    # could be up to 224 for ResNet
+
+    # RandAffined parameters
+    RandAffined__bool: true
+    RandAffined__prob: 0.5
+    # RandAffined__rotation_range_degree: 15  # degrees
+    # RandAffined__translate_range_pixels: 19  # pixels
+    # RandAffined__scale_range: 0.2
+
+    # RandFlipd parameters
+    # RandFlipd__bool: true
+    RandFlipd__prob: 0.5
+
+    # RandGaussianNoised parameters
+    RandGaussianNoised__bool: false
+    RandGaussianNoised__prob: 0.0
+    RandGaussianNoised__std: 0.0
+
+    # Rand2DElasticd parameters
+    ## Rand2DElasticd__bool: true
+    Rand2DElasticd__prob: 0.2
+    Rand2DElasticd__spacing: 12
+    Rand2DElasticd__magnitude: 2.73
+    Rand2DElasticd__shear_range: 0.13  # None
+    
+
+  optuna_hp_ranges:
+    - type: "suggest_float"
+      params:
+        name: "RandAffined__rotation_range_degree"
+        low: 0
+        high: 45
+    - type: "suggest_int"
+      params:
+        name: "RandAffined__translate_range_pixels"
+        low: 0
+        high: 20
+    - type: "suggest_float"
+      params:
+        name: "RandAffined__scale_range"
+        low: 0
+        high: 0.4
+    - type: "suggest_categorical"
+      params: 
+        name: "Rand2DElasticd__bool"
+        choices:
+          - True
+          - False
+
+    - type: "suggest_categorical"
+      params: 
+        name: "RandFlipd__bool"
+        choices:
+          - True
+          - False
+  # - type: "suggest_int"
+  #   params: 
+  #     name: "OUTPUT_DIM"  # NOT SURE IF INT IS ACCEPTED....
+  #     low: 128
+  #     high: 148
+  #     step: 2
+  
+
+AE_transform:
+  # fixed_parameters: {}
+  # optuna_hp_ranges:
+  # - type: "suggest_categorical"
+  #   params:
+  #     name: "name"
+  #     choices: 
+  #       - "GaussianNoiseWithClip"
+  #       - Null
+
+  fixed_parameters:
+    name: "GaussianNoiseWithClip"
+  optuna_hp_ranges:
+  - type: "suggest_loguniform"
+    params:
+      name: "GaussianNoise_sigma"
+      low: !!float 1e-6
+      high: !!float 5e-2
+
+
+
+# model_name: "UNetMTANAE + MultiHeadClassifier"
+# model_name: "ResNetAE + MultiHeadClassifier"
+# model_name: "ResNetAE_v2 + MultiHeadClassifier"
+# model_name: "ResNetNoAE + MultiHeadClassifier"
+model_name: "ResNetMTANAEv2 + MultiHeadClassifier"
+  
+ 
+model: 
+  preprocessor:  # NEVER CHANGE!
+    name: "ResNetRGBMaker"   # names: "ResNetRGBMaker" or Null
+
+  postprocessor_recon: 
+    name: "PostprocessingGrayScaleMaker_v3"   # NEVER CHANGE!
+    params:                                   # NEVER CHANGE!  
+      output_function: "sigmoid"              # NEVER CHANGE!
+
+  #---------------------
+  autoencoder: 
+    backbone_name: "resnet18"
+    dilation: false
+    skip_recon: False
+    recon_out_ch: 1  # NEVER CHANGE!
+
+  # Acutally only makes sense for more scores, but whatever ... 
+  score_type_encoder:
+    other_optimizer_kwargs:
+      name: Null
+      # fixed_parameters: {}
+      # optuna_hp_ranges:
+      #   - type: "suggest_categorical"
+      #     params: 
+      #       name: "name"
+      #       choices:
+      #         - Null
+      #         - "ROI_type_encoder"
+              
+
+ 
+  classifier:
+    model_kw_requires_import: ["dropout_op", "nonlin"]
+    model_dct_keys_to_convert_to_lists:   []  #["pooling_sizes"]
+    model_params:
+      # out_dim: 6  # number of classes  # automatically set in the model
+      hidden_dim: 512  # default 256
+      depth: 1
+      normalization: "layer"
+      norm_op_kwargs: {}
+      dropout_op: "torch.nn.Dropout"
+      dropout_op_kwargs.p: 0.0
+      nonlin: "torch.nn.ReLU"
+      #nonlin: "torch.nn.LeakyReLU"
+      nonlin_kwargs: {}
+
+
+
+
+scheduler_name: "torch.optim.lr_scheduler.ReduceLROnPlateau"
+scheduler_params:
+   mode: 'min'
+   verbose: True
+
+
+optimizer_name: "torch.optim.AdamW"
+optimizer_params:
+  learning_rates:
+    fixed_parameters: {}
+    optuna_hp_ranges:
+      - type: "suggest_loguniform"
+        params:
+          name: "auto_encoder.decoders"
+          low: !!float 1e-7
+          high: !!float 1e-2
+
+      - type: "suggest_loguniform"
+        params:
+          name: "auto_encoder"
+          low: !!float 1e-7
+          high: !!float 1e-2          
+
+      - type: "suggest_loguniform"
+        params:
+          name: "heads"
+          low: !!float 1e-5
+          high: !!float 1e-2
+  other_optimizer_kwargs:
+    fixed_parameters: {}
+    optuna_hp_ranges:
+      - type: "suggest_loguniform"
+        params:
+          name: "weight_decay"
+          low: !!float 1e-8
+          high: !!float 1e-1
+
+

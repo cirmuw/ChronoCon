@@ -1,0 +1,675 @@
+project: "AutoPIX:"
+# experiment_name: "scoring H ERO PIP Losses PIP_MM_ResNet18"
+experiment_name: "ERO_H_ALL_WRS_PFL"
+run_name: "dev_test"
+
+tag: "development"
+SAVE_MODEL: False
+mlflow_runs_dir: "/home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/"
+debugging: True
+evaluate_on_testset: True
+
+loss: 
+  score:
+    name: "CrossEntropyLoss"
+    params: {}
+
+    # name: "PaulsOrdinalLossFocal"
+    # params:
+    #   lam: 2.0
+    #   gamma: 2.0
+    #   alpha: Null
+
+#   name: "FocalLoss"
+#   params:
+#     gamma: 2.0
+#     alpha: Null
+
+#   name: "PaulsOrdinalLoss"
+#   params:
+#     lam: 2.0
+
+loss_weights: 
+  lambda_x: 1.0
+  lambda_y: 1.0
+  lambda_z: 0.0
+  lambda_triplet_time: 0.0
+
+
+
+
+
+
+training: 
+  use_WeightedRandomSampler: False
+  batch_size: 50
+  num_workers: 6
+  early_stopping_tol: 10
+  epochs: 1000
+
+
+
+
+
+
+data: 
+  image_path_folder: "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_100/H_patches_size1.5/"
+  pattern: "*/*.npy"
+  
+  score_path_H:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv"
+  score_path_F:  "/home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv"
+  
+  sum_wrist_points: false
+
+  use_splits_file: False
+  splits_file: "..."            # path to csv containing columns: "patient_id", "set_type" where "set_type" = "Tr", "Val", "Ts"
+  split_ratio: [0.6, 0.2, 0.2]  # otherwise used split ratio
+
+  #scores: ['IPIEP', 'PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP']
+
+
+  # scores_ERO_F
+  #scores: ['IPED', 'IPEP', 'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP']
+  
+  # scores_JSN_H
+  #scores: ['CMCIII', 'CMCIV', 'CMCV', 'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 'PIPII', 'PIPIII', 'PIPIV', 'PIPV', 'Rad_Carp', 'Sca_Cap', 'Tra_Sca']
+  
+  # scores_JSN_F
+  #scores: ['IP', 'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV']
+
+  # scores_ERO_H
+  H_ERO: ['Base_MCIE', 'IPIED', 'IPIEP', 'LunatE', 'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP', 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE']
+
+  score_groups:
+    H_ERO: ['Base_MCIE', 'IPIED', 'IPIEP', 'LunatE', 'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP', 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE']
+    F_ERO: ['IPED', 'IPEP', 'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP']
+    H_JSN: ['CMCIII', 'CMCIV', 'CMCV', 'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 'PIPII', 'PIPIII', 'PIPIV', 'PIPV', 'Rad_Carp', 'Sca_Cap', 'Tra_Sca']
+    F_JSN: ['IP', 'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV']
+
+  score_groups:
+    ALL: ['Base_MCIE', 'IPIED', 'IPIEP', 'LunatE', 'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP', 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE',
+          'IPED', 'IPEP', 'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP',
+          'CMCIII', 'CMCIV', 'CMCV', 'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 'PIPII', 'PIPIII', 'PIPIV', 'PIPV', 'Rad_Carp', 'Sca_Cap', 'Tra_Sca',
+          'IP', 'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV']
+
+  score_groups:
+    H_ERO: ['Base_MCIE', 'IPIED', 'IPIEP', 'LunatE', 'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP', 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE']
+    F_ERO: ['IPED', 'IPEP', 'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP']
+    H_JSN: ['CMCIII', 'CMCIV', 'CMCV', 'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 'PIPII', 'PIPIII', 'PIPIV', 'PIPV', 'Rad_Carp', 'Sca_Cap', 'Tra_Sca']
+    F_JSN: ['IP', 'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV']
+
+
+  score_groups:
+    H_ERO_P_no_wrist:
+      # All hand erosions ending in EP, excluding the five wrist sites
+      ['IPIEP', 'MCPIEP', 'MCPIIEP', 'MCPIIIEP', 'MCPIVEP', 'MCPVEP',
+       'PIPIIEP', 'PIPIIIEP', 'PIPIVEP', 'PIPVEP']
+    H_ERO_D_no_wrist:
+      # All hand erosions ending in ED (plus Base_MCIE treated as a proximal site)
+      ['Base_MCIE', 'IPIED', 'MCPIED', 'MCPIIED', 'MCPIIIED',
+       'MCPIVED', 'PIPIIED', 'PIPIIIED', 'PIPIVED', 'PIPVED']
+    F_ERO_P:
+      # All foot erosions ending in EP
+      ['IPEP', 'MTPIEP', 'MTPIIEP', 'MTPIIIEP', 'MTPIVEP', 'MTPVEP']
+    F_ERO_D:
+      # All foot erosions ending in ED
+      ['IPED', 'MTPIED', 'MTPIIED', 'MTPIIIED', 'MTPIVED', 'MTPVED']
+
+    # wrist ERO
+    H_ERO_LUNATE:    ["LunatE"]
+    H_ERO_RADIUS:    ["RadiusE"]
+    H_ERO_SCAPHOID:  ["ScaphE"]
+    H_ERO_TRAPEZIUM: ["TrapE"]
+    H_ERO_ULNA:      ["UlnaE"]
+
+    # JSN
+    H_JSN_no_wrist:
+      ['CMCIII', 'CMCIV', 'CMCV', 'MCPI', 'MCPII', 'MCPIII',
+       'MCPIV', 'MCPV', 'PIPII', 'PIPIII', 'PIPIV', 'PIPV']
+    H_JSN_Rad_Carp:  ["Rad_Carp"]
+    H_JSN_Tra_Sca:   ["Tra_Sca"]
+    H_JSN_Sca_Cap:   ["Sca_Cap"]
+
+
+  score_groups0:
+    H_ERO_TRAPEZIUM: ["TrapE"]
+    H_ERO_ULNA:      ["UlnaE"]
+
+
+  #score_groups_H_ERO:
+  score_groups: # 16 joints
+    H_ERO_P_PIP:     ["IPIEP", "PIPIIEP", "PIPIIIEP", "PIPIVEP", "PIPVEP"]   # 5 joints
+    H_ERO_D_PIP:     ["IPIED", "PIPIIED", "PIPIIIED", "PIPIVED", "PIPVED"]   # 5 joints (same)
+    H_ERO_P_MCP:     ["MCPIEP", "MCPIIEP", "MCPIIIEP", "MCPIVEP", "MCPVEP"]  # 5 joints
+    H_ERO_D_MCP:     ["MCPIED", "MCPIIED", "MCPIIIED", "MCPIVED", "MCPVED"]  # 5 joints (same)
+    H_ERO_BASE_MC:   ["Base_MCIE"]                                             
+    # H_ERO_CARPALS:   ["LunatE", "RadiusE", "ScaphE", "TrapE", "UlnaE"]
+    H_ERO_LUNATE:    ["LunatE"]
+    H_ERO_RADIUS:    ["RadiusE"]
+    H_ERO_SCAPHOID:  ["ScaphE"]
+    H_ERO_TRAPEZIUM: ["TrapE"]
+    H_ERO_ULNA:      ["UlnaE"]
+
+  score_groups_H_JSN:  # 15 joints
+    H_JSN_PIP:               ["PIPII", "PIPIII", "PIPIV", "PIPV"]
+    H_JSN_MCP:               ["MCPI", "MCPII", "MCPIII", "MCPIV", "MCPV"]
+    H_JSN_CMC:               ["CMCIII", "CMCIV", "CMCV"]
+    #H_JSN_CARPAL_JOINTS:     ["Rad_Carp", "Sca_Cap", "Tra_Sca"]
+    H_JSN_Rad_Carp:          ["Rad_Carp"]
+    H_JSN_Tra_Sca:           ["Tra_Sca"]
+    H_JSN_Sca_Cap:           ["Sca_Cap"]
+
+  score_groups_F_JSN: # 6 joints
+    F_JSN_MTP_I:             ["MTPI"]
+    F_JSN_MTP_II_to_V:       ["MTPII", "MTPIII", "MTPIV", "MTPV"]
+    F_JSN_IP:                ["IP"]
+
+  score_groups_F_ERO: # 6 joints (E+P)
+    F_ERO_P_MTP_I:       ["MTPIEP"]
+    F_ERO_D_MTP_I:       ["MTPIED"]
+    F_ERO_P_MTP_II_to_V: ["MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP"]
+    F_ERO_D_MTP_II_to_V: ["MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED"]
+    F_ERO_P_IP:          ["IPEP"]
+    F_ERO_D_IP:          ["IPED"]
+
+
+  score_groups_F_ERO_ALL_IN_ONE:
+    F_ERO:       ["MTPIEP", "MTPIED", "MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP", "MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED", "IPEP", "IPED"]
+
+
+
+  classifier_head_infos_gropups0:
+    TrapE:
+      out_dim: 6
+      score_types:
+        - TrapE
+    UlnaE:
+      out_dim: 6
+      score_types:
+        - UlnaE
+
+
+
+  ERO_H_PIP_classifier_head_infos:
+    PIPIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIEP
+    PIPIIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIIEP
+    PIPIVEP:
+      out_dim: 6
+      score_types:
+        - PIPIVEP
+    PIPVEP:
+      out_dim: 6
+      score_types:
+        - PIPVEP
+    PIP_1_EP:
+      out_dim: 6
+      score_types:
+        - IPIEP
+
+
+  JSN_H_ALL_classifier_head_infos:
+    PIPII:
+      out_dim: 5
+      score_types:
+        - PIPII
+    PIPIII:
+      out_dim: 5
+      score_types:
+        - PIPIII
+    PIPIV:
+      out_dim: 5
+      score_types:
+        - PIPIV
+    PIPV:
+      out_dim: 5
+      score_types:
+        - PIPV
+    MCPI:
+      out_dim: 5
+      score_types:
+        - MCPI
+    MCPII:
+      out_dim: 5
+      score_types:
+        - MCPII
+    MCPIII:
+      out_dim: 5
+      score_types:
+        - MCPIII
+    MCPIV:
+      out_dim: 5
+      score_types:
+        - MCPIV
+    MCPV:
+      out_dim: 5
+      score_types:
+        - MCPV
+    CMCIII:
+      out_dim: 5
+      score_types:
+        - CMCIII
+    CMCIV:
+      out_dim: 5
+      score_types:
+        - CMCIV
+    CMCV:
+      out_dim: 5
+      score_types:
+        - CMCV
+    Rad_Carp:
+      out_dim: 5
+      score_types:
+        - Rad_Carp
+    Sca_Cap:
+      out_dim: 5
+      score_types:
+        - Sca_Cap
+    Tra_Sca:
+      out_dim: 5
+      score_types:
+        - Tra_Sca
+
+
+  ERO_H_ALL_classifier_head_infos:
+    Base_MCIE:
+      out_dim: 6
+      score_types:
+        - Base_MCIE
+    IPIED:
+      out_dim: 6
+      score_types:
+        - IPIED
+    IPIEP:
+      out_dim: 6
+      score_types:
+        - IPIEP
+    MCPIED:
+      out_dim: 6
+      score_types:
+        - MCPIED
+    MCPIEP:
+      out_dim: 6
+      score_types:
+        - MCPIEP
+    MCPIIED:
+      out_dim: 6
+      score_types:
+        - MCPIIED
+    MCPIIEP:
+      out_dim: 6
+      score_types:
+        - MCPIIEP
+    MCPIIIED:
+      out_dim: 6
+      score_types:
+        - MCPIIIED
+    MCPIIIEP:
+      out_dim: 6
+      score_types:
+        - MCPIIIEP
+    MCPIVED:
+      out_dim: 6
+      score_types:
+        - MCPIVED
+    MCPIVEP:
+      out_dim: 6
+      score_types:
+        - MCPIVEP
+    MCPVED:
+      out_dim: 6
+      score_types:
+        - MCPVED
+    MCPVEP:
+      out_dim: 6
+      score_types:
+        - MCPVEP
+    PIPIIED:
+      out_dim: 6
+      score_types:
+        - PIPIIED
+    PIPIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIEP
+    PIPIIIED:
+      out_dim: 6
+      score_types:
+        - PIPIIIED
+    PIPIIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIIEP
+    PIPIVED:
+      out_dim: 6
+      score_types:
+        - PIPIVED
+    PIPIVEP:
+      out_dim: 6
+      score_types:
+        - PIPIVEP
+    PIPVED:
+      out_dim: 6
+      score_types:
+        - PIPVED
+    PIPVEP:
+      out_dim: 6
+      score_types:
+        - PIPVEP
+    # Wrist:
+    RadiusE:
+      out_dim: 6
+      score_types:
+        - RadiusE
+    ScaphE:
+      out_dim: 6
+      score_types:
+        - ScaphE
+    TrapE:
+      out_dim: 6
+      score_types:
+        - TrapE
+    UlnaE:
+      out_dim: 6
+      score_types:
+        - UlnaE
+    LunatE:
+      out_dim: 6
+      score_types:
+        - LunatE
+
+
+  ERO_F_classifier_head_infos:
+    MTPIEP:
+      out_dim: 6
+      score_types:
+        - MTPIEP
+    MTPIED:
+      out_dim: 6
+      score_types:
+        - MTPIED
+    MTPIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIEP
+    MTPIIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIIEP
+    MTPIVEP:
+      out_dim: 6
+      score_types:
+        - MTPIVEP
+    MTPVEP:
+      out_dim: 6
+      score_types:
+        - MTPVEP
+    MTPIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIED
+    MTPIIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIIED
+    MTPIVED:
+      out_dim: 6
+      score_types:
+        - MTPIVED
+    MTPVED:
+      out_dim: 6
+      score_types:
+        - MTPVED
+    IPEP:
+      out_dim: 6
+      score_types:
+        - IPEP
+    IPED:
+      out_dim: 6
+      score_types:
+        - IPED
+
+
+  classifier_head_infos_ERO_JSN_P_D_seperation:
+
+    ERO_F_P:
+      out_dim: 6
+      score_types:
+        - MTPIEP
+        - MTPIIEP
+        - MTPIIIEP
+        - MTPIVEP
+        - MTPVEP
+        - IPEP
+    ERO_F_D:    
+      out_dim: 6
+      score_types:
+        - MTPIED
+        - MTPIIED
+        - MTPIIIED
+        - MTPIVED
+        - MTPVED
+        - IPED
+    ERO_H_no_wrist_P:
+      out_dim: 6
+      score_types:
+        - IPIED
+        - MCPIED
+        - MCPIIED
+        - MCPIIIED
+        - MCPIVED
+        - MCPVED
+        - PIPIIED
+        - PIPIIIED
+        - PIPIVED
+        - PIPVED
+    ERO_H_no_wrist_D:
+      out_dim: 6
+      score_types:
+        - IPIEP
+        - MCPIEP
+        - MCPIIEP
+        - MCPIIIEP
+        - MCPIVEP
+        - MCPVEP
+        - PIPIIEP
+        - PIPVEP
+        - PIPIVEP
+        - PIPIIIEP
+    Base_MCIE:
+      out_dim: 6
+      score_types:
+        - Base_MCIE
+    # Wrist ERO:
+    RadiusE:
+      out_dim: 6
+      score_types:
+        - RadiusE
+    ScaphE:
+      out_dim: 6
+      score_types:
+        - ScaphE
+    TrapE:
+      out_dim: 6
+      score_types:
+        - TrapE
+    UlnaE:
+      out_dim: 6
+      score_types:
+        - UlnaE
+    LunatE:
+      out_dim: 6
+      score_types:
+        - LunatE
+    # Wrist JSN:------------------------
+    Rad_Carp:
+      out_dim: 5
+      score_types:
+        - Rad_Carp
+    Sca_Cap:
+      out_dim: 5
+      score_types:
+        - Sca_Cap
+    Tra_Sca:
+      out_dim: 5
+      score_types:
+        - Tra_Sca
+    # Foot JSN:------------------------
+    JSN_F_ALL:
+      out_dim: 5
+      score_types:
+        - MTPI
+        - MTPII
+        - MTPIII
+        - MTPIV
+        - MTPV
+        - IP
+    # H JSN:
+    H_JSN_all_except_wrist: 
+      out_dim: 5
+      score_types:
+        - CMCIII
+        - CMCIV
+        - CMCV
+        - MCPI
+        - MCPII
+        - MCPIII
+        - MCPIV
+        - MCPV
+        - PIPII
+        - PIPIII
+        - PIPIV
+        - PIPV
+
+
+
+
+
+  JSN_F_classifier_head_infos:
+    MTPI:
+      out_dim: 5
+      score_types:
+        - MTPI
+    MTPII:
+      out_dim: 5
+      score_types:
+        - MTPII
+    MTPIII:
+      out_dim: 5
+      score_types:
+        - MTPIII
+    MTPIV:
+      out_dim: 5
+      score_types:
+        - MTPIV
+    MTPV:
+      out_dim: 5
+      score_types:
+        - MTPV
+    IP:
+      out_dim: 5
+      score_types:
+        - IP
+
+
+
+
+  ERO_F_ALL_IN_ONE_classifier_head_infos:
+    ERO_F:
+      out_dim: 6
+      score_types:
+        - MTPIEP
+        - MTPIED
+        - MTPIIEP
+        - MTPIIIEP
+        - MTPIVEP
+        - MTPVEP
+        - MTPIIED
+        - MTPIIIED
+        - MTPIVED
+        - MTPVED
+        - IPEP
+        - IPED
+
+
+transforms: 
+  # Crop output dimension (required)
+  OUTPUT_DIM: [128, 128]    # could be up to 224 for ResNet
+
+  # RandAffined parameters
+  RandAffined__bool: true
+  RandAffined__prob: 0.5
+  RandAffined__rotation_range_degree: 15  # degrees
+  RandAffined__translate_range_pixels: 19  # pixels
+  RandAffined__scale_range: 0.2
+
+  # RandFlipd parameters
+  RandFlipd__bool: true
+  RandFlipd__prob: 0.5
+
+  # RandGaussianNoised parameters
+  RandGaussianNoised__bool: false
+  RandGaussianNoised__prob: 0.17
+  RandGaussianNoised__std: 0.085
+
+  # Rand2DElasticd parameters
+  # These are tricky, but Paul used them...
+  Rand2DElasticd__bool: true
+  Rand2DElasticd__prob: 0.2
+  Rand2DElasticd__spacing: 12
+  Rand2DElasticd__magnitude: 2.73
+  Rand2DElasticd__shear_range: 0.13  # None
+
+  RBG_channels__bool: True
+
+
+# model_name: "UNetMTANAEv2 + MultiHeadClassifier"
+# model_name: "ResNetAE + MultiHeadClassifier"
+# model_name: "ResNetNoAE + MultiHeadClassifier"
+model_name: "ResNetMTANAE + MultiHeadClassifier"
+  
+ 
+model: 
+  autoencoder:
+    backbone_name: "resnet18"
+    dilation: false
+    skip_recon: False
+    recon_out_ch: 3
+
+  classifier:
+    model_kw_requires_import: ["dropout_op", "nonlin"]
+    model_dct_keys_to_convert_to_lists:   []  #["pooling_sizes"]
+    model_params:
+      # out_dim: 6  # number of classes  # automatically set in the model
+      hidden_dim: 512  # default 256
+      depth: 1
+      normalization: "layer"  # "batch"
+      norm_op_kwargs: {}
+      dropout_op: "torch.nn.Dropout"
+      dropout_op_kwargs.p: 0.0
+      nonlin: "torch.nn.ReLU"
+      #nonlin: "torch.nn.LeakyReLU"
+      nonlin_kwargs: {}
+
+
+optimizer_name: "AdamW"
+optimizer_params:
+  learning_rates: 
+    encoder__OR__decoder: !!float  1e-5
+    classifier: !!float  1e-5
+
+  other_optimizer_kwargs: 
+    weight_decay: !!float 1.0e-6
+
+# scheduler_name: False #"PolyLRSchedulerMultiLR"
+# scheduler_params:
+#   max_steps: 50 
+
+
+
+
