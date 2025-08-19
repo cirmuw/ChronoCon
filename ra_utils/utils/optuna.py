@@ -121,51 +121,6 @@ def replace_none_recursive(data, none_key = "__NonePlaceholder__"):
 
 
 
-
-# def generate_optuna_params(trial, config: dict):
-#     assert "fixed_parameters" in config.keys()
-#     assert "optuna_hp_ranges" in config.keys()
-
-    
-#     # assert that there is no overlap between the keys
-#     overlap = set(config["fixed_parameters"].keys()) & set([a["params"]["name"] for a in  config["optuna_hp_ranges"]])
-#     assert overlap == set(), f"Parameters must be either in 'fixed_parameters' or in 'optuna_hp_ranges', not in both. Check: '{overlap}'"
-
-    
-#     trial_params = {}
-#     for optuna_hp_range in config["optuna_hp_ranges"]:
-#         type_ = optuna_hp_range["type"]
-#         name_ = optuna_hp_range["params"]["name"]
-#         params_ = optuna_hp_range["params"]
-        
-#         if type_ == "suggest_categorical":
-#             v = trial.suggest_categorical(**params_)
-#         elif type_ == "suggest_discrete_uniform":
-#             v = trial.suggest_discrete_uniform(**params_)
-#         elif type_ == "suggest_float":
-#             v = trial.suggest_float(**params_)
-#         elif type_ == "suggest_int":
-#             v = trial.suggest_int(**params_)
-#         elif type_ == "suggest_loguniform":
-#             v = trial.suggest_float(**params_, log=True)
-#         elif type_ == "suggest_uniform":
-#             v = trial.suggest_uniform(**params_)
-#         else: 
-#             raise ValueError(f"type '{type_}' for optuna hp ranges not known or not implemented yet!")   
-        
-#         valid_special_treatents = ["literal_eval"]
-#         if "special_treatment" in optuna_hp_range.keys():
-#             s = optuna_hp_range["special_treatment"]
-#             assert s in valid_special_treatents, f"{s} must be one of {valid_special_treatents}. Other choices are not valid." 
-#             if s == "literal_eval":
-#                 v = ast.literal_eval(v)
-#         trial_params[name_] = v
-        
-#     combined_parameters = {**trial_params, **config["fixed_parameters"]}        
-
-#     return combined_parameters    
-
-
 def generate_optuna_params(trial, config: dict, prefix: str | None = None):
     """
     Create trial parameters from an optuna block.
@@ -355,14 +310,9 @@ def recursive_suggest_trial_parameters(trial, config_part, treat_dot_params_spec
         if isinstance(v, dict):
             if is_pure_optuna_params_dict(v):
                 # Build hierarchical prefix like "model.encoder" etc.
-                optuna_options = v.get("optuna_options", {})
-                #use_prefix = optuna_options.get("use_prefix", True)
-                # use_prefix:
+                # optuna_options = v.get("optuna_options", {})
                 block_prefix = f"{_prefix}.{k}" if _prefix else k
                 params_dict = generate_optuna_params(trial, v, prefix=block_prefix)
-                #else: 
-                #    params_dict = generate_optuna_params(trial, v, prefix=None)
-
                 if treat_dot_params_special:
                     params_dict = update_dot_dicts_with_sub_dicts(params_dict)
 
@@ -373,20 +323,6 @@ def recursive_suggest_trial_parameters(trial, config_part, treat_dot_params_spec
                     trial, v, treat_dot_params_special=treat_dot_params_special, _prefix=new_prefix
                 )
 
-
-
-# def recursive_suggest_trial_parameters(trial, config_part, treat_dot_params_special=True):
-#     for k, v in config_part.items():
-#         if isinstance(v, dict):
-#             if is_pure_optuna_params_dict(v):
-#                 config_part[k] = generate_optuna_params(trial, v)  # leaf (convert)
-#                 if treat_dot_params_special: 
-#                     config_part[k] = update_dot_dicts_with_sub_dicts(config_part[k])
-#             else:  # might have one at a sublevel
-#                 recursive_suggest_trial_parameters(trial, v, treat_dot_params_special=treat_dot_params_special)
-#         else:
-#             pass  # dont change the non_dicts
-    
     
     
 
