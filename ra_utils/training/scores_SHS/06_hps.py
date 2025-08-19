@@ -71,6 +71,7 @@ def generate_objective(
                 ra_utils.utils.optuna.recursive_suggest_trial_parameters(trial, config_trial, 
                                                                          treat_dot_params_special = config.get("hps_treat_dot_params_special", False))
 
+                #config_trial = ra_utils.utils.optuna.replace_none_recursive(config_trial)
 
                 if verbose in [PRINT_PARAMS, CHATTY]:
                     pprint(config_trial)
@@ -119,7 +120,8 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/HPS__F_JSN_dev3.yml", 
+        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/HPS__F_JSN_dev3.yml", 
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps01.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )

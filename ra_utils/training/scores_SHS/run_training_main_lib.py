@@ -123,7 +123,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
     # data = dataset_and_loader(data_tables, config)
     data = dataset_and_loader_several(data_tables, config)
     
-    if True: 
+    if config.get("CheckDL4Duplicates", False): 
         # check_duplicates_in_dataloader(data, ds_key="train_loader")
         print("Checking for duplicates")
         check_duplicates_in_dataloader(data, ds_key="val_loader")
@@ -171,6 +171,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 
     # define loss function
     loss_fn_y = get_score_loss_function(config["loss"]["score"])
+    # loss_fn_y_reg = get_score_loss_function(config["loss"].get("score_reg", {}))
     loss_fn_x = nn.MSELoss()
     loss_fn_z = nn.L1Loss()
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores", {}))
