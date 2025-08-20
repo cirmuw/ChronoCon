@@ -34,10 +34,12 @@ from typing import Callable
 # Training loop (AutoEncoder + multi‑head classifier)
 # ---------------------------------------------------------------------------
 
-def _log_scalar_dict(prefix: str, dct: Dict[str, float], step: int | None = None):
+def log_scalar_dict(prefix: str, dct: Dict[str, float], step: int | None = None):
     """Utility: log every key/value pair in *dct* to MLflow with *prefix*."""
     for k, v in dct.items():
         mlflow.log_metric(f"{prefix}{k}", v, step=step)
+
+
 
 
 def train_loop_AE_v1(
@@ -100,7 +102,7 @@ def train_loop_AE_v1(
 
         # log training scalar losses
         
-        _log_scalar_dict("train_", train_loss_dct, step=epoch)
+        log_scalar_dict("train_", train_loss_dct, step=epoch)
 
         # ------------------------------------------------------------------
         # 2) Validation ------------------------------------------------------
@@ -155,7 +157,7 @@ def train_loop_AE_v1(
         extra_loss_keys = {
             k: v for k, v in val_metrics.items() if k.startswith("L")
         }
-        _log_scalar_dict("val_", extra_loss_keys, step=epoch)
+        log_scalar_dict("val_", extra_loss_keys, step=epoch)
 
         # ------------------------------------------------------------------
         # 3) Scheduler step --------------------------------------------------
@@ -276,7 +278,7 @@ def train_loop_AE_v2(
 
         # log training scalar losses
         
-        _log_scalar_dict("train_", train_loss_dct, step=epoch)
+        log_scalar_dict("train_", train_loss_dct, step=epoch)
 
         # ------------------------------------------------------------------
         # 2) Validation ------------------------------------------------------
@@ -331,7 +333,7 @@ def train_loop_AE_v2(
         extra_loss_keys = {
             k: v for k, v in val_metrics.items() if k.startswith("L")
         }
-        _log_scalar_dict("val_", extra_loss_keys, step=epoch)
+        log_scalar_dict("val_", extra_loss_keys, step=epoch)
 
         # ------------------------------------------------------------------
         # 3) Scheduler step --------------------------------------------------
@@ -414,7 +416,9 @@ def train_loop_AE_v3(
     lambda_x: float = 0.0,
     lambda_y: float = 0.0,
     lambda_z: float = 0.0,
+    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
     lambda_z_triplet_classes = 0.0,  
+    lambda_z_triplet_time = 0.0, 
     lambda_y_delta: float = 0.0,
     lambda_y_reg_extra: float = 0.0, 
     transform=lambda x: x,
@@ -456,6 +460,7 @@ def train_loop_AE_v3(
             lambda_x=lambda_x,
             lambda_y=lambda_y,
             lambda_z=lambda_z,
+            lambda_z_triplet_time = lambda_z_triplet_time, 
             lambda_z_triplet_classes = lambda_z_triplet_classes, 
             lambda_y_delta=lambda_y_delta,
             lambda_y_reg_extra = lambda_y_reg_extra, 
@@ -467,7 +472,7 @@ def train_loop_AE_v3(
 
         # log training scalar losses
         
-        _log_scalar_dict("train_", train_metrics_dct, step=epoch)
+        log_scalar_dict("train_", train_metrics_dct, step=epoch)
 
         # ------------------------------------------------------------------
         # 2) Validation ------------------------------------------------------
@@ -482,6 +487,7 @@ def train_loop_AE_v3(
             lambda_x=lambda_x,
             lambda_y=lambda_y,
             lambda_z=lambda_z,
+            lambda_z_triplet_time = lambda_z_triplet_time, 
             lambda_z_triplet_classes = lambda_z_triplet_classes, 
             lambda_y_delta=lambda_y_delta,
             lambda_y_reg_extra = lambda_y_reg_extra, 
@@ -518,6 +524,7 @@ def train_loop_AE_v3(
 
         if verbose > 2:
             # define the names of your component losses in order
+            # TODO add lambda_z_triplet_time, ... 
             loss_keys = ["Lx", "Ly", "Lz", "Lz_triplet_classes", "Ly_delta", "Ly_reg_extra"]
             # collect the corresponding lambda weights
             lambda_vals = [lambda_x, lambda_y, lambda_z, lambda_z_triplet_classes, lambda_y_delta, lambda_y_reg_extra]
@@ -551,7 +558,7 @@ def train_loop_AE_v3(
         extra_loss_keys = {
             k: v for k, v in val_metrics_dct.items() if k.startswith("L")
         }
-        _log_scalar_dict("val_", extra_loss_keys, step=epoch)
+        log_scalar_dict("val_", extra_loss_keys, step=epoch)
 
         # ------------------------------------------------------------------
         # 3) Scheduler step --------------------------------------------------
@@ -1081,6 +1088,8 @@ def val_epoch_AE_v3(
     lambda_x: float = 0.0,
     lambda_y: float = 0.0,
     lambda_z: float = 0.0,
+    lambda_z_triplet_time: float = 0.0,
+    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
     lambda_z_triplet_classes: float = 0.0,
     lambda_y_delta: float = 0,
     lambda_y_reg_extra: float = 0,
@@ -1089,7 +1098,7 @@ def val_epoch_AE_v3(
     classes: Optional[List[str]] = None,
     return_all_predictions: bool = False,
     calc_ICC3=0,
-    task_type_y: Literal["classification","regression"]="classification"
+    task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
 ):
     """
     Difference to v1: 
@@ -1207,7 +1216,8 @@ def val_epoch_AE_v3(
                         if task_type_y == "classification":
                             loss_fn_y_input = logits
                             score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")                              
-                        
+                        if task_type_y == "classification_regression_mix":
+                            raise NotImplementedError("task_type_y = classification_regression_mix")
 
                         head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
                         head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
@@ -1654,12 +1664,13 @@ def training_epoch_AE_v3(
     lambda_y: float = 1.0,
     lambda_z: float = 1.0,
     lambda_z_triplet_classes: float = 0.0,
+    lambda_z_triplet_time: float = 0.0,
     lambda_y_delta: float = 0.0,
     lambda_y_reg_extra: float = 0.0,
     transform=lambda x: x,
     device="cuda",
     debugging: bool = False, 
-    task_type_y: Literal["classification","regression"]="classification"
+    task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
 ):
     """
     Difference to v2: 
@@ -1677,6 +1688,9 @@ def training_epoch_AE_v3(
     loss_fn_y = dummy if loss_fn_y is None else loss_fn_y.to(device).train()
     loss_fn_z = dummy if loss_fn_z is None else loss_fn_z.to(device).train()
     loss_fn_z_triplet_classes = dummy if loss_fn_z_triplet_classes is None else loss_fn_z_triplet_classes.to(device).train()
+    # loss_fn_z_triplet_time = dummy if lambda_z_triplet_time < 1.0e-8 else loss_fn_z_triplet_time.to(device).train()
+
+
     loss_fn_y_reg_extra = dummy if lambda_y_reg_extra < 1.0e-8  else  nn.MSELoss()
     loss_fn_y_delta = dummy     if lambda_y_delta     < 1.0e-8  else  ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
         
@@ -1711,7 +1725,15 @@ def training_epoch_AE_v3(
             X_pred, z = model_AE(transform(X), s_type)       # ONE forward pass
 
             # triplet loss on classes: 
-            loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z)            
+            # labels__instance_and_score = 
+            loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z)
+
+            # loss_z_score_consistency_regularizer = (
+            #     loss_fn_z_score_consistency_regularizer(
+            #           labels=instance_label, 
+            #           embeddings=z, 
+            #           scores=y
+            # )
 
             # -- classifier heads ---------------------------------------------- #
             loss_y = torch.tensor(0.0, device=device)
@@ -1735,8 +1757,15 @@ def training_epoch_AE_v3(
                     if task_type_y == "classification":
                         loss_fn_y_input = logits
                         score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")
-                        
-                        
+                    if task_type_y == "classification_regression_mix": 
+                        raise NotImplementedError("task_type_y == 'classification_regression_mix'")
+                        loss_fn_y_input = logits[..., 0]
+                        score_estimation_1 = loss_fn_y_input
+                        score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
+                        score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                        # head_target_float = head_target.float().to(device)
+
+
                     head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
                     head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
                     head_loss_y_delta = loss_fn_y_delta(score_estimation, head_target.float().to(device), head_instance_label)
@@ -1915,7 +1944,7 @@ def evaluate_and_log_testset_results_AE_v1(
     # 3) Log reconstruction / latent / per-head losses
     # ------------------------------------------------------------------ #
     extra_loss = {k: v for k, v in metrics.items() if k.startswith("L")}
-    _log_scalar_dict("val_", extra_loss, step=None)
+    log_scalar_dict("val_", extra_loss, step=None)
 
     # ------------------------------------------------------------------ #
     # 4) Save raw preds + extras as compressed .npz
@@ -2174,7 +2203,7 @@ def evaluate_and_log_testset_results_AE_v2(
     # ------------------------------------------------------------------ #
     if not skip_metrics_logging:
         extra_loss = {k: v for k, v in metrics.items() if k.startswith("L")}
-        _log_scalar_dict(prefix, extra_loss, step=None)
+        log_scalar_dict(prefix, extra_loss, step=None)
 
     # ------------------------------------------------------------------ #
     # 4) Save raw preds + extras as compressed .npz
@@ -2217,6 +2246,7 @@ def evaluate_and_log_testset_results_AE_v3(
     lambda_x:   float = 0.0,
     lambda_y:   float = 0.0,
     lambda_z:   float = 0.0,
+    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
     lambda_z_triplet_classes: float = 0.0,
     lambda_y_delta: float = 0.0, 
     lambda_y_reg_extra: float = 0.0, 
@@ -2225,7 +2255,7 @@ def evaluate_and_log_testset_results_AE_v3(
     transform            = lambda x: x,
     prefix:     str  = "test_",
     skip_metrics_logging: bool = False,
-    task_type_y: Literal["classification", "regression"] = "classification",
+    task_type_y: Literal["classification", "regression", "classification_regression_mix"] = "classification",
 ):
     """
     v3 = v2 + regression support (task_type_y) + triplet-class loss logging.
@@ -2244,8 +2274,9 @@ def evaluate_and_log_testset_results_AE_v3(
         lambda_y=lambda_y,
         lambda_z=lambda_z,
         lambda_z_triplet_classes=lambda_z_triplet_classes,
-        lambda_y_delta = lambda_y_delta,  
-        lambda_y_reg_extra = lambda_y_reg_extra, 
+        lambda_z_score_consistency_regularizer=lambda_z_score_consistency_regularizer,
+        lambda_y_delta = lambda_y_delta,
+        lambda_y_reg_extra = lambda_y_reg_extra,
         transform=transform,
         device=device,
         classes=classes,
@@ -2313,7 +2344,7 @@ def evaluate_and_log_testset_results_AE_v3(
     # ----------------------------------------- 3. Extra losses (incl. triplet)
     if not skip_metrics_logging:
         extra_loss = {k: v for k, v in metrics.items() if k.startswith("L")}
-        _log_scalar_dict(prefix, extra_loss, step=None)  # Lz_triplet_classes now included
+        log_scalar_dict(prefix, extra_loss, step=None)  # Lz_triplet_classes now included
 
     # -------------------------------------------------- 4. Save raw predictions
     with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:

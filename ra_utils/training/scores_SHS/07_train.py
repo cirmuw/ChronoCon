@@ -32,7 +32,7 @@ import  ra_utils.utils.multiprocessing
 from ra_utils.utils.verbosity_enums import *
 
 
-from ra_utils.training.scores_SHS.run_training_main_lib import run_training
+from ra_utils.training.scores_SHS.run_training_main_lib import run_training_v2
 
 # --------------------------------------------------------------#
 # --------------------------  main -----------------------------#
@@ -103,7 +103,7 @@ def main():
         mlflow.log_dict(config, "config.yml")
 
 
-        metrics = run_training(config = config,  
+        metrics = run_training_v2(config = config,  
                                mlflow_logging=True, 
                                verbose=VerboseLevel.CHATTY,
                                config_name=config_name)
