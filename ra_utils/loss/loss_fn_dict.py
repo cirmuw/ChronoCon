@@ -3,7 +3,12 @@ import torch
 import torch.nn as nn
 
 
-from ra_utils.networks.loss_function import get_score_loss_function, get_triplet_loss_fn
+from ra_utils.networks.loss_function import (
+    get_score_loss_function, 
+    get_triplet_loss_fn, 
+    get_consistency_regularization_loss_fn,
+    get_triplet_loss_fn_WST
+)
 import ra_utils.loss.online_mining_delta_loss
 from ra_utils.networks.architecture import (
     DummyReturnZeroLoss
@@ -54,9 +59,9 @@ def get_loss_fn_dict(config, device="cuda"):
         }
 
 
-    # Triplet loss
+    # Triplet loss on scores and Instance Id
     lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0)
-    loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores", {}))
+    loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores_classes", {}))
     if lambda_z_triplet_classes < 1.0e-8: 
             loss_fn_z_triplet_classes = dummy
     loss_dct_z_triplet_classes = {
@@ -64,24 +69,40 @@ def get_loss_fn_dict(config, device="cuda"):
             "lambda": lambda_z_triplet_classes, 
             "options": None
         }
+    
+    # Triplet loss with self transform (WST) on scores
+    lambda_z_triplet_WST_score = config.get('loss_weights', {}).get('lambda_z_triplet_WST_scores', 0.0)
+    loss_fn_z_triplet_WST_score = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_scores", {}))
+    if lambda_z_triplet_WST_score < 1.0e-8: 
+            loss_fn_z_triplet_WST_score = dummy
+    loss_dct_z_triplet_WST_score = {
+            "function": loss_fn_z_triplet_WST_score, 
+            "lambda": lambda_z_triplet_WST_score, 
+            "options": None
+        }
+    
+    # Triplet loss with self transform (WST) on time
+    lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
+    loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
+    if lambda_z_triplet_WST_time < 1.0e-8: 
+            loss_fn_z_triplet_WST_time = dummy
+    loss_dct_z_triplet_WST_time = {
+            "function": loss_fn_z_triplet_WST_time, 
+            "lambda": lambda_z_triplet_WST_time, 
+            "options": None
+        }
 
-    # # Triplet loss in time (no scores)
-    # lambda_z_triplet_time = config.get('loss_weights', {}).get('lambda_z_triplet_time', 0.0)
-    # loss_fn_z_triplet_time = get_triplet_loss_fn(config["loss"].get("triplet_time", {}))
-    # if lambda_z_triplet_time < 1.0e-8: 
-    #         loss_fn_z_triplet_time = dummy
-    # loss_dct_z_triplet_time = {
-    #         "function": loss_fn_z_triplet_time, 
-    #         "lambda": lambda_z_triplet_time, 
-    #         "options": None
-    #     }
-
-    # Triplet loss which respects instances (= Patient_Side_ROI)
-    # TODO
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
-    # lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
-    # TODO 
+    lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
+    loss_fn_z_score_consistency_regularizer = get_consistency_regularization_loss_fn(config["loss"].get("score_consistency_regularizer", {}))
+    if lambda_z_score_consistency_regularizer < 1.0e-8: 
+            loss_fn_z_score_consistency_regularizer = dummy
+    loss_dct_z_score_consistency_regularizer = {
+            "function": loss_fn_z_score_consistency_regularizer, 
+            "lambda": lambda_z_score_consistency_regularizer, 
+            "options": None
+        }
 
     # Duplet loss (e.g. Huber loss)
     lambda_y_delta = config.get('loss_weights', {}).get('lambda_y_delta', 0.0)
@@ -113,9 +134,15 @@ def get_loss_fn_dict(config, device="cuda"):
         "y_reg_extra": loss_dct_y_reg_extra,
         # 
         "z": loss_dct_z,
-        "z_triplet_classes": loss_dct_z_triplet_classes,
+        #
         "y_delta": loss_dct_y_delta,
         "y_reg_extra": loss_dct_y_reg_extra,
+        #
+        "z_triplet_classes": loss_dct_z_triplet_classes,
+        "z_triplet_WST_score": loss_dct_z_triplet_WST_score, 
+        # "z_triplet_WST_time": loss_dct_z_triplet_WST_time,   # Later ... or not 
+        #
+        "z_score_consistency_regularizer": loss_dct_z_score_consistency_regularizer
     }
 
     return r

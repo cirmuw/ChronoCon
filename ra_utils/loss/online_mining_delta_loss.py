@@ -8,44 +8,10 @@ from typing import Callable, Literal, Union
 import torch.nn as nn
 import numpy as np
 
-def _get_instance_mask(score_instance_labels: np.array, device="cuda"):
-    """
-    Build an (N, N) boolean mask that is True iff two entries have the same label but different index.
+from ra_utils.loss.loss_utils import (
+    get_instance_mask_2D
+)
 
-    Parameters
-    ----------
-    score_instance_labels : np.ndarray, shape (N,)
-        1-D array of instance labels.
-    device : str or torch.device
-        Where to place the output tensor.
-
-    Returns
-    -------
-    mask : torch.BoolTensor, shape (N, N)
-
-    >>> labels = np.array([1, 2, 1])
-    >>> _get_instance_mask(labels, device="cpu").tolist()
-    [[False, False, True], [False, False, False], [True, False, False]]
-    >>> # everything equal but self-comparisons are masked out
-    >>> labels = np.array(["a", "a", "b"])
-    >>> _get_instance_mask(labels, device="cpu").tolist()
-    [[False, True, False], [True, False, False], [False, False, False]]
-    """
-    assert isinstance(score_instance_labels, np.ndarray), \
-        "Input must be a numpy array"
-    assert score_instance_labels.ndim == 1, \
-        f"Expected 1-D array, got ndim={score_instance_labels.ndim}"
-    
-    
-    assert isinstance(score_instance_labels, np.ndarray), "Input type is expected to be numpy array"
-    
-    #score_instance_labels = np.array(score_instance_labels)
-    labels_equal = score_instance_labels[:, np.newaxis] == score_instance_labels[np.newaxis, :]
-    labels_equal = torch.tensor(labels_equal, device=device, dtype=torch.bool)
-    indices_equal = torch.eye(score_instance_labels.shape[0], device=device).bool()
-    indices_not_equal = ~indices_equal
-    
-    return labels_equal & indices_not_equal
 
 
 def batch_all_score_differences_loss(scores_pred: torch.tensor, scores_true: torch.tensor, labels: np.ndarray, 
@@ -124,7 +90,7 @@ def batch_all_score_differences_loss(scores_pred: torch.tensor, scores_true: tor
     scores_delta_pred = (scores_pred.unsqueeze(0) - scores_pred.unsqueeze(1)).float()
 
     score_metric_cont = loss_fn(scores_delta_true, scores_delta_pred, reduction='none')
-    mask = _get_instance_mask(labels, device = device)
+    mask = get_instance_mask_2D(labels, device = device)
     num_valid_duplets = mask.sum()
     if num_valid_duplets >= 1: 
         loss = (mask.float() * score_metric_cont).sum() / num_valid_duplets

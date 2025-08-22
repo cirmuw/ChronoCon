@@ -5,6 +5,8 @@ from typing import Optional, Sequence
 from torch import Tensor
 #  import online_triplet_loss.losses   # now added to ra_utils and modified
 import ra_utils.loss.online_mining_triplet_loss
+import ra_utils.loss.online_mining_triplet_loss_with_scores
+import ra_utils.loss.consistency_regularizer_loss
 from typing import Optional
 
 
@@ -45,14 +47,47 @@ def get_triplet_loss_fn(cfg: dict = {}):
         return ra_utils.loss.online_mining_triplet_loss.OnlineBatchHardTripletLoss(**params)
     elif name == "OnlineBatchAllTripletLoss":
         return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLoss(**params)
-    
     elif name == "OnlineBatchAllTripletLossWithScores":
-        return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLossWithScores(**params)
-        
-
+        return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScores(**params)
     else: 
         raise NotImplementedError(f"{name = }")
 
+def get_consistency_regularization_loss_fn(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {"margin": 1.0})
+    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if name == None: 
+        return DummyReturnZeroLoss()
+    elif name == "ScoresConsistencyRegularizer":
+        return ra_utils.loss.consistency_regularizer_loss.ConsistencyRegularizerLoss(**params)
+    else:
+        raise NotImplementedError(f"{name = }")
+
+
+
+def get_triplet_loss_fn_WST(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {"margin": 1.0})
+    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if name == None: 
+        return DummyReturnZeroLoss()
+    elif name == "OnlineBatchAllTripletLossWithScoresAndSelfTransform":
+        return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScoresAndSelfTransform(**params)
+    else: 
+        raise NotImplementedError(f"{name = }")
+
+
+
+def get_consistency_regularization_loss_fn(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {"margin": 1.0})
+    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if name == None: 
+        return DummyReturnZeroLoss()
+    elif name == "ScoresConsistencyRegularizer":
+        return ra_utils.loss.consistency_regularizer_loss.ConsistencyRegularizerLoss(**params)
+    else:
+        raise NotImplementedError(f"{name = }")
 
 class DummyReturnZeroLoss(nn.Module):
     def __init__(self, device="cuda"):
