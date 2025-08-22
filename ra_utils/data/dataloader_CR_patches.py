@@ -1,51 +1,55 @@
-import torch
-# from torch.utils.data import Dataset
+# Standard library imports
+import json
+from importlib import resources
+from pathlib import Path
+from typing import Dict, List, Literal, Any, Optional
+
+# Third-party imports
 import numpy as np
+import pandas as pd
+import torch
+import torchvision
+import yaml
+from sklearn.model_selection import train_test_split
+import sklearn.utils
+from tqdm import tqdm
 
-
-import torchvision.transforms
-from torch.utils.data import WeightedRandomSampler
-
+# MONAI imports
 from monai.data import Dataset, DataLoader
 from monai.transforms import (
-    Compose,
-    LoadImaged,
-    EnsureChannelFirstd,
-    RandAffined,
     CenterSpatialCropd,
+    Compose,
+    CopyItemsd,
+    DeleteItemsd,
+    EnsureChannelFirstd,
     EnsureTyped,
     LambdaD,
-    ScaleIntensityRanged, 
-    RandFlipd, 
-    RandScaleIntensityd, 
-    RandShiftIntensityd, 
+    LoadImaged,
+    Rand2DElasticd,
+    RandAffined,
+    RandFlipd,
     RandGaussianNoised,
-    Rand2DElasticd
+    RandScaleIntensityd,
+    RandShiftIntensityd,
+    ScaleIntensityRanged, 
+    RandHistogramShiftd,
+    RandGaussianSmoothd,
+    RandCoarseDropoutd,
+    RandAdjustContrastd,
+    AdjustContrastd
 )
-import sklearn.utils
-from sklearn.model_selection import train_test_split
-import pandas as pd
-from pathlib import Path
-from typing import List, Dict, Any, Optional
+from torch.utils.data import WeightedRandomSampler
 
-
+# Custom imports
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
     restructure_paths_and_scores,
     restructure_paths_and_scores_v2
 )
-import yaml
-from importlib import resources
-from tqdm import tqdm
+from ra_utils.data.data_utils import extract_extras_from_filename
+from ra_utils.data.shap_sums import limit_treatment_number
 
 
-from ra_utils.data.data_utils import (
-    extract_extras_from_filename
-)
 
-from importlib import resources
-import pandas as pd
-import json
-from  ra_utils.data.shap_sums import limit_treatment_number
 
 #--------------------------------------------------------------#
 #------------------------- Score reading ----------------------#
@@ -318,6 +322,179 @@ def make_validation_transforms(transforms_config = {"OUTPUT_DIM": (128, 128)}, D
 
     return transforms
 
+
+
+#--------------------------------------------------------------#
+#------------------ Triplet Transforms ------------------------#
+#--------------------------------------------------------------#
+
+def make_training_transforms_triplet(cfg, DIM=2):
+    # ----------------------
+    # helpers
+    # ----------------------
+    def _gauss_smooth_kwargs():
+        sig = cfg.get("RandGaussianSmoothd__sigma", (0.6, 1.2))
+        if DIM == 2:
+            return dict(sigma_x=sig, sigma_y=sig)
+        else:
+            return dict(sigma_x=sig, sigma_y=sig, sigma_z=sig)
+
+    def _roi_size():
+        return [cfg["OUTPUT_DIM"]]*DIM if isinstance(cfg["OUTPUT_DIM"], int) else cfg["OUTPUT_DIM"]
+
+    def _clamp01(x):
+        if torch.is_tensor(x):
+            return x.clamp_(0.0, 1.0)
+        return np.clip(x, 0.0, 1.0)
+
+    def _add_view_aug(xforms, key):
+        # ------- geometry -------
+        if cfg.get("RandAffined__bool", False):
+            xforms.append(
+                RandAffined(
+                    keys=[key],
+                    prob=cfg.get("RandAffined__prob", 0.5),
+                    rotate_range=cfg.get("RandAffined__rotation_range_degree", 10) * np.pi / 180,
+                    translate_range=cfg.get("RandAffined__translate_range_pixels", 19),
+                    scale_range=cfg.get("RandAffined__scale_range", 0.2),
+                    shear_range=cfg.get("RandAffined__shear_range", None),  # e.g. (-0.05, 0.05)
+                    padding_mode="zeros",
+                )
+            )
+
+        if cfg.get("Rand2DElasticd__bool", False):
+            sp = cfg.get("Rand2DElasticd__spacing", 12)
+            mag = cfg.get("Rand2DElasticd__magnitude", 2.73)
+            xforms.append(
+                Rand2DElasticd(
+                    keys=[key],
+                    spacing=(sp, sp),
+                    magnitude_range=(-mag, mag),
+                    prob=cfg.get("Rand2DElasticd__prob", 0.2),
+                    shear_range=None,
+                    rotate_range=0, scale_range=0, translate_range=0,
+                    padding_mode="zeros",
+                )
+            )
+
+        if cfg.get("RandFlipd__bool", False):
+            xforms.append(RandFlipd(keys=[key], prob=cfg.get("RandFlipd__prob", 0.5), spatial_axis=1))
+
+        # ------- crop AFTER geometry (non-commutative with affine) -------
+        xforms.append(CenterSpatialCropd(keys=[key], roi_size=_roi_size()))
+
+        # ------- photometric -------
+        if cfg.get("RandScaleIntensityd__bool", False):
+            xforms.append(
+                RandScaleIntensityd(
+                    keys=[key],
+                    factors=cfg.get("RandScaleIntensityd__factors", (-0.1, 0.1)),
+                    prob=cfg.get("RandScaleIntensityd__prob", 0.3),
+                )
+            )
+        if cfg.get("RandShiftIntensityd__bool", False):
+            xforms.append(
+                RandShiftIntensityd(
+                    keys=[key],
+                    offsets=cfg.get("RandShiftIntensityd__offsets", (-0.1, 0.1)),
+                    prob=cfg.get("RandShiftIntensityd__prob", 0.3),
+                )
+            )
+        # photometric
+        if cfg.get("RandAdjustContrastd__bool", False):
+            xforms.append(
+                RandAdjustContrastd(
+                    keys=[key],
+                    prob=cfg.get("RandAdjustContrastd__prob", 0.3),
+                    gamma=cfg.get("RandAdjustContrastd__gamma", (0.7, 1.5)),
+                    invert_image=cfg.get("RandAdjustContrastd__invert_image", False),
+                )
+            )
+        if cfg.get("RandHistogramShiftd__bool", False):
+            xforms.append(
+                RandHistogramShiftd(
+                    keys=[key],
+                    num_control_points=cfg.get("RandHistogramShiftd__num_control_points", 10),
+                    prob=cfg.get("RandHistogramShiftd__prob", 0.2),
+                )
+            )
+
+        # ------- blur / noise / occlusion -------
+        if cfg.get("RandGaussianSmoothd__bool", False):
+            xforms.append(
+                RandGaussianSmoothd(
+                    keys=[key],
+                    prob=cfg.get("RandGaussianSmoothd__prob", 0.3),
+                    **_gauss_smooth_kwargs(),
+                )
+            )
+        if cfg.get("RandGaussianNoised__bool", False):
+            xforms.append(
+                RandGaussianNoised(
+                    keys=[key],
+                    prob=cfg.get("RandGaussianNoised__prob", 0.17),
+                    mean=0.0,
+                    std=cfg.get("RandGaussianNoised__std", 0.085),
+                )
+            )
+        if cfg.get("RandCoarseDropoutd__bool", False):
+            xforms.append(
+                RandCoarseDropoutd(
+                    keys=[key],
+                    prob=cfg.get("RandCoarseDropoutd__prob", 0.15),
+                    holes=cfg.get("RandCoarseDropoutd__holes", 3),
+                    spatial_size=cfg.get("RandCoarseDropoutd__spatial_size", (8, 8) if DIM == 2 else (8, 8, 4)),
+                    fill_value=cfg.get("RandCoarseDropoutd__fill_value", 0.0),
+                )
+            )
+
+        if cfg.get("Clamp01__bool", True):
+            xforms.append(LambdaD(keys=[key], func=_clamp01))
+
+        # ------- per-view normalization at the end -------
+        if cfg.get("RBG_channels__bool", False) and cfg.get("Normalize__bool", True):
+            xforms.append(
+                LambdaD(
+                    keys=[key],
+                    func=torchvision.transforms.Normalize(
+                        mean=cfg.get("Normalize__mean", [0.485, 0.456, 0.406]),
+                        std=cfg.get("Normalize__std", [0.229, 0.224, 0.225]),
+                    ),
+                )
+            )
+
+
+
+        return xforms
+
+
+
+    # ----------------------
+    # base (deterministic-ish)
+    # ----------------------
+    xforms = [
+        LoadImaged(keys=["img"], reader="NumpyReader"),
+        EnsureChannelFirstd(keys=["img"]),
+        LambdaD(keys=["img"], func=min_max_normalize),
+    ]
+
+    # Make 3-ch (before branching & photometric ops)
+    if cfg.get("RBG_channels__bool", False):
+        xforms.append(LambdaD(keys=["img"], func=repeat_channels))
+
+    # -------- branch into two independent views --------
+    xforms += [CopyItemsd(keys=["img"], times=2, names=["img_original", "img_pos"])]
+
+    # view 1 & 2
+    xforms = _add_view_aug(xforms, "img")
+    xforms = _add_view_aug(xforms, "img_pos")
+
+    xforms.append(EnsureTyped(keys=["img", "img_pos", "img_original"], dtype=torch.float32))
+
+    if cfg.get("drop_img_original", True):
+        xforms.append(DeleteItemsd(keys=["img_original"]))
+
+    return xforms
 
 
 
@@ -883,7 +1060,12 @@ def dataset_and_loader(data_tables, config):
 
 
 def prepare_datasets(data_tables, config):
-    transform_train = Compose(make_trainings_transforms(config["transforms"]))
+    use_triplet_transforms = config["transforms"].get("ACTIVATE_TRIPLET_TRAINING_TRANSFORMS", False)
+    if use_triplet_transforms:
+        transform_train = Compose(make_training_transforms_triplet(config["transforms"]))
+    else:
+        transform_train = Compose(make_trainings_transforms(config["transforms"]))
+
     transform_val = Compose(make_validation_transforms(config["transforms"]))
 
     return {

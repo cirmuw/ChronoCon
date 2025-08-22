@@ -21,14 +21,14 @@ def get_score_loss_function(cfg: dict):
     elif name == "PaulsOrdinalLoss":
         loss = PaulsOrdinalLoss(**params)
     elif name == "PaulsOrdinalLossFocal":
-        loss = PaulsOrdinalLossFocal(**params)        
+        loss = PaulsOrdinalLossFocal(**params)
 
     elif name == "MSELoss":
         loss = nn.MSELoss(**params)
-    elif name =="MSE+CELoss":
-        loss = MSECELoss(**params)
-
-
+    elif name == "MSEandCELoss":
+        loss = MSEandCELoss(**params)
+    elif name == "MSEandFocalLoss":
+        loss = MSEandFocalLoss(**params)
         
     else: 
         raise NotImplementedError(f"{name=}")
@@ -45,6 +45,11 @@ def get_triplet_loss_fn(cfg: dict = {}):
         return ra_utils.loss.online_mining_triplet_loss.OnlineBatchHardTripletLoss(**params)
     elif name == "OnlineBatchAllTripletLoss":
         return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLoss(**params)
+    
+    elif name == "OnlineBatchAllTripletLossWithScores":
+        return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLossWithScores(**params)
+        
+
     else: 
         raise NotImplementedError(f"{name = }")
 
@@ -243,7 +248,11 @@ class MSEandCELoss(nn.Module):
 
         self.mse_loss   = nn.MSELoss()
         self.class_loss = nn.CrossEntropyLoss()   # expects logits (N, C) and labels (N,)
-
+        if mse_weight + class_weight != 1.0: 
+            print(
+                f"Warning: mse_weight + class_weight != 1.0 ({mse_weight} + {class_weight} = {mse_weight + class_weight}). " 
+                f"Consider normalizing weights for better interpretability and for later use!"
+            )
     def forward(self, outputs, targets):
         """
         outputs  : tensor (N, 1 + C)

@@ -472,6 +472,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         model_AE=model_AE,
         model_classifier=model_c,
         train_dataloaders=train_dataloaders,
+        val_loaders=val_loaders,
         loss_fn_dict=loss_fn_dict,
         optimizer=optimizer,
         scheduler=scheduler,
