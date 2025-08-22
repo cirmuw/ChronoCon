@@ -448,6 +448,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
     )
 
 
+
     # AE transform 
     AE_transform_name = config.get("AE_transform", {}).get("name")
     if AE_transform_name == None: 
@@ -477,7 +478,6 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         device=device,
         epochs=epochs,
         patience=config["training"].get("early_stopping_tol", 100),
-        # TODO Maybe add self-transform for triplet loss ... 
         transform=transform_AE,
         log_model_full=config.get("SAVE_MODEL_FULL", False),
         log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),

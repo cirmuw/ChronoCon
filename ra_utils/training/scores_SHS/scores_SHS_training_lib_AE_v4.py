@@ -44,13 +44,7 @@ def train_loop_AE_v4(
     model_classifier: Optional[torch.nn.Module],
     train_dataloaders: Dict[str, torch.utils.data.DataLoader],
     val_loaders: Dict[str, torch.utils.data.DataLoader],
-    *,
-    # loss functions
-    loss_fn_x: Optional[torch.nn.Module] = None,
-    loss_fn_y: Optional[torch.nn.Module] = None,
-    loss_fn_z: Optional[torch.nn.Module] = None,
-    loss_fn_z_triplet_classes: Optional[torch.nn.Module] = None,
-    # optimiser etc.
+    loss_fn_dict: dict, 
     optimizer: torch.optim.Optimizer,
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
     device: str = "cuda",
@@ -58,14 +52,6 @@ def train_loop_AE_v4(
     epochs: int = 1000,
     patience: int = 10,
     run_full_epochs: bool = False,
-    lambda_x: float = 0.0,
-    lambda_y: float = 0.0,
-    lambda_z: float = 0.0,
-    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
-    lambda_z_triplet_classes = 0.0,  
-    lambda_z_triplet_time = 0.0, 
-    lambda_y_delta: float = 0.0,
-    lambda_y_reg_extra: float = 0.0, 
     transform=lambda x: x,
     classes: Optional[List[str]] = None,
     log_model_full: bool = False,
@@ -98,20 +84,10 @@ def train_loop_AE_v4(
             optimizer,
             train_dataloaders,
             model_classifier=model_classifier,
-            loss_fn_x=loss_fn_x,
-            loss_fn_y=loss_fn_y,
-            loss_fn_z=loss_fn_z,
-            loss_fn_z_triplet_classes = loss_fn_z_triplet_classes,
-            lambda_x=lambda_x,
-            lambda_y=lambda_y,
-            lambda_z=lambda_z,
-            lambda_z_triplet_time = lambda_z_triplet_time, 
-            lambda_z_triplet_classes = lambda_z_triplet_classes, 
-            lambda_y_delta=lambda_y_delta,
-            lambda_y_reg_extra = lambda_y_reg_extra, 
+            loss_fn_dict=loss_fn_dict,
             transform=transform,
             device=device,
-            task_type_y = task_type_y
+            task_type_y=task_type_y
         )
         metrics_Tr.append(train_metrics_dct)
 
@@ -125,18 +101,8 @@ def train_loop_AE_v4(
             model_AE,
             val_loaders,
             model_classifier=model_classifier,
-            loss_fn_x=loss_fn_x,
-            loss_fn_y=loss_fn_y,
-            loss_fn_z=loss_fn_z,
-            loss_fn_z_triplet_classes = loss_fn_z_triplet_classes,
-            lambda_x=lambda_x,
-            lambda_y=lambda_y,
-            lambda_z=lambda_z,
-            lambda_z_triplet_time = lambda_z_triplet_time, 
-            lambda_z_triplet_classes = lambda_z_triplet_classes, 
-            lambda_y_delta=lambda_y_delta,
-            lambda_y_reg_extra = lambda_y_reg_extra, 
-            transform = lambda x: x, # No denoising in val. loop  #transform,
+            loss_fn_dict=loss_fn_dict,
+            transform=lambda x: x,  # No denoising in val. loop  #transform,
             device=device,
             classes=classes,
             return_all_predictions=False,
@@ -168,11 +134,9 @@ def train_loop_AE_v4(
             print(val_losses)
 
         if verbose > 2:
-            # define the names of your component losses in order
-            # TODO add lambda_z_triplet_time, ... 
-            loss_keys = ["Lx", "Ly", "Lz", "Lz_triplet_classes", "Ly_delta", "Ly_reg_extra"]
-            # collect the corresponding lambda weights
-            lambda_vals = [lambda_x, lambda_y, lambda_z, lambda_z_triplet_classes, lambda_y_delta, lambda_y_reg_extra]
+            keys = list(loss_fn_dict.keys()) 
+            loss_keys = [f"L{k}"  for k in keys]
+            lambda_vals = [loss_fn_dict[k]["lambda"] for k in keys]
 
             # build and print the training-relative‐loss line
             train_rel = "     rel. loss contribution Tr.: " + " | ".join(
@@ -293,20 +257,8 @@ def train_loop_AE_v4(
 def val_epoch_AE_v4(
     model_AE: torch.nn.Module,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
-    *,
+    loss_fn_dict: dict, 
     model_classifier: Optional[torch.nn.Module] = None,
-    loss_fn_x: Optional[torch.nn.Module] = None,
-    loss_fn_y: Optional[torch.nn.Module] = None,
-    loss_fn_z: Optional[torch.nn.Module] = None,
-    loss_fn_z_triplet_classes: Optional[torch.nn.Module] = None,
-    lambda_x: float = 0.0,
-    lambda_y: float = 0.0,
-    lambda_z: float = 0.0,
-    lambda_z_triplet_time: float = 0.0,
-    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
-    lambda_z_triplet_classes: float = 0.0,
-    lambda_y_delta: float = 0,
-    lambda_y_reg_extra: float = 0,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -331,15 +283,22 @@ def val_epoch_AE_v4(
     # ------------------------------------------------------------------
     # 0) Book‑keeping & preparation
     # ------------------------------------------------------------------
-    dummy = DummyReturnZeroLoss(device)
-    loss_fn_x = dummy if loss_fn_x is None else loss_fn_x.to(device).eval()
-    loss_fn_y = dummy if loss_fn_y is None else loss_fn_y.to(device).eval()
-    loss_fn_z = dummy if loss_fn_z is None else loss_fn_z.to(device).eval()
-    loss_fn_z_triplet_classes = dummy if loss_fn_z_triplet_classes is None else loss_fn_z_triplet_classes.to(device).eval()
-    loss_fn_y_reg_extra = dummy if lambda_y_reg_extra < 1.0e-8  else  nn.MSELoss()
-    loss_fn_y_delta = dummy     if lambda_y_delta     < 1.0e-8  else  ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
-        
-        
+    loss_fn_x = loss_fn_dict["x"]["function"];  lambda_x = loss_fn_dict["x"]["lambda"]
+    loss_fn_y = loss_fn_dict["y"]["function"];  lambda_y = loss_fn_dict["y"]["lambda"]
+    loss_fn_z = loss_fn_dict["z"]["function"];  lambda_z = loss_fn_dict["z"]["lambda"]
+    
+    loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
+    lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
+
+    loss_fn_y_reg_extra = loss_fn_dict["y_reg_extra"]["function"];  
+    lambda_y_reg_extra = loss_fn_dict["y_reg_extra"]["lambda"]
+
+    loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
+    lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
+
+    assert set(loss_fn_dict.keys()) == {"x", "y", "z", "z_triplet_classes", "y_reg_extra", "y_delta"}, \
+     f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
+
     
 
     model_AE.eval().to(device)
@@ -358,7 +317,12 @@ def val_epoch_AE_v4(
         head_counts = defaultdict(int)
         max_out_dim = 1  # trivial – no classifier
 
-    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
+    # running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
+    loss_dct_keys = list(loss_fn_dict.keys())
+    running_loss = dict(L=0.0)
+    for k in loss_dct_keys:
+        running_loss[f"L{k}"] = 0.0
+
     n_samples = 0
 
     # containers for classification statistics
@@ -629,59 +593,52 @@ def training_epoch_AE_v4(
     model_AE,
     optimizer,
     dataloaders: dict,
+    loss_fn_dict: dict,
     model_classifier=None,
-    *,
-    loss_fn_x=None,
-    loss_fn_y=None,
-    loss_fn_z=None,
-    loss_fn_z_triplet_classes = None,
-    lambda_x: float = 1.0,
-    lambda_y: float = 1.0,
-    lambda_z: float = 1.0,
-    lambda_z_triplet_classes: float = 0.0,
-    lambda_z_triplet_time: float = 0.0,
-    lambda_y_delta: float = 0.0,
-    lambda_y_reg_extra: float = 0.0,
     transform=lambda x: x,
     device="cuda",
     debugging: bool = False, 
     task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
 ):
     """
-    Difference to v2: 
-     dataloader -> dataloaders (dict)
-     model(img) -> mode(img, score_type)
+    Difference to v3: 
+     loss functions are now passed as a dictionary
     """
     
     
     # ----------------------------- set-up ---------------------------------- #
     model_AE.train().to(device)
-
-    # fall-back losses
-    dummy = DummyReturnZeroLoss(device)
-    loss_fn_x = dummy if loss_fn_x is None else loss_fn_x.to(device).train()
-    loss_fn_y = dummy if loss_fn_y is None else loss_fn_y.to(device).train()
-    loss_fn_z = dummy if loss_fn_z is None else loss_fn_z.to(device).train()
-    loss_fn_z_triplet_classes = dummy if loss_fn_z_triplet_classes is None else loss_fn_z_triplet_classes.to(device).train()
-    # loss_fn_z_triplet_time = dummy if lambda_z_triplet_time < 1.0e-8 else loss_fn_z_triplet_time.to(device).train()
-
-
-    loss_fn_y_reg_extra = dummy if lambda_y_reg_extra < 1.0e-8  else  nn.MSELoss()
-    loss_fn_y_delta = dummy     if lambda_y_delta     < 1.0e-8  else  ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
-        
+    loss_fn_x = loss_fn_dict["x"]["function"];  lambda_x = loss_fn_dict["x"]["lambda"]
+    loss_fn_y = loss_fn_dict["y"]["function"];  lambda_y = loss_fn_dict["y"]["lambda"]
+    loss_fn_z = loss_fn_dict["z"]["function"];  lambda_z = loss_fn_dict["z"]["lambda"]
     
+    loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
+    lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
+
+    loss_fn_y_reg_extra = loss_fn_dict["y_reg_extra"]["function"];  
+    lambda_y_reg_extra = loss_fn_dict["y_reg_extra"]["lambda"]
+
+    loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
+    lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
+
+    assert set(loss_fn_dict.keys()) == {"x", "y", "z", "z_triplet_classes", "y_reg_extra", "y_delta"}, \
+     f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
+
+    # TODO Add triplet loss properly!!
         
-
-
     if model_classifier is not None:
         model_classifier.train().to(device)
-
         # running sums for each head
         running_head_loss = defaultdict(float)  # Σ loss*count
         head_counts = defaultdict(int)          # Σ count
 
     # running sums for global losses
-    running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
+    loss_dct_keys = list(loss_fn_dict.keys())
+    running_loss = dict(L=0.0)
+    for k in loss_dct_keys:
+        running_loss[f"L{k}"] = 0.0
+
+
     samples_tr = 0
 
     # ---------------------------- epoch loop ------------------------------- #
@@ -701,7 +658,10 @@ def training_epoch_AE_v4(
 
             # triplet loss on classes: 
             # labels__instance_and_score = 
-            loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z)
+            loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z) 
+
+            # TODO Add instances delta!! and margin scores!!!
+            # loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z, ids = ... , margin_vals = ... ) 
 
             # loss_z_score_consistency_regularizer = (
             #     loss_fn_z_score_consistency_regularizer(
@@ -770,7 +730,9 @@ def training_epoch_AE_v4(
             loss_z = loss_fn_z(z, z * 0)
 
             # -- total loss & optimisation ------------------------------------- #
-            loss = (lambda_x * loss_x + lambda_y * loss_y + lambda_z * loss_z + 
+            loss = (lambda_x * loss_x + 
+                    lambda_y * loss_y + 
+                    lambda_z * loss_z + 
                     lambda_z_triplet_classes * loss_z_triplet_classes +
                     lambda_y_delta * loss_y_delta + 
                     lambda_y_reg_extra * loss_y_reg_extra
@@ -815,18 +777,7 @@ def evaluate_and_log_testset_results_AE_v4(
     model_AE:               torch.nn.Module,
     model_classifier:       Optional[torch.nn.Module],
     dataloaders:            Dict[str, torch.utils.data.DataLoader],
-    *,
-    loss_fn_x: Optional[torch.nn.Module] = None,
-    loss_fn_y: Optional[torch.nn.Module] = None,
-    loss_fn_z: Optional[torch.nn.Module] = None,
-    loss_fn_z_triplet_classes: Optional[torch.nn.Module] = None,
-    lambda_x:   float = 0.0,
-    lambda_y:   float = 0.0,
-    lambda_z:   float = 0.0,
-    lambda_z_score_consistency_regularizer: float = 0.0,  # not used in v3
-    lambda_z_triplet_classes: float = 0.0,
-    lambda_y_delta: float = 0.0, 
-    lambda_y_reg_extra: float = 0.0, 
+    loss_fn_dict: dict, 
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -841,17 +792,7 @@ def evaluate_and_log_testset_results_AE_v4(
         model_AE,
         dataloaders,
         model_classifier=model_classifier,
-        loss_fn_x=loss_fn_x,
-        loss_fn_y=loss_fn_y,
-        loss_fn_z=loss_fn_z,
-        loss_fn_z_triplet_classes=loss_fn_z_triplet_classes,
-        lambda_x=lambda_x,
-        lambda_y=lambda_y,
-        lambda_z=lambda_z,
-        lambda_z_triplet_classes=lambda_z_triplet_classes,
-        lambda_z_score_consistency_regularizer=lambda_z_score_consistency_regularizer,
-        lambda_y_delta = lambda_y_delta,
-        lambda_y_reg_extra = lambda_y_reg_extra,
+        loss_fn_dict = loss_fn_dict,
         transform=transform,
         device=device,
         classes=classes,
