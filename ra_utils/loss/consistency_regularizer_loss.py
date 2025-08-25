@@ -62,7 +62,7 @@ class ConsistencyRegularizerLoss(nn.Module):
         metric_embeddings: Union[Literal["euclidean", "cosine", "tanh_euclidean"], Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = "tanh_euclidean",
         metric_scores: Union[Literal["abs", "squared"], Callable[[torch.Tensor], torch.Tensor]] = "abs",
         deltino: float = 1.0e-1,
-        squared_embeddings_metric: bool = False
+        squared_embeddings_metric: bool = True
     ):
         super().__init__()
         self.metric_embeddings = metric_embeddings

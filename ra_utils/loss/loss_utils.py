@@ -173,6 +173,77 @@ def pairwise_distances_two_tensors(
 
 
 
+def distance_two_tensors(
+        embeddingsA: torch.Tensor,
+        embeddingsB: torch.Tensor,
+        metric: Union[Literal["euclidean", "cosine", "tanh_euclidean"], Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
+        *,
+        squared: bool = False,
+) -> torch.Tensor:
+
+    assert embeddingsA.ndim == 2 and embeddingsB.ndim == 2, "Both inputs must be 2-D tensors"
+    assert embeddingsA.size(1) == embeddingsB.size(1), "Incompatible tensor dimensions"
+
+    if metric == "euclidean":
+        dist = (embeddingsA - embeddingsB).pow(2).sum(-1)
+        dist.clamp_min_(0)
+
+        if not squared:
+            # avoid ∂/∂x sqrt(x) blowing up at 0 on the diagonal
+            mask = dist.eq(0)
+            dist = torch.sqrt(dist + mask * 1e-16)
+        return dist
+    
+    if metric == "tanh_euclidean":
+        # compute tanh(‖a-b‖²)
+        dist = (embeddingsA - embeddingsB).pow(2).sum(-1)
+        dist.clamp_min_(0)
+
+        if not squared:
+            # avoid ∂/∂x sqrt(x) blowing up at 0 on the diagonal
+            mask = dist.eq(0)
+            dist = torch.sqrt(dist + mask * 1e-16)
+        dist = torch.tanh(dist)
+        return dist
+
+
+    elif metric == "cosine":
+        # Expand to (N,1,D) and (1,N,D) then compute cosine sim along D
+        sim = F.cosine_similarity(
+            embeddingsA,              # (N,1,D)
+            embeddingsB,              # (1,N,D)
+            dim=-1,
+            eps=1e-8
+        )                                         # → (N,N)
+        return 1.0 - sim                          # distance = 1 - similarity
+
+    # ---------------- generic callable path ---------------- #
+    # Try to apply the user‑supplied function in a vectorised way
+    if callable(metric):
+        try:
+            # (N,1,D) vs (1,N,D) broadcasting — works if metric
+            # accepts tensors of shape (N,1,D) and (1,N,D)
+            return metric(
+                embeddingsA.unsqueeze(1),          # broadcast
+                embeddingsB.unsqueeze(0)
+            )
+        except Exception:
+            # Fall back on explicit pairwise loop (O(N²) Python loops)
+            pass
+
+    # Slow fallback: compute every pair in Python; keeps grad tracking
+    N = embeddingsA.size(0)
+    out = torch.empty(N, N, device=embeddingsA.device, dtype=embeddingsA.dtype)
+    for i in range(N):
+        for j in range(i, N):
+            d = metric(embeddingsA[i], embeddingsB[j])
+            out[i, j] = out[j, i] = d
+    return out
+
+
+
+
+
 
 
 def get_triplet_mask(labels):
@@ -202,34 +273,54 @@ def get_triplet_mask(labels):
     return valid_labels & distinct_indices
 
 
+# def get_triplet_mask_WST(labels):
+#     """Return a 3D mask where mask[a, p, n] is True iff the triplet (a, p, n) is valid.
+#     Since tensor p is selftransform of a labels match automatically when i = j
+#     A triplet (i, j, k) is valid if:
+#         - i = j but k is distinct
+#         - labels[i] != labels[k]
+#     Args:
+#         labels: `Tensor` with shape [batch_size]
+#     """
+#     # Check that i, j and k are distinct
+#     indices_equal = torch.eye(labels.size(0), device=labels.device).bool()
+#     indices_not_equal = ~indices_equal
+
+#     idx_i_equal_j = indices_equal.unsqueeze(2)
+
+#     # idx_i_not_equal_j = indices_not_equal.unsqueeze(2)
+#     idx_i_not_equal_k = indices_not_equal.unsqueeze(1)
+#     # idx_j_not_equal_k = indices_not_equal.unsqueeze(0)
+
+#     valid_self_transform_index = idx_i_equal_j & idx_i_not_equal_k
+
+#     label_equal = labels.unsqueeze(0) == labels.unsqueeze(1)
+
+#     # i_equal_j = label_equal.unsqueeze(2)
+#     i_equal_k = label_equal.unsqueeze(1)
+#     valid_labels = ~i_equal_k
+
+#     return valid_labels & valid_self_transform_index
+
+
 def get_triplet_mask_WST(labels):
-    """Return a 3D mask where mask[a, p, n] is True iff the triplet (a, p, n) is valid.
+    """Return a 2D mask where mask[a, n] is True iff the triplet (a, n) is valid.
     Since tensor p is selftransform of a labels match automatically when i = j
-    A triplet (i, j, k) is valid if:
-        - i = j but k is distinct
+    A triplet (a, p) is valid if:
         - labels[i] != labels[k]
+        and i != k
     Args:
         labels: `Tensor` with shape [batch_size]
+    return: mask_ik of shape Nbatch, Nbatch
     """
     # Check that i, j and k are distinct
     indices_equal = torch.eye(labels.size(0), device=labels.device).bool()
-    indices_not_equal = ~indices_equal
-
-    idx_i_equal_j = indices_equal.unsqueeze(2)
-
-    # idx_i_not_equal_j = indices_not_equal.unsqueeze(2)
-    idx_i_not_equal_k = indices_not_equal.unsqueeze(1)
-    # idx_j_not_equal_k = indices_not_equal.unsqueeze(0)
-
-    valid_self_transform_index = idx_i_equal_j & idx_i_not_equal_k
+    vaild_indices = ~indices_equal
 
     label_equal = labels.unsqueeze(0) == labels.unsqueeze(1)
+    valid_labels = ~label_equal
 
-    # i_equal_j = label_equal.unsqueeze(2)
-    i_equal_k = label_equal.unsqueeze(1)
-    valid_labels = ~i_equal_k
-
-    return valid_labels & valid_self_transform_index
+    return valid_labels & vaild_indices
 
 
 def get_anchor_positive_triplet_mask(labels):
@@ -334,7 +425,11 @@ def get_instance_mask_3D(ids: np.array, device="cuda"):
 
     labels_equal = torch.tensor(valid_labels, device=device, dtype=torch.bool)
     indices_equal = torch.eye(ids.shape[0], device=device).bool()
-    indices_not_equal = ~indices_equal
+    indices_i_equal_j = indices_equal.unsqueeze(2)
+    indices_i_equal_k = indices_equal.unsqueeze(1)
+    indices_j_equal_k = indices_equal.unsqueeze(0)
+    no_indices_equal  = (~indices_i_equal_j) & (~indices_i_equal_k) & (~indices_j_equal_k) 
+
     
-    return labels_equal & indices_not_equal
+    return labels_equal & no_indices_equal
 
