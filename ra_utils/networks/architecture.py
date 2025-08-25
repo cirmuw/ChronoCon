@@ -822,3 +822,16 @@ class DummyReturnZeroLoss(nn.Module):
         return torch.tensor(0.0, device=self.device)
 
 
+class DummyReturnZeroLossMulti(nn.Module):
+    def __init__(self, device="cuda", size=2):
+        super().__init__()
+        self.device = device
+        self.size = size
+    
+    def forward(self, *args, **kwargs):
+        if isinstance(self.size, int):
+            # Return a tuple of tensors for unpacking
+            return tuple(torch.tensor(0.0, device=self.device) for _ in range(self.size))
+        else:
+            # Return a tensor with the specified size
+            return torch.zeros(self.size, device=self.device)

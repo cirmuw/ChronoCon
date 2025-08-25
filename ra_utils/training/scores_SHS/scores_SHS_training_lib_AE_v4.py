@@ -381,12 +381,13 @@ def val_epoch_AE_v4(
                 loss_z = loss_fn_z(z, z * 0)
 
                 # triplet loss on classes: 
-                loss_z_triplet_classes, frac1_ = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
-                                                                ids=instance_label,  # Use None for ablation study!
-                                                                margin_scores=y # score dependent margin
-                                                                ) 
+                loss_z_triplet_classes, fraction_positive_triplets__classes = ( 
+                    loss_fn_z_triplet_classes(labels=y, embeddings=z, 
+                    ids=instance_label,  # Use None for ablation study!
+                    margin_scores=y # score dependent margin
+                    ))
 
-                loss_z_triplet_WST_scores, frac2_ = loss_fn_z_triplet_WST_score(labels=y, 
+                loss_z_triplet_WST_scores, fraction_positive_triplets__WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
                                                                                 embeddings=z, 
                                                                                 embeddings_self_transform = z_positive,
                                                                                 ids=instance_label,  # Use None for ablation study!
@@ -644,7 +645,7 @@ def training_epoch_AE_v4(
      - loss functions are now passed as a dictionary
      - triplet loss with self-transform  
     """
-    
+    verbose = True
     
     # ----------------------------- set-up ---------------------------------- #
     model_AE.train().to(device)
@@ -694,8 +695,8 @@ def training_epoch_AE_v4(
     # Randomize dataloader order for better training
     dataloader_items = list(dataloaders.items())
     random.shuffle(dataloader_items)
-    for dataloader_name, dataloader in dataloader_items:
-        for batch in dataloader:
+    for i_dataloader, (dataloader_name, dataloader) in enumerate(dataloader_items):
+        for i_batch, batch in enumerate(dataloader):
             X      = batch["img"].to(device)
             X_pos  = batch.get("img_pos", None)
             if X_pos is not None: 
@@ -722,17 +723,20 @@ def training_epoch_AE_v4(
 
 
             # triplet loss on classes: 
-            loss_z_triplet_classes, frac1_ = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
+            loss_z_triplet_classes, fraction_positive_triplets__triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
                                                                ids=instance_label,  # Use None for ablation study!
                                                                margin_scores=y # score dependent margin
                                                                ) 
 
-            loss_z_triplet_WST_scores, frac2_ = loss_fn_z_triplet_WST_score(labels=y, 
+            loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes = loss_fn_z_triplet_WST_score(labels=y, 
                                                                              embeddings=z, 
                                                                              embeddings_self_transform = z_positive,
                                                                              ids=instance_label,  # Use None for ablation study!
                                                                              margin_scores=y # score dependent margin
                                                                )
+            if i_batch == 0 and  i_dataloader==0 and verbose: 
+                print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__triplet_classes.item()}")
+                print(f"              first batch first DL:: fraction_positive_triplets__WST_classes     = {fraction_positive_triplets__WST_classes.item() }")        
             
             loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 

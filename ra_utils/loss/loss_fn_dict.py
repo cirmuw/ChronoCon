@@ -11,7 +11,8 @@ from ra_utils.networks.loss_function import (
 )
 import ra_utils.loss.online_mining_delta_loss
 from ra_utils.networks.architecture import (
-    DummyReturnZeroLoss
+    DummyReturnZeroLoss,
+    DummyReturnZeroLossMulti
 )
 
 
@@ -23,6 +24,7 @@ def get_loss_fn_dict(config, device="cuda"):
     #   latent rep.: z = encoder(X)
 
     dummy = DummyReturnZeroLoss(device)
+    dummy2 = DummyReturnZeroLossMulti(device=device, size=2)
 
     # Loss on the score 
     lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0)    
@@ -63,7 +65,7 @@ def get_loss_fn_dict(config, device="cuda"):
     lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0)
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores_classes", {}))
     if lambda_z_triplet_classes < 1.0e-8: 
-            loss_fn_z_triplet_classes = dummy
+            loss_fn_z_triplet_classes = dummy2
     loss_dct_z_triplet_classes = {
             "function": loss_fn_z_triplet_classes, 
             "lambda": lambda_z_triplet_classes, 
@@ -74,7 +76,7 @@ def get_loss_fn_dict(config, device="cuda"):
     lambda_z_triplet_WST_score = config.get('loss_weights', {}).get('lambda_z_triplet_WST_scores', 0.0)
     loss_fn_z_triplet_WST_score = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_scores", {}))
     if lambda_z_triplet_WST_score < 1.0e-8: 
-            loss_fn_z_triplet_WST_score = dummy
+            loss_fn_z_triplet_WST_score = dummy2
     loss_dct_z_triplet_WST_score = {
             "function": loss_fn_z_triplet_WST_score, 
             "lambda": lambda_z_triplet_WST_score, 
@@ -85,7 +87,7 @@ def get_loss_fn_dict(config, device="cuda"):
     lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
     loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
     if lambda_z_triplet_WST_time < 1.0e-8: 
-            loss_fn_z_triplet_WST_time = dummy
+            loss_fn_z_triplet_WST_time = dummy2
     loss_dct_z_triplet_WST_time = {
             "function": loss_fn_z_triplet_WST_time, 
             "lambda": lambda_z_triplet_WST_time, 

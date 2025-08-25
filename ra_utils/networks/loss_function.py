@@ -71,7 +71,7 @@ def get_triplet_loss_fn_WST(cfg: dict = {}):
     print(f"loss for triplets (score): {name}; \n    params = {params}")
     if name == None: 
         return DummyReturnZeroLoss()
-    elif name == "OnlineBatchAllTripletLossWithScoresAndSelfTransform":
+    if name == "OnlineBatchAllTripletLossWithScoresAndSelfTransform":
         return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScoresAndSelfTransform(**params)
     else: 
         raise NotImplementedError(f"{name = }")
@@ -95,7 +95,6 @@ class DummyReturnZeroLoss(nn.Module):
         self.device = device
     def forward(self, *args, **kwargs):
         return torch.tensor(0.0, device=self.device)
-
 
 
 
