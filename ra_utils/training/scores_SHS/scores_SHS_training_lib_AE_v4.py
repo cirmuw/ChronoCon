@@ -141,7 +141,7 @@ def train_loop_AE_v4(
 
             # build and print the training-relative‐loss line
             train_rel = "     rel. loss contribution Tr.: " + " | ".join(
-                f"{k}: {(w * train_metrics_dct[k] / train_metrics_dct['L']):.2f}"
+                f"{k[1:]}: {(w * train_metrics_dct[k] / train_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
                 if k in train_metrics_dct
             )
@@ -149,7 +149,7 @@ def train_loop_AE_v4(
 
             # build and print the validation-relative‐loss line
             val_rel = "     rel. loss contribution Val: " + " | ".join(
-                f"{k}: {(w * val_metrics_dct[k] / val_metrics_dct['L']):.2f}"
+                f"{k[1:]}: {(w * val_metrics_dct[k] / val_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
                 if k in val_metrics_dct
             )
@@ -291,15 +291,24 @@ def val_epoch_AE_v4(
     loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
     lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
 
+    loss_fn_z_triplet_WST_score = loss_fn_dict["z_triplet_WST_score"]["function"];  
+    #lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
+    lambda_z_triplet_WST_score = 0.0 # Since dataloader for val does not contain self transforms I simply skip... 
+
+    loss_fn_z_CR = loss_fn_dict["z_score_consistency_regularizer"]["function"];  
+    lambda_z_CR  = loss_fn_dict["z_score_consistency_regularizer"]["lambda"]
+
     loss_fn_y_reg_extra = loss_fn_dict["y_reg_extra"]["function"];  
     lambda_y_reg_extra = loss_fn_dict["y_reg_extra"]["lambda"]
 
     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
 
-    assert set(loss_fn_dict.keys()) == {"x", "y", "z", "z_triplet_classes", "y_reg_extra", "y_delta"}, \
+    loss_terms_ = ["x", "y", "z", 
+                  "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
+                  "y_reg_extra", "y_delta"]
+    assert set(loss_fn_dict.keys()) == set(loss_terms_), \
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
-
     
 
     model_AE.eval().to(device)
@@ -348,18 +357,44 @@ def val_epoch_AE_v4(
         for dataloader_name, dataloader in dataloaders.items():
             for batch in dataloader:
                 X = batch["img"].to(device)
-                Y = batch["score"].to(device)
-                score_types = batch["score_type"]  # list[str] – one per sample
+                X_pos  = batch.get("img_pos", None)
+                if X_pos is not None: 
+                    X_pos  = X_pos.to(device) # positive part for triplet loss
+                y = batch["score"].to(device)
+                s_type = batch["score_type"]  # list[str] – one per sample
                 instance_label = np.array(batch["patient_scoretype_key"])
                 B = X.size(0)
 
                 # ----------------------------------------------------------
                 # 1.1 Autoencoder forward & reconstruction/latent losses
                 # ----------------------------------------------------------
-                X_pred, z = model_AE(transform(X), score_types)
+                X_pred, z = model_AE(transform(X), s_type)
+
+                if X_pos is not None: 
+                    _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos)
+                else: 
+                    z_positive = z  # Fall back (Note that in this case lambda should be 0!)
+                    # Note that triplet loss with self-transform does not really work without transforms (in the val loop...)
+                    # assert lambda_z_triplet_WST_score == 0.0
+
                 loss_x = loss_fn_x(X_pred, X)
                 loss_z = loss_fn_z(z, z * 0)
-                loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=Y, embeddings=z)
+
+                # triplet loss on classes: 
+                loss_z_triplet_classes, frac1_ = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
+                                                                ids=instance_label,  # Use None for ablation study!
+                                                                margin_scores=y # score dependent margin
+                                                                ) 
+
+                loss_z_triplet_WST_scores, frac2_ = loss_fn_z_triplet_WST_score(labels=y, 
+                                                                                embeddings=z, 
+                                                                                embeddings_self_transform = z_positive,
+                                                                                ids=instance_label,  # Use None for ablation study!
+                                                                                margin_scores=y # score dependent margin
+                                                                )
+                
+                loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
+
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -378,7 +413,7 @@ def val_epoch_AE_v4(
                     raise NotImplementedError(f"{task_type_y = }")
 
                 if model_classifier is not None:
-                    out_dict = model_classifier(z, score_types, return_dict=True)
+                    out_dict = model_classifier(z, s_type, return_dict=True)
 
                     for head_name, (idx, logits) in out_dict.items():
                         cnt = idx.numel()
@@ -386,7 +421,7 @@ def val_epoch_AE_v4(
                             continue
 
                         # ---- loss ------------------------------------------------
-                        head_target = Y[idx]
+                        head_target = y[idx]
                         head_instance_label = instance_label[idx.cpu().numpy()]
                         if task_type_y == "regression":
                             loss_fn_y_input = logits.squeeze(-1) #logits[:,0]
@@ -447,6 +482,8 @@ def val_epoch_AE_v4(
                               lambda_y * loss_y + 
                               lambda_z * loss_z + 
                               lambda_z_triplet_classes * loss_z_triplet_classes + 
+                              lambda_z_CR * loss_z_CRL + 
+                              lambda_z_triplet_WST_score * loss_z_triplet_WST_scores +                               
                               lambda_y_delta * loss_y_delta + 
                               lambda_y_reg_extra * loss_y_reg_extra
                              )                               
@@ -455,9 +492,11 @@ def val_epoch_AE_v4(
                 running_loss["Ly"] += loss_y.item() * B
                 running_loss["Lz"] += loss_z.item() * B
                 running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+                running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
+                running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
                 running_loss["Ly_delta"] += loss_y_delta.item() * B
                 running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
-                
+
                 running_loss["L"] += loss_total.item() * B
                 n_samples += B
 
@@ -466,7 +505,7 @@ def val_epoch_AE_v4(
                 # ----------------------------------------------------------
                 all_preds.extend(batch_preds.cpu().numpy())
                 all_preds_float.extend(batch_preds_float.cpu().numpy())
-                all_labels.extend(Y.cpu().numpy())                        
+                all_labels.extend(y.cpu().numpy())                        
                 if task_type_y == "classification":
                     all_logits.extend(batch_logits.cpu().numpy())
 
@@ -631,7 +670,6 @@ def training_epoch_AE_v4(
     loss_terms_ = ["x", "y", "z", 
                   "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
-    loss_terms = [f"L{l}" for l in loss_terms_]
 
     # Checks
     assert set(loss_fn_dict.keys()) == set(loss_terms_), \
@@ -659,7 +697,9 @@ def training_epoch_AE_v4(
     for dataloader_name, dataloader in dataloader_items:
         for batch in dataloader:
             X      = batch["img"].to(device)
-            X_pos  = batch["img_pos"].to(device) # positive part for triplet loss
+            X_pos  = batch.get("img_pos", None)
+            if X_pos is not None: 
+                X_pos  = X_pos.to(device) # positive part for triplet loss
             y      = batch["score"].to(device)
             s_type = batch["score_type"]             # list[str]
             instance_label = np.array(batch["patient_scoretype_key"])
@@ -672,9 +712,14 @@ def training_epoch_AE_v4(
 
             # -- (denoising-)autoencoder ---------------------------------------------------- #
             X_pred, z = model_AE(transform(X), s_type)       # ONE forward pass
-            _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos) 
+            if X_pos is not None: 
+                _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos) 
                                                              # as well but should not matter. 
                                                              # Usually denoising is already trained before
+            else: 
+                z_positive = z  # Fall back (Note that in this case lambda should be 0!)
+                assert lambda_z_triplet_WST_score == 0.0
+
 
             # triplet loss on classes: 
             loss_z_triplet_classes, frac1_ = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
@@ -682,7 +727,7 @@ def training_epoch_AE_v4(
                                                                margin_scores=y # score dependent margin
                                                                ) 
 
-            loss_z_triplet_WST_classes, frac2_ = loss_fn_z_triplet_WST_score(labels=y, 
+            loss_z_triplet_WST_scores, frac2_ = loss_fn_z_triplet_WST_score(labels=y, 
                                                                              embeddings=z, 
                                                                              embeddings_self_transform = z_positive,
                                                                              ids=instance_label,  # Use None for ablation study!
@@ -756,7 +801,7 @@ def training_epoch_AE_v4(
                     lambda_z * loss_z + 
                     lambda_z_triplet_classes * loss_z_triplet_classes +
                     lambda_z_CR * loss_z_CRL + 
-                    lambda_z_triplet_WST_score * loss_z_triplet_WST_classes + 
+                    lambda_z_triplet_WST_score * loss_z_triplet_WST_scores + 
                     lambda_y_delta * loss_y_delta + 
                     lambda_y_reg_extra * loss_y_reg_extra
                     )
@@ -768,9 +813,8 @@ def training_epoch_AE_v4(
             running_loss["Ly"] += loss_y.item() * B
             running_loss["Lz"] += loss_z.item() * B
             running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
-            running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_classes.item() * B
+            running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
             running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
-            running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
             running_loss["Ly_delta"] += loss_y_delta.item() * B
             running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
             
