@@ -423,7 +423,8 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
                                         attention_paths_dct = attention_paths_dct
                                         )
 
-    maybe_partially_init_model_from_state_dict(config, model_AE, model_c, verbose=3)
+    maybe_partially_init_model_from_state_dict(config, model_AE, model_c, 
+                                               verbose=config.get("model_initialization", {}).get("verbosity_level", 3))
     model_AE.to(device)
     model_c.to(device)
 
