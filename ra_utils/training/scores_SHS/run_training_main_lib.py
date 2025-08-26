@@ -445,7 +445,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         [model_AE, model_c], # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
         scheduler_class=scheduler_class, scheduler_params=scheduler_params,
-        verbose = (verbose == VerboseLevel.CHATTY)
+        verbose = (verbose >= VerboseLevel.VERYCHATTY)
     )
 
 
