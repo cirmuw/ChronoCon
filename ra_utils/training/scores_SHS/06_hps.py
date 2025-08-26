@@ -46,7 +46,7 @@ from copy import deepcopy
 
 
 
-from ra_utils.training.scores_SHS.run_training_main_lib import run_training_with_cleanup
+from ra_utils.training.scores_SHS.run_training_main_lib import run_training_with_cleanup, run_training_with_cleanup_v2
 
 
 
@@ -76,7 +76,7 @@ def generate_objective(
                 if verbose in [PRINT_PARAMS, CHATTY]:
                     pprint(config_trial)
 
-                metrics = run_training_with_cleanup(config_trial, 
+                metrics = run_training_with_cleanup_v2(config_trial, 
                                                     mlflow_logging=True, 
                                                     verbose=verbose,
                                                     append_BEST_VAL_as_last=True
@@ -104,7 +104,14 @@ def generate_objective(
             artifact_uri = mlflow.get_artifact_uri()
             print("ARTIFACTS URI = ", artifact_uri)
             mlflow.log_dict(config_trial, artifact_file="config_files/config_trial.yml")
+
+        print("-------------------------------------------------------------")
+        print("-------------------- Trial done ------------------------------")
+        print("-------------------------------------------------------------")
+
         return error
+    
+
 
     return objective
 
@@ -121,7 +128,7 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/HPS__F_JSN_dev3.yml", 
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps01.yml", 
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps03_triplet.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
@@ -145,8 +152,10 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
         os.environ["MLFLOW_TRACKING_URI"] = config["mlflow_runs_dir"]
 
     if config["debugging"]:
-        print("overwriting some config params")
-        config["training"]["epochs"] = 1
+        if "epochs" in config["training"].keys():
+            config["training"]["epochs"] = 1
+            print("overwriting some config params")
+        
         
 
     #------------------------------

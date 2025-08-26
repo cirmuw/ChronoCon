@@ -360,7 +360,7 @@ import ra_utils.loss.loss_fn_dict
 
 def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY, 
                  config_name=None,
-                 append_BEST_VAL_as_last=False): 
+                 append_BEST_VAL_as_last=True): 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     if verbose >= VerboseLevel.CHATTY:
         print("Running on ", device)
@@ -552,4 +552,6 @@ def cuda_oom_cleanup(func):
 
 
 run_training_with_cleanup = cuda_oom_cleanup(run_training)
+run_training_with_cleanup_v2 = cuda_oom_cleanup(run_training_v2)
+
 

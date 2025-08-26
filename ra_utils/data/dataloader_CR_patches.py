@@ -1256,17 +1256,12 @@ def prepare_dataloaders(datasets, config):
     batch_size   = tr_cfg["batch_size"]
     num_workers  = tr_cfg["num_workers"]
 
-    use_img_sampler        = tr_cfg.get("use_WeightedRandomSampler", False)
-    use_patient_sampler    = tr_cfg.get("use_PatientBatchSampler", False)
-    use_patient_w_sampler  = tr_cfg.get("use_PatientLevelWeightedRandomSampler", False)
 
-    # only one of the three modes may be active
-    assert sum([use_img_sampler,
-                use_patient_sampler,
-                use_patient_w_sampler]) <= 1, "Choose exactly one sampling mode."
+    sampler_name        = tr_cfg.get("sampler_name", None)
+    print(" Sampler for training: ", sampler_name)
 
     # ---------- classic image-level weighted sampler ----------
-    if use_img_sampler:
+    if sampler_name == "WeightedRandomSampler": 
         labels         = [item['score'] for item in datasets["dataset_train"].data]
         class_count    = torch.bincount(torch.tensor(labels))
         class_weights  = 1.0 / class_count.float()
@@ -1292,7 +1287,7 @@ def prepare_dataloaders(datasets, config):
 
 
     # ---------- patient-homogeneous batches, no weights ----------
-    elif use_patient_sampler:
+    elif sampler_name == "PatientBatchSampler": 
         patient_ids  = [d["patient_id"] for d in datasets["dataset_train"].data]
         batch_sampler = PatientBatchSampler(patient_ids,
                                             batch_size=batch_size,
@@ -1307,7 +1302,7 @@ def prepare_dataloaders(datasets, config):
                                   num_workers=num_workers)
 
     # ---------- patient-homogeneous batches, WITH weights ----------
-    elif use_patient_w_sampler:
+    elif sampler_name == "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
         # Build patient → weight dict (default 1.0)
         patient_weights = {}
         for d in datasets["dataset_train"].data:
@@ -1329,7 +1324,7 @@ def prepare_dataloaders(datasets, config):
                                   num_workers=num_workers)
 
     # ---------- plain shuffle (baseline) ----------
-    else:
+    elif sampler_name is None: # "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
         train_loader = DataLoader(datasets["dataset_train"],
                                   batch_size=batch_size,
                                   shuffle=True,
@@ -1341,6 +1336,8 @@ def prepare_dataloaders(datasets, config):
                                   shuffle=True,
                                   num_workers=num_workers,
                                   drop_last=False)
+    else: 
+        raise ValueError(f"Sampler name is not allowed {sampler_name = }. Use one of the implemented ones (E.g. 'WeightedRandomSampler', 'PatientLevelWeightedRandomSampler', 'PatientBatchSampler', None)")
 
     # validation / test unchanged
     val_loader = DataLoader(datasets["dataset_validation"],
