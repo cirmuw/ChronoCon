@@ -83,16 +83,16 @@ def get_loss_fn_dict(config, device="cuda"):
             "options": None
         }
     
-    # Triplet loss with self transform (WST) on time
-    lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
-    loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
-    if lambda_z_triplet_WST_time < 1.0e-8: 
-            loss_fn_z_triplet_WST_time = dummy2
-    loss_dct_z_triplet_WST_time = {
-            "function": loss_fn_z_triplet_WST_time, 
-            "lambda": lambda_z_triplet_WST_time, 
-            "options": None
-        }
+    # # Triplet loss with self transform (WST) on time
+    # lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
+    # loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
+    # if lambda_z_triplet_WST_time < 1.0e-8: 
+    #         loss_fn_z_triplet_WST_time = dummy2
+    # loss_dct_z_triplet_WST_time = {
+    #         "function": loss_fn_z_triplet_WST_time, 
+    #         "lambda": lambda_z_triplet_WST_time, 
+    #         "options": None
+    #     }
 
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)

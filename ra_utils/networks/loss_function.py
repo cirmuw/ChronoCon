@@ -14,7 +14,7 @@ from typing import Optional
 def get_score_loss_function(cfg: dict):
     name = cfg.get("name", "CrossEntropyLoss")
     params = cfg.get("params", {})
-    print(f"loss for score: {name}; \n    params = {params}")
+    # print(f"loss for score: {name}; \n    params = {params}")
     
     if name == "CrossEntropyLoss":
         loss = nn.CrossEntropyLoss(**params)
@@ -39,8 +39,8 @@ def get_score_loss_function(cfg: dict):
 
 def get_triplet_loss_fn(cfg: dict = {}):
     name = cfg.get("name")
-    params = cfg.get("params", {"margin": 1.0})
-    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    params = cfg.get("params", {})
+    # print(f"loss for triplets (score): {name}; \n    params = {params}")
     if name == None: 
         return DummyReturnZeroLoss()
     elif name == "OnlineBatchHardTripletLoss":
@@ -52,23 +52,11 @@ def get_triplet_loss_fn(cfg: dict = {}):
     else: 
         raise NotImplementedError(f"{name = }")
 
-def get_consistency_regularization_loss_fn(cfg: dict = {}):
-    name = cfg.get("name")
-    params = cfg.get("params", {"margin": 1.0})
-    print(f"loss for triplets (score): {name}; \n    params = {params}")
-    if name == None: 
-        return DummyReturnZeroLoss()
-    elif name == "ScoresConsistencyRegularizer":
-        return ra_utils.loss.consistency_regularizer_loss.ConsistencyRegularizerLoss(**params)
-    else:
-        raise NotImplementedError(f"{name = }")
-
-
 
 def get_triplet_loss_fn_WST(cfg: dict = {}):
     name = cfg.get("name")
-    params = cfg.get("params", {"margin": 1.0})
-    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    params = cfg.get("params", {})
+    # print(f"loss for triplets (score): {name}; \n    params = {params}")
     if name == None: 
         return DummyReturnZeroLoss()
     if name == "OnlineBatchAllTripletLossWithScoresAndSelfTransform":
@@ -80,8 +68,8 @@ def get_triplet_loss_fn_WST(cfg: dict = {}):
 
 def get_consistency_regularization_loss_fn(cfg: dict = {}):
     name = cfg.get("name")
-    params = cfg.get("params", {"margin": 1.0})
-    print(f"loss for triplets (score): {name}; \n    params = {params}")
+    params = cfg.get("params", {})
+    # print(f"loss for triplets (score): {name}; \n    params = {params}")
     if name == None: 
         return DummyReturnZeroLoss()
     elif name == "ScoresConsistencyRegularizer":

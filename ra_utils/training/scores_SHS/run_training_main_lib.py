@@ -26,7 +26,7 @@ from ra_utils.utils.verbosity_enums import *
 import ra_utils.utils.utils
 
 import ra_utils.utils.utils_torch
-
+from pprint import pprint
 # ------------------------------------------------------------------
 # utility helpers ---------------------------------------------------
 def _state_dict_from_uri(uri: str):
@@ -429,7 +429,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
     model_c.to(device)
 
     loss_fn_dict = ra_utils.loss.loss_fn_dict.get_loss_fn_dict(config, device=device)
-
+    pprint(loss_fn_dict)
 
 
     optimizer_params = config["optimizer_params"]

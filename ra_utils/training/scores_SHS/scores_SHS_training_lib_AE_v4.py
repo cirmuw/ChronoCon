@@ -37,7 +37,7 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
 import ra_utils.loss.online_mining_delta_loss
 import ra_utils.networks.score_estimator
 import random
-
+import datetime
 
 
 def train_loop_AE_v4(
@@ -204,14 +204,28 @@ def train_loop_AE_v4(
                         )
 
 
-                if log_model_state_dct: 
-                    torch_ckpt = "model_AE_state_dict.pt"
-                    torch.save(model_AE.state_dict(), torch_ckpt)
-                    mlflow.log_artifact(torch_ckpt, artifact_path="checkpoints")
+                if log_model_state_dct:
+                    # Save model checkpoints with meaningful names
+                    ae_checkpoint_path = "model_AE_state_dict.pt"
+                    torch.save(model_AE.state_dict(), ae_checkpoint_path)
+                    mlflow.log_artifact(ae_checkpoint_path, artifact_path="checkpoints")
+                    os.remove(ae_checkpoint_path)  # Remove the local file after logging
+                    
                     if model_classifier is not None:
-                        torch_ckpt = "model_classifier_state_dict.pt"
-                        torch.save(model_classifier.state_dict(), torch_ckpt)
-                        mlflow.log_artifact(torch_ckpt, artifact_path="checkpoints")
+                        clf_checkpoint_path = "model_classifier_state_dict.pt"
+                        torch.save(model_classifier.state_dict(), clf_checkpoint_path)
+                        mlflow.log_artifact(clf_checkpoint_path, artifact_path="checkpoints")
+                        os.remove(clf_checkpoint_path)  # Remove the local file after logging
+                    
+                    # Log a YAML file with epoch info
+                    checkpoint_info_path = "checkpoint_info.yaml"
+                    with open(checkpoint_info_path, "w") as f:
+                        f.write(f"best_epoch: {epoch}\n")
+                        f.write(f"val_loss: {val_loss_ES:.6f}\n")
+                        f.write(f"saved_at: {datetime.datetime.now().isoformat()}\n")
+                    mlflow.log_artifact(checkpoint_info_path, artifact_path="checkpoints")
+                    os.remove(checkpoint_info_path)  # Remove the local file after logging
+
 
 
                 # artifacts: save best classification report & CM
@@ -723,20 +737,23 @@ def training_epoch_AE_v4(
 
 
             # triplet loss on classes: 
-            loss_z_triplet_classes, fraction_positive_triplets__triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
-                                                               ids=instance_label,  # Use None for ablation study!
-                                                               margin_scores=y # score dependent margin
-                                                               ) 
+            loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
+                                          ids=instance_label,  # Use None for ablation study!
+                                          margin_scores=y) # score dependent margin
+            loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_classes
 
-            loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes = loss_fn_z_triplet_WST_score(labels=y, 
-                                                                             embeddings=z, 
-                                                                             embeddings_self_transform = z_positive,
-                                                                             ids=instance_label,  # Use None for ablation study!
-                                                                             margin_scores=y # score dependent margin
+
+            # with self-transform
+            loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(labels=y, embeddings=z, 
+                                                                    embeddings_self_transform = z_positive,
+                                                                    ids=instance_label,  # Use None for ablation study!
+                                                                    margin_scores=y # score dependent margin
                                                                )
-            if i_batch == 0 and  i_dataloader==0 and verbose: 
-                print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__triplet_classes.item()}")
-                print(f"              first batch first DL:: fraction_positive_triplets__WST_classes     = {fraction_positive_triplets__WST_classes.item() }")        
+            loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__classes = loss_z_triplet_WST_scores
+
+            # if i_batch == 0 and  i_dataloader==0 and verbose: 
+            #     print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__classes.item()}")
+            #     print(f"              first batch first DL:: fraction_positive_triplets__WST_classes     = {fraction_positive_triplets__WST_classes.item() }")        
             
             loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
@@ -821,7 +838,15 @@ def training_epoch_AE_v4(
             running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
             running_loss["Ly_delta"] += loss_y_delta.item() * B
             running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+
+            # Add fraction of positive triplets and number of valid triplets to running loss
+            running_loss["Lz_TriCls_fracPosTrip"] = running_loss.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
+            running_loss["Lz_TriCls_numValidTrip"] = running_loss.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+            running_loss["Lz_TriClsWST_fracPosTrip"] = running_loss.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
+            running_loss["Lz_TriCls_numValidTrip"] = running_loss.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
             
+            
+
             running_loss["L"]  += loss.item()  * B
 
             if debugging:
