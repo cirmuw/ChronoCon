@@ -395,18 +395,20 @@ def val_epoch_AE_v4(
                 loss_z = loss_fn_z(z, z * 0)
 
                 # triplet loss on classes: 
-                loss_z_triplet_classes, fraction_positive_triplets__classes = ( 
+                loss_z_triplet_classes = ( 
                     loss_fn_z_triplet_classes(labels=y, embeddings=z, 
                     ids=instance_label,  # Use None for ablation study!
                     margin_scores=y # score dependent margin
                     ))
+                loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_WST_scores
 
-                loss_z_triplet_WST_scores, fraction_positive_triplets__WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
+                loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
                                                                                 embeddings=z, 
                                                                                 embeddings_self_transform = z_positive,
                                                                                 ids=instance_label,  # Use None for ablation study!
                                                                                 margin_scores=y # score dependent margin
                                                                 )
+                loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
                 
                 loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
@@ -749,7 +751,7 @@ def training_epoch_AE_v4(
                                                                     ids=instance_label,  # Use None for ablation study!
                                                                     margin_scores=y # score dependent margin
                                                                )
-            loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__classes = loss_z_triplet_WST_scores
+            loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
 
             # if i_batch == 0 and  i_dataloader==0 and verbose: 
             #     print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__classes.item()}")
@@ -843,7 +845,7 @@ def training_epoch_AE_v4(
             running_loss["Lz_TriCls_fracPosTrip"] = running_loss.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
             running_loss["Lz_TriCls_numValidTrip"] = running_loss.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
             running_loss["Lz_TriClsWST_fracPosTrip"] = running_loss.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
-            running_loss["Lz_TriCls_numValidTrip"] = running_loss.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+            running_loss["Lz_TriClsWST_numValidTrip"] = running_loss.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
             
             
 

@@ -835,3 +835,6 @@ class DummyReturnZeroLossMulti(nn.Module):
         else:
             # Return a tensor with the specified size
             return torch.zeros(self.size, device=self.device)
+    
+    def __repr__(self):
+        return f"DummyReturnZeroLossMulti(device='{self.device}', size={self.size})"

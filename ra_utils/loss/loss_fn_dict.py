@@ -25,6 +25,7 @@ def get_loss_fn_dict(config, device="cuda"):
 
     dummy = DummyReturnZeroLoss(device)
     dummy2 = DummyReturnZeroLossMulti(device=device, size=2)
+    dummy3 = DummyReturnZeroLossMulti(device=device, size=3)    
 
     # Loss on the score 
     lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0)    
@@ -65,7 +66,7 @@ def get_loss_fn_dict(config, device="cuda"):
     lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0)
     loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores_classes", {}))
     if lambda_z_triplet_classes < 1.0e-8: 
-            loss_fn_z_triplet_classes = dummy2
+            loss_fn_z_triplet_classes = dummy3
     loss_dct_z_triplet_classes = {
             "function": loss_fn_z_triplet_classes, 
             "lambda": lambda_z_triplet_classes, 
@@ -76,7 +77,7 @@ def get_loss_fn_dict(config, device="cuda"):
     lambda_z_triplet_WST_score = config.get('loss_weights', {}).get('lambda_z_triplet_WST_scores', 0.0)
     loss_fn_z_triplet_WST_score = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_scores", {}))
     if lambda_z_triplet_WST_score < 1.0e-8: 
-            loss_fn_z_triplet_WST_score = dummy2
+            loss_fn_z_triplet_WST_score = dummy3
     loss_dct_z_triplet_WST_score = {
             "function": loss_fn_z_triplet_WST_score, 
             "lambda": lambda_z_triplet_WST_score, 
