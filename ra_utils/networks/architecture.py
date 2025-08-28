@@ -607,26 +607,73 @@ class EncoderDecoderNetwork(nn.Module):
 
         return x_pred, z
 
+# class PreprocessingResNetRGBMaker(nn.Module):
+#     """
+#     input  dim (Nb, Nc=1, ...)
+#     output dim (Nb, Nc=3, ...)
+#     can also normalize channels (which pretrained resnet expects)
+#     """
+        
+#     def __init__(self, 
+#                  mean = (0.485, 0.456, 0.406),
+#                  std = (0.229, 0.224, 0.225)
+#                  ):
+#         super().__init__()
+#         self.normalize = torchvision.transforms.Normalize(mean=mean, std=std)
+                    
+#     def forward(self, x):
+#         # Repeat the single channel to create 3 channels
+#         x = x.repeat(1, 3, 1, 1)
+#         # Normalize the channels
+#         x = self.normalize(x)
+#         return x
+
+
+# Maybe add 01 normalization
 class PreprocessingResNetRGBMaker(nn.Module):
     """
-    input  dim (Nb, Nc=1, ...)
-    output dim (Nb, Nc=3, ...)
-    can also normalize channels (which pretrained resnet expects)
+    Input  : (N, C, H, W)   [C may be 1 or 3]
+    Output : (N, 3, H, W)   [RGB, ImageNet-normalized]
     """
-        
-    def __init__(self, 
-                 mean = (0.485, 0.456, 0.406),
-                 std = (0.229, 0.224, 0.225)
-                 ):
+    def __init__(
+        self,
+        enforce_01_normalization: bool = False,
+        mean = (0.485, 0.456, 0.406),
+        std  = (0.229, 0.224, 0.225),
+        eps: float = 1e-6,
+    ):
         super().__init__()
+        self.enforce_01_normalization = enforce_01_normalization
+        self.eps = eps
         self.normalize = torchvision.transforms.Normalize(mean=mean, std=std)
-                    
-    def forward(self, x):
-        # Repeat the single channel to create 3 channels
-        x = x.repeat(1, 3, 1, 1)
-        # Normalize the channels
+
+    def _minmax_01(self, x: torch.Tensor) -> torch.Tensor:
+        # Per-sample (and per-channel) min–max over spatial dims
+        # x: (N, C, H, W)
+        x_min = x.amin(dim=(-2, -1), keepdim=True)
+        x_max = x.amax(dim=(-2, -1), keepdim=True)
+        denom = (x_max - x_min).clamp_min(self.eps)
+        x = (x - x_min) / denom
+        return x.clamp_(0.0, 1.0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # ensure float
+        x = x.float()
+
+        if self.enforce_01_normalization:
+            x = self._minmax_01(x)
+
+        # Repeat to 3 channels if needed
+        if x.shape[1] == 1:
+            x = x.repeat(1, 3, 1, 1)
+        elif x.shape[1] != 3:
+            raise ValueError(f"Expected 1 or 3 channels, got {x.shape[1]}")
+
+        # ImageNet normalization for ResNet backbones
         x = self.normalize(x)
         return x
+    
+
 
 class PostprocessingGrayScaleMaker(nn.Module):
     """

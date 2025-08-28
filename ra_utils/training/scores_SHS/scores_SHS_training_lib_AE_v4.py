@@ -400,7 +400,7 @@ def val_epoch_AE_v4(
                     ids=instance_label,  # Use None for ablation study!
                     margin_scores=y # score dependent margin
                     ))
-                loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_WST_scores
+                loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_classes
 
                 loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
                                                                                 embeddings=z, 
