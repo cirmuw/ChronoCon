@@ -91,7 +91,7 @@ def maybe_partially_init_model_from_state_dict(config: dict,
 
     # ------------------------------------------------------------------
     # 3) CLASSIFIER ------------------------------------------------------
-    if config.get("load_classifier", {}).get("load_full_AE", False):
+    if config.get("model_initialization", {}).get("load_classifier", False):
         uri = config["model_initialization"]["pth_src_classifier"]
         if verbose: 
             print(f"→ Loading classifier from {uri}")
