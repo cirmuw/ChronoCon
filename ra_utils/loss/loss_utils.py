@@ -424,12 +424,12 @@ def get_instance_mask_3D(ids: np.array, device="cuda"):
     valid_labels = i_equal_k & i_equal_j    
 
     labels_equal = torch.tensor(valid_labels, device=device, dtype=torch.bool)
-    indices_equal = torch.eye(ids.shape[0], device=device).bool()
-    indices_i_equal_j = indices_equal.unsqueeze(2)
-    indices_i_equal_k = indices_equal.unsqueeze(1)
-    indices_j_equal_k = indices_equal.unsqueeze(0)
-    no_indices_equal  = (~indices_i_equal_j) & (~indices_i_equal_k) & (~indices_j_equal_k) 
+    # indices_equal = torch.eye(ids.shape[0], device=device).bool()
+    # indices_i_equal_j = indices_equal.unsqueeze(2)
+    # indices_i_equal_k = indices_equal.unsqueeze(1)
+    # indices_j_equal_k = indices_equal.unsqueeze(0)
+    # no_indices_equal  = (~indices_i_equal_j) & (~indices_i_equal_k) & (~indices_j_equal_k) 
 
     
-    return labels_equal & no_indices_equal
+    return labels_equal #& no_indices_equal
 
