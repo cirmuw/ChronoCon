@@ -31,6 +31,7 @@ from typing import Callable
 
 from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
     plot_reconstructions,
+    plot_reconstructions_by_type,
     log_scalar_dict
 )
 
@@ -971,7 +972,7 @@ def evaluate_and_log_testset_results_AE_v4(
     os.remove(tmp_path)
 
     # -------------------------------------------------- 5. Plot reconstructions
-    plot_reconstructions(
+    plot_reconstructions_by_type(
         dataloaders,
         model_AE,
         transform,

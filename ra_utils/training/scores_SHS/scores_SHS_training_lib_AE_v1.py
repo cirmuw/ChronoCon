@@ -2084,6 +2084,84 @@ def plot_reconstructions(
             print(f"Reconstruction plotting failed for {name}: {exc}")
 
 
+def _collect_examples_per_type(
+    dl: torch.utils.data.DataLoader,
+    model_AE: torch.nn.Module,
+    transform: Callable[[torch.Tensor], torch.Tensor],
+    device: torch.device,
+    n_vis: int = 5,
+):
+    """Run one minibatch through *model_AE* and gather *n_vis* examples per score_type."""
+
+    score_types = sorted(list(set([d['score_type'] for d in dl.dataset.data])))
+    result = {s: {"orig": [], 
+                  "noisy": [], 
+                  "recon": [], 
+                  "count": 0} 
+                  for s in score_types}
+
+    model_AE.eval()
+    with torch.no_grad():
+        for batch in dl:
+            X_cpu = batch["img"]  # [B, 1, H, W] – assumed 0‑1 scaled
+            X = X_cpu.to(device, non_blocking=True)
+            score_types_batch = batch["score_type"]
+            X_t = transform(X)
+            X_rec, _ = model_AE(X_t, score_types_batch)
+
+            for i in range(X.size(0)):
+                score_type = score_types_batch[i]
+                if result[score_type]["count"] < n_vis:
+                    result[score_type]["orig"].append(X_cpu[i, 0].numpy())
+                    result[score_type]["noisy"].append(X_t[i, 0].cpu().numpy())
+                    result[score_type]["recon"].append(X_rec[i, 0].cpu().numpy())
+                    result[score_type]["count"] += 1
+
+            # Check if we have enough samples for all score types
+            if all(result[st]["count"] >= n_vis for st in score_types):
+                break
+
+    return result
+
+
+def plot_reconstructions_by_type(
+    dataloaders: Dict[str, Dict[str, torch.utils.data.DataLoader]],
+    model_AE: torch.nn.Module,
+    transform: Callable[[torch.Tensor], torch.Tensor],
+    device: torch.device,
+    *,
+    prefix: str = "",
+    n_vis_max: int = 5,
+) -> None:
+
+    for name, dl in dataloaders.items():
+        try:
+            result = _collect_examples_per_type(
+                dl=dl,
+                model_AE=model_AE,
+                transform=transform,
+                device=device,
+                n_vis=n_vis_max
+            )
+
+            for image_type, v  in result.items():
+                orig, noisy, recon = v["orig"], v["noisy"], v["recon"]
+                n_vis = min(n_vis_max, v["count"])
+                fig = _make_grid(orig, noisy, recon)
+
+                with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp_fig:
+                    fig.savefig(tmp_fig.name, dpi=150)
+                    artifact_path = f"plots/{prefix}_{image_type}_reconstructions_{name}"
+                    mlflow.log_artifact(tmp_fig.name, artifact_path=artifact_path)
+                plt.close(fig)
+                os.remove(tmp_fig.name)
+
+        except Exception as exc:  # noqa: BLE001 (broad ≥ log + carry on)
+            print(f"Reconstruction plotting failed for {name}: {exc}")
+
+
+
+
 def evaluate_and_log_testset_results_AE_v2(
     model_AE:               torch.nn.Module,
     model_classifier:       Optional[torch.nn.Module],
