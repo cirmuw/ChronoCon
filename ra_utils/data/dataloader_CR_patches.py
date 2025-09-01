@@ -48,6 +48,7 @@ from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
 from ra_utils.data.data_utils import extract_extras_from_filename
 from ra_utils.data.shap_sums import limit_treatment_number
 
+from typing import Literal
 
 
 
@@ -737,7 +738,7 @@ def process_several_score_groups(data_config: dict):
     
     return data_dct
 
-from typing import Literal
+
 def add_patient_class_weights_and_labels(df_input, 
                                             rule: Literal[None, "mean_round_delta_bin", "median_score", "delta_range", "delta_buckets", "mean_ceil", "mean_round"] = None, 
                                             agg_cols = ["patient_id", "left_or_right", "chosen_score"], n_buckets=4):

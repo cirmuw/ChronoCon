@@ -42,6 +42,7 @@ def _prepare_df_and_Z(
     Z = df[latent_cols].to_numpy(dtype=float)
     return df, Z, latent_cols
 
+from typing import Literal
 
 def _scatter_2d(
     fig: plt.Figure,
@@ -53,6 +54,7 @@ def _scatter_2d(
     alpha: float,
     equal_aspect: bool,
     title: str,
+    loc : Literal["best", "out_right", "out_bottom"] = "best"
 ) -> None:
     if color_by not in proj_df.columns:
         raise ValueError(f"`color_by`='{color_by}' not found in DataFrame columns.")
@@ -103,10 +105,29 @@ def _scatter_2d(
             if mcat is not None:
                 handles.append(sc); labels.append(f"{style_by}={mcat}")
 
-    if handles and is_categorical:
-        ax.legend(handles=handles, labels=labels, frameon=False, loc="best")
-    elif handles and not is_categorical and style_by is not None and style_by in proj_df.columns:
-        ax.legend(handles=handles, labels=labels, frameon=False, loc="best")
+    if ((handles and is_categorical) or
+        (handles and not is_categorical and style_by is not None and style_by in proj_df.columns)): 
+        if loc == "best":
+            ax.legend(handles=handles, labels=labels, frameon=False, loc="best")
+        elif loc == "out_right":
+            ax.legend(
+            handles=handles,
+            labels=labels,
+            frameon=False,
+            loc="upper left",        # anchor corner of legend
+            bbox_to_anchor=(1.05, 1) # shift outside the axes
+        )
+        elif loc == "out_bottom":
+            ax.legend(
+            handles=handles,
+            labels=labels,
+            frameon=False,
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.1), # center below axes
+            ncol=3                      # spread entries across columns
+        )
+
+    
 
     ax.set_xlabel("Dim 1")
     ax.set_ylabel("Dim 2")
@@ -133,6 +154,7 @@ def pca_scatter_embeddings(
     equal_aspect: bool = False,
     return_data: bool = True,
     ax: Optional[plt.Axes] = None,
+    legend_loc : Literal["best", "out_right", "out_bottom"] = "best"
 ):
     """
     PCA scatter plot for latent embeddings, implemented using the shared helpers:
@@ -175,6 +197,7 @@ def pca_scatter_embeddings(
         alpha=alpha,
         equal_aspect=equal_aspect,
         title="PCA of Latent Space",
+        loc=legend_loc
     )
 
     # Overwrite axis labels to include explained variance (keeps helper generic)
@@ -211,6 +234,7 @@ def umap_scatter_embeddings(
     equal_aspect: bool = False,
     return_data: bool = True,
     ax: Optional[plt.Axes] = None,
+    legend_loc : Literal["best", "out_right", "out_bottom"] = "best"
 ):
     """
     UMAP scatter for latent embeddings (same feel as pca_scatter_embeddings).
@@ -243,7 +267,7 @@ def umap_scatter_embeddings(
     proj_df["X1"] = X_umap[:, 0]
     proj_df["X2"] = X_umap[:, 1]
 
-    _scatter_2d(fig, ax, proj_df, color_by, style_by, point_size, alpha, equal_aspect, "UMAP of Latent Space")
+    _scatter_2d(fig, ax, proj_df, color_by, style_by, point_size, alpha, equal_aspect, "UMAP of Latent Space", loc=legend_loc)
 
     out = {
         "umap": reducer,
@@ -275,6 +299,7 @@ def tsne_scatter_embeddings(
     equal_aspect: bool = False,
     return_data: bool = True,
     ax: Optional[plt.Axes] = None,
+    legend_loc : Literal["best", "out_right", "out_bottom"] = "best"
 ):
     """
     t-SNE scatter for latent embeddings (same feel as pca_scatter_embeddings).
@@ -311,7 +336,8 @@ def tsne_scatter_embeddings(
     proj_df["X1"] = X_tsne[:, 0]
     proj_df["X2"] = X_tsne[:, 1]
 
-    _scatter_2d(fig, ax, proj_df, color_by, style_by, point_size, alpha, equal_aspect, "t-SNE of Latent Space")
+    _scatter_2d(fig, ax, proj_df, color_by, style_by, point_size, alpha, equal_aspect, "t-SNE of Latent Space",
+                loc=legend_loc)
 
     out = {
         "tsne": tsne,

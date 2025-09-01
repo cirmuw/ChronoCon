@@ -371,7 +371,7 @@ def visualize_mtan_attention(
             if name == "original":
                 ax.imshow(base_img, interpolation="nearest")
                 ax.axis("off")
-                ttl = f"{title_prefix}Original"
+                ttl = f"Original"
             else:
                 amap = att_maps[name]
                 if amap is None:
