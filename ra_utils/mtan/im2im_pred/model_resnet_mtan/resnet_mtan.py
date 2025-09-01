@@ -1014,3 +1014,189 @@ class MTANReconv4(nn.Module):
         downsample = nn.Sequential(conv1x1(in_channel, 4 * out_channel, stride=1),
                                    nn.BatchNorm2d(4 * out_channel))
         return Bottleneck(in_channel, out_channel, downsample=downsample)
+
+
+
+
+
+class MTANReconv5(nn.Module):
+    def __init__(self, 
+                 attention_paths: Dict[str, List[str]], 
+                 backbone_name: str = "resnet18", 
+                 dilation=False,
+                 skip_recon=True,
+                 recon_out_ch = 3, 
+                 return_also_recon_latent=False, 
+                 latent_dim=None):
+        super(MTANReconv5, self).__init__()
+        encoder_name = resnet_infos[backbone_name]["encoder_name"]
+
+        
+        self.skip_recon = skip_recon
+        self.dilation = dilation
+        if dilation: 
+            backbone = ResnetDilated(resnet.__dict__[encoder_name](pretrained=True))
+            self.shared_conv = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu1, backbone.maxpool)
+        else: 
+            backbone = resnet.__dict__[encoder_name](pretrained=True)
+            self.shared_conv = nn.Sequential(backbone.conv1, backbone.bn1, backbone.relu, backbone.maxpool)   
+        ch = resnet_infos[backbone_name]["ch"]
+        self.latent_dim_before_projector = ch[-1]
+        if latent_dim is None: 
+            self.latent_dim = ch[-1]
+        else: 
+            self.latent_dim = latent_dim
+        if self.skip_recon:
+            self.encoder_decoder_tasks = []
+            self.num_out_channels_decoder = {}
+        else: 
+            self.encoder_decoder_tasks = ["recon"]
+            self.num_out_channels_decoder = {"recon": recon_out_ch}
+
+        self.score_types_to_attention_paths = make_score_type_2_attention_paths_dct(attention_paths)
+        self.attention_paths = attention_paths.copy()
+        self.encoder_only_tasks = list(self.attention_paths.keys())
+        self.tasks = self.encoder_only_tasks
+        self.return_also_recon_latent = return_also_recon_latent
+
+
+
+        # We will apply the attention over the last bottleneck layer in the ResNet. 
+        self.shared_layer1_b = backbone.layer1[:-1] 
+        self.shared_layer1_t = backbone.layer1[-1]
+
+        self.shared_layer2_b = backbone.layer2[:-1]
+        self.shared_layer2_t = backbone.layer2[-1]
+
+        self.shared_layer3_b = backbone.layer3[:-1]
+        self.shared_layer3_t = backbone.layer3[-1]
+
+        self.shared_layer4_b = backbone.layer4[:-1]
+        self.shared_layer4_t = backbone.layer4[-1]
+
+
+
+
+        ###  Normalize the latent space
+        self.latent_head = nn.Sequential(
+            nn.Linear(self.latent_dim_before_projector, self.latent_dim, bias=False),
+            nn.BatchNorm1d(self.latent_dim, affine=False)  # or LayerNorm if small batches
+        )
+
+        # Define task specific attention modules using a similar bottleneck design in residual block
+        # (to avoid large computations)
+        self.encoder_att_1 = nn.ModuleDict({k: self.att_layer(ch[0], ch[0] // 4, ch[0]) for k in self.tasks})
+        self.encoder_att_2 = nn.ModuleDict({k: self.att_layer(2 * ch[1], ch[1] // 4, ch[1]) for k in self.tasks})
+        self.encoder_att_3 = nn.ModuleDict({k: self.att_layer(2 * ch[2], ch[2] // 4, ch[2]) for k in self.tasks})
+        self.encoder_att_4 = nn.ModuleDict({k: self.att_layer(2 * ch[3], ch[3] // 4, ch[3]) for k in self.tasks})
+
+        # Define task shared attention encoders using residual bottleneck layers
+        # We do not apply shared attention encoders at the last layer,
+        # so the attended features will be directly fed into the task-specific decoders.
+        self.encoder_block_att_1 = self.conv_layer(ch[0], ch[1] // 4)
+        self.encoder_block_att_2 = self.conv_layer(ch[1], ch[2] // 4)
+        self.encoder_block_att_3 = self.conv_layer(ch[2], ch[3] // 4)
+        
+        self.down_sampling = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pooling_at_bottleneck = nn.AdaptiveAvgPool2d((1,1))
+
+
+        # Define task-specific decoders using ASPP modules
+        if not self.skip_recon: 
+            # self.decoders = nn.ModuleDict({t: DeepLabHead(ch[-1], self.num_out_channels_decoder[t]) for t in self.encoder_decoder_tasks})
+            self.decoders = nn.ModuleDict({t: decoder_by_name[backbone_name](out_ch=self.num_out_channels_decoder[t]) for t in self.encoder_decoder_tasks})
+
+
+    def forward(self, x: torch.Tensor, score_type: List[str], out_size: Tuple[int] = (128,128)):
+        assert len(score_type) == x.shape[0], "shapes of input dont match. Should both be batch dim"
+
+        # Map sample-level score_types -> attention task names
+        sample_tasks = [self.score_types_to_attention_paths[s] for s in score_type]
+
+        # Unique tasks in order of first appearance (preserve batch order semantics)
+        unique_tasks = list(dict.fromkeys(sample_tasks))  # e.g., ['ERO_P', 'ERO_D']
+        task2idx = {t: i for i, t in enumerate(unique_tasks)}
+
+        if self.skip_recon:
+            x_fake_recon = x
+        else:
+            assert len(self.encoder_decoder_tasks) == 1, "Assuming only one decoder task for now!"
+            active_decoder_task = list(self.encoder_decoder_tasks)[0]
+
+        # ----- shared trunk (unchanged) -----
+        x = self.shared_conv(x)
+        u_1_b = self.shared_layer1_b(x); u_1_t = self.shared_layer1_t(u_1_b)
+        u_2_b = self.shared_layer2_b(u_1_t); u_2_t = self.shared_layer2_t(u_2_b)
+        u_3_b = self.shared_layer3_b(u_2_t); u_3_t = self.shared_layer3_t(u_3_b)
+        u_4_b = self.shared_layer4_b(u_3_t); u_4_t = self.shared_layer4_t(u_4_b)
+
+        # Always define decoder_input so return_also_recon_latent works with skip_recon=True
+        decoder_input = u_4_t
+
+        # ----- attention blocks (build lists in unique_tasks order) -----
+        enc_att_1 = [self.encoder_att_1[t] for t in unique_tasks]
+        a_1_mask = [att(u_1_b) for att in enc_att_1]
+        a_1 = [self.down_sampling(self.encoder_block_att_1(m * u_1_t)) for m in a_1_mask]
+
+        enc_att_2 = [self.encoder_att_2[t] for t in unique_tasks]
+        a_2_mask = [att(torch.cat((u_2_b, a1), dim=1)) for a1, att in zip(a_1, enc_att_2)]
+        a_2 = [self.encoder_block_att_2(m * u_2_t) for m in a_2_mask]
+        if not self.dilation:
+            a_2 = [self.down_sampling(xi) for xi in a_2]
+
+        enc_att_3 = [self.encoder_att_3[t] for t in unique_tasks]
+        a_3_mask = [att(torch.cat((u_3_b, a2), dim=1)) for a2, att in zip(a_2, enc_att_3)]
+        a_3 = [self.encoder_block_att_3(m * u_3_t) for m in a_3_mask]
+        if not self.dilation:
+            a_3 = [self.down_sampling(xi) for xi in a_3]
+
+        enc_att_4 = [self.encoder_att_4[t] for t in unique_tasks]
+        a_4_mask = [att(torch.cat((u_4_b, a3), dim=1)) for a3, att in zip(a_3, enc_att_4)]
+        a_4 = [m * u_4_t for m in a_4_mask]  # list aligned with unique_tasks
+
+        # ----- per-task pooled latents -----
+        per_task_latent = [torch.flatten(self.pooling_at_bottleneck(v), 1) for v in a_4]  # each (B, D)
+        # Build dict task -> (B, D)
+        out_by_task = {t: z for t, z in zip(unique_tasks, per_task_latent)}
+
+        # ----- recon path -----
+        if self.skip_recon:
+            recon = x_fake_recon * 0.0
+        else:
+            if self.dilation:
+                recon = F.interpolate(self.decoders[active_decoder_task](decoder_input),
+                                    size=out_size, mode='bilinear', align_corners=True)
+            else:
+                recon = self.decoders[active_decoder_task](decoder_input)
+
+        # ----- select the correct task-latent per sample -----
+        B = x.shape[0]
+        device = u_4_t.device
+        latent_raw = torch.empty(B, self.latent_dim_before_projector, device=device)
+        for i, t_i in enumerate(sample_tasks):
+            # take row i from the (B, D) latent corresponding to task t_i
+            latent_raw[i] = out_by_task[t_i][i]
+
+        # project + normalize
+        latent = self.latent_head(latent_raw)
+        latent = F.normalize(latent, p=2, dim=1)
+
+        if self.return_also_recon_latent:
+            return recon, latent, decoder_input
+
+        return recon, latent
+
+    
+    def att_layer(self, in_channel, intermediate_channel, out_channel):
+        return nn.Sequential(
+            nn.Conv2d(in_channels=in_channel, out_channels=intermediate_channel, kernel_size=1, padding=0),
+            nn.BatchNorm2d(intermediate_channel),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=intermediate_channel, out_channels=out_channel, kernel_size=1, padding=0),
+            nn.BatchNorm2d(out_channel),
+            nn.Sigmoid())
+        
+    def conv_layer(self, in_channel, out_channel):
+        downsample = nn.Sequential(conv1x1(in_channel, 4 * out_channel, stride=1),
+                                   nn.BatchNorm2d(4 * out_channel))
+        return Bottleneck(in_channel, out_channel, downsample=downsample)
