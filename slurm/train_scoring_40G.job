@@ -14,6 +14,7 @@
 
 # Exit on error
 set -e 
+set -x
 export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
 
 # export CSEG_UTILS_MP_METHOD="spawn"
@@ -37,8 +38,11 @@ singularity exec --nv   /msc/home/cwatze93/container/ra_utils.sif \
     python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/tools/print_package_info.py
 
 
+# python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py \
+
+
 singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
-    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py \
+    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/07_train.py \
     --config  $config_file  \
     --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml #\
     #--debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir

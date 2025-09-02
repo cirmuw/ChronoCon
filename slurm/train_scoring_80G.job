@@ -1,19 +1,20 @@
 #!/bin/sh
-#SBATCH -q a100
+#SBATCH -q a100-sxm4-80gb
 #SBATCH --cpus-per-task=24
-#SBATCH --gres=gpu:a100:1
-###SBATCH --mem=150G
+#SBATCH --gres=gpu:a100-sxm4-80gb:1
+#SBATCH --mem=150G
 #SBATCH --time=3-00:00:00
+
 #SBATCH -p gpu
 #SBATCH -o /msc/home/cwatze93/logs/%x.o%A.txt
 #SBATCH -e /msc/home/cwatze93/logs/%x.o%A.txt
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=clemens.watzenboeck@meduniwien.ac.at
 
+
 # Exit on error
 set -e 
 set -x
-
 export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
 
 # export CSEG_UTILS_MP_METHOD="spawn"
@@ -31,14 +32,17 @@ fi
 
 
 #------------------------
-# DEBUGGING without rebuilding the container 
+#### DEBUGGING without rebuilding the container 
 export SINGULARITYENV_PYTHONPATH=/msc/home/cwatze93/code/RA/ra_utils:$PYTHONPATH
 singularity exec --nv   /msc/home/cwatze93/container/ra_utils.sif \
     python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/tools/print_package_info.py
 
 
+# python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/05_train_mlflow_triplet.py \
+
+
 singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
-    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/06_hps.py \
+    python /msc/home/cwatze93/code/RA/ra_utils/ra_utils/training/scores_SHS/07_train.py \
     --config  $config_file  \
     --path_substitution_config  /msc/home/cwatze93/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml #\
     #--debugging  # OPTIONAL: -> only run one epoch and save to different mlflow dir
@@ -46,15 +50,15 @@ singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
 
 
 
-
-#---------------------
-# The clean way... Run directly only code in container!
+#### The clean way: -------------------
+#
 #singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
 #   cseg_utils__print_package_infos 
-
 #singularity exec --nv /msc/home/cwatze93/container/ra_utils.sif \
 #    cseg_utils__hp_search  --config  $config_file
-#-----------------
+#-------------------------------------
+
+
 
 
 
