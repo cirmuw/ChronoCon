@@ -128,6 +128,42 @@ class OnlineBatchAllTripletLossWithScores(nn.Module):
                f"margin_scale={self.margin_scale}, metric={self.metric}, squared={self.squared}, " \
                f"return_fraction_positive_triplets={self.return_fraction_positive_triplets})"
 
+class OnlineBatchAllTripletLossWithScoresNoID(nn.Module):
+    def __init__(self,
+                 margin_offset=1.0,
+                 margin_scale: float = 0.0,
+                 metric: Union[Literal["euclidean", "cosine", "tanh_euclidean"], Callable[[
+                     torch.Tensor, torch.Tensor], torch.Tensor]] = "euclidean",
+                 squared: bool = False,
+                 return_fraction_positive_triplets=True
+                 ):
+        super().__init__()
+        self.margin_offset = margin_offset
+        self.margin_scale = margin_scale
+        self.metric = metric
+        self.squared = squared
+        self.return_fraction_positive_triplets = return_fraction_positive_triplets
+
+    def forward(self, labels, embeddings, ids=None, margin_scores=None):
+        loss = batch_all_triplet_loss_with_scores_and_ids(labels, 
+                                                          embeddings, 
+                                                          ids=None,   # No matter what user gives as Id use None!!
+                                                          margin_offset=self.margin_offset,
+                                                          margin_scores=margin_scores, 
+                                                          margin_scale=self.margin_scale, 
+                                                          metric=self.metric, 
+                                                          squared=self.squared)
+        if self.return_fraction_positive_triplets:
+            return loss
+        else:
+            return loss[0]
+        
+    def __repr__(self):
+        return f"OnlineBatchAllTripletLossWithScoresNoID(margin_offset={self.margin_offset}, " \
+               f"margin_scale={self.margin_scale}, metric={self.metric}, squared={self.squared}, " \
+               f"return_fraction_positive_triplets={self.return_fraction_positive_triplets})"
+
+
 
 
 

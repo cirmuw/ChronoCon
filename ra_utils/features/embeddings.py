@@ -10,6 +10,7 @@ import pandas as pd
 def generate_embeddings(
     model_AE: torch.nn.Module,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
+    model_c = None, 
     *,
     device: str = "cuda",
     transform=lambda x: x,

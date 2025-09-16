@@ -49,6 +49,8 @@ def get_triplet_loss_fn(cfg: dict = {}):
         return ra_utils.loss.online_mining_triplet_loss.OnlineBatchAllTripletLoss(**params)
     elif name == "OnlineBatchAllTripletLossWithScores":
         return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScores(**params)
+    elif name == "OnlineBatchAllTripletLossWithScoresNoID":
+        return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScoresNoID(**params)
     else: 
         raise NotImplementedError(f"{name = }")
 
