@@ -33,6 +33,7 @@
 
 # Exit on error
 set -e 
+set -x
 
 # export MLFLOW_TRACKING_URI="file:///msc/home/cwatze93/data/mlflow/mlruns_02"
 # export CSEG_UTILS_TORCH_MP_SHARING_STRATEGY="file_system"
