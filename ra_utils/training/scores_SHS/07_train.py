@@ -47,8 +47,9 @@ def main():
 
     # Load the configuration
     config, config_name = ra_utils.utils.config_parser.load_config(
-        #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/dev_triplet.yml",
+        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
+        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/dev_triplet.yml",
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/MTAN_r01_debugging.yml",
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )

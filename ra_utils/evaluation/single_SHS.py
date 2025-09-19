@@ -61,6 +61,7 @@ def combine_predictions(
         'JSN_or_ERO',
         'extremity',
         'patient_id',
+        "preds_float"
     ],
     check_for_score_type_duplicates: bool = True,
     include_probs: bool = False,

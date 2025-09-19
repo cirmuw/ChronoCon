@@ -3,6 +3,12 @@ import json
 from importlib import resources
 from pathlib import Path
 from typing import Dict, List, Literal, Any, Optional
+from collections import defaultdict
+import random, math
+
+import numpy as np
+
+
 
 # Third-party imports
 import numpy as np
@@ -15,7 +21,10 @@ import sklearn.utils
 from tqdm import tqdm
 
 # MONAI imports
-from monai.data import Dataset, DataLoader
+from monai.data import Dataset #, DataLoader
+
+
+
 from monai.transforms import (
     CenterSpatialCropd,
     Compose,
@@ -38,7 +47,9 @@ from monai.transforms import (
     RandAdjustContrastd,
     AdjustContrastd
 )
-from torch.utils.data import WeightedRandomSampler
+
+from torch.utils.data import Sampler, DataLoader, WeightedRandomSampler
+
 
 # Custom imports
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
@@ -47,8 +58,6 @@ from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
 )
 from ra_utils.data.data_utils import extract_extras_from_filename
 from ra_utils.data.shap_sums import limit_treatment_number
-
-from typing import Literal
 
 
 
@@ -1023,8 +1032,7 @@ def split_using_file(df_include, splits_file_path):
 
 #from ra_utils.data.datasampler_CR_patches import PatientBatchSampler
 
-def df_scores_to_dct_list(df: pd.DataFrame, 
-                          optional_keys = ["patient_cls_lbl", "patient_weight", 'preds', 'preds_float', 'model_confidence']) -> List[dict]:
+def df_scores_to_dct_list(df: pd.DataFrame) -> List[dict]:
     data = []
     for idx, row in df.iterrows():
         # Each dict is a sample, referencing row["patch"] plus additional metadata
@@ -1041,10 +1049,10 @@ def df_scores_to_dct_list(df: pd.DataFrame,
             "roi_name": row["roi_name"],
             "patient_scoretype_key":  f"{row['extremity']}_{row['left_or_right']}_{row['roi_name']}_{row['patient_id']}_{row['chosen_score']}" # everything except the time
         }
-
-        for optional_key in optional_keys:
-            if optional_key in row.keys():
-                d[optional_key] = row[optional_key]
+        if "patient_cls_lbl" in row.keys():
+            d["patient_cls_lbl"] = row["patient_cls_lbl"]
+        if "patient_weight" in row.keys():
+            d["patient_weight"] = row["patient_weight"]
         data.append(d)
 
     return data
@@ -1056,7 +1064,18 @@ def dataset_and_loader(data_tables, config):
     Create datasets and dataloaders for training, validation, and testing.
     """
     datasets = prepare_datasets(data_tables, config)
-    loaders = prepare_dataloaders(datasets, config)
+    loaders = prepare_dataloaders_tr(datasets, config)
+    loaders_ts = prepare_dataloaders_val_ts(datasets, config)
+    
+    return {**datasets, **loaders, **loaders_ts}
+
+
+def dataset_and_loader_v2(data_tables, config):
+    """
+    Create datasets and dataloaders for training, validation, and testing.
+    """
+    datasets = prepare_datasets(data_tables, config)
+    loaders = prepare_dataloaders_tr(datasets, config)
     
     return {**datasets, **loaders}
 
@@ -1093,10 +1112,6 @@ def prepare_datasets(data_tables, config):
 # ---------------------------------------------------------------------
 #  Samplers
 # ---------------------------------------------------------------------
-from collections import defaultdict
-import random, math
-from torch.utils.data import Sampler, DataLoader, WeightedRandomSampler
-import torch
 
 
 class PatientBatchSampler(Sampler):
@@ -1138,52 +1153,254 @@ class PatientBatchSampler(Sampler):
         return n // self.batch_size if self.drop_last else math.ceil(n / self.batch_size)
 
 
-# class WeightedPatientBatchSampler(Sampler):
-#     """
-#     Same as PatientBatchSampler but draws patients with replacement
-#     according to a weight per patient_id.
-#     """
 
-#     def __init__(self, dataset, patient_weights, batch_size, drop_last=False):
-#         self.dataset      = dataset
-#         self.batch_size   = batch_size
-#         self.drop_last    = drop_last
+class MultiTaskPatientBatchSampler(Sampler):
+    """
+    Emits batches where every index in the batch comes from the *same* task.
+    - Chooses a task per batch (weighted).
+    - Optional 'block_size' to emit several consecutive batches from the same task
+      (helps triplet formation by keeping semantically similar items nearby).
+    - Within the chosen task, forms a batch in a patient-homogeneous way (if desired),
+      topping up with other patients from *that same task* as needed.
 
-#         # patient → list[idx]
-#         self.patient2idx  = defaultdict(list)
-#         for idx, item in enumerate(dataset.data):
-#             self.patient2idx[item["patient_id"]].append(idx)
+    Assumes items are dicts with keys: 'task_id', 'patient_id'.
+    """
 
-#         self.patient_ids  = list(self.patient2idx.keys())
-#         self.weights      = [patient_weights.get(pid, 1.0) for pid in self.patient_ids]
+    def __init__(
+        self,
+        dataset: Dataset,
+        batch_size: int,
+        *,
+        task_weights: Optional[Dict[str, float]] = None,
+        drop_last: bool = False,
+        patient_homogeneous: bool = True,
+        block_size: int = 1,            # number of batches to keep from the same task before switching
+        task_priority: Optional[List[str]] = None,  # optional fixed order fallback
+    ):
+        self.dataset = dataset
+        self.batch_size = int(batch_size)
+        self.drop_last = drop_last
+        self.patient_homogeneous = patient_homogeneous
+        self.block_size = max(1, int(block_size))
 
-#     # --------------------------------------------------
-#     def __iter__(self):
-#         # shuffle inside each bucket every epoch
-#         buckets = {p: idxs.copy() for p, idxs in self.patient2idx.items()}
-#         for idxs in buckets.values():
-#             random.shuffle(idxs)
+        # ---------- build task -> indices and patient buckets per task ----------
+        self.task2idxs: Dict[str, List[int]] = defaultdict(list)
+        self.task2patient2idxs: Dict[str, Dict[str, List[int]]] = defaultdict(lambda: defaultdict(list))
 
-#         while any(buckets.values()):
-#             pid = random.choices(self.patient_ids, weights=self.weights, k=1)[0]
-#             if not buckets[pid]:
-#                 continue
-#             chunk = buckets[pid][: self.batch_size]
-#             del buckets[pid][: len(chunk)]
-#             if len(chunk) == self.batch_size or not self.drop_last:
-#                 yield chunk
+        # scan once
+        for idx in range(len(dataset)):
+            it = dataset[idx]
+            task_id = it["task_id"]
+            pid = it["patient_id"]
+            self.task2idxs[task_id].append(idx)
+            self.task2patient2idxs[task_id][pid].append(idx)
 
-#     # --------------------------------------------------
-#     def __len__(self):
-#         n = sum(len(v) for v in self.patient2idx.values())
-#         return n // self.batch_size if self.drop_last else math.ceil(n / self.batch_size)
+        # shuffle within patient lists will happen per-epoch in __iter__
+        self.tasks = list(self.task2idxs.keys())
 
-# utils.py  (or wherever your samplers live)
-from collections import defaultdict
-import random, math
-from torch.utils.data import Sampler
-import numpy as np
+        # task weights
+        if task_weights is None:
+            task_weights = {t: 1.0 for t in self.tasks}
+        # sanitize weights
+        self.task_weights = {t: max(float(task_weights.get(t, 1.0)), 0.0) for t in self.tasks}
+        if sum(self.task_weights.values()) == 0:
+            for t in self.tasks:
+                self.task_weights[t] = 1.0
 
+        # optional priority order to break ties if all empty frequently
+        self.task_priority = task_priority or self.tasks
+
+        # precompute dataset length for __len__
+        self._n_samples = sum(len(v) for v in self.task2idxs.values())
+
+    def __len__(self) -> int:
+        if self.drop_last:
+            return self._n_samples // self.batch_size
+        else:
+            return math.ceil(self._n_samples / self.batch_size)
+
+    def _pick_task(self, available_tasks: List[str]) -> str:
+        # restrict weights to available tasks
+        weights = [self.task_weights.get(t, 0.0) for t in available_tasks]
+        s = sum(weights)
+        if s == 0:
+            # fallback: uniform over available
+            return random.choice(available_tasks)
+        # python's random.choices supports weights
+        return random.choices(available_tasks, weights=weights, k=1)[0]
+
+    def __iter__(self):
+        # fresh buckets per epoch
+        task2patient2idxs = {t: {p: idxs.copy() for p, idxs in p2i.items()}
+                             for t, p2i in self.task2patient2idxs.items()}
+        task2patients = {t: list(p2i.keys()) for t, p2i in task2patient2idxs.items()}
+
+        # shuffle within each patient + patient order
+        for t in self.tasks:
+            random.shuffle(task2patients[t])
+            for p in task2patients[t]:
+                random.shuffle(task2patient2idxs[t][p])
+
+        # quick helper to ask if a task still has data
+        def task_has_data(t: str) -> bool:
+            return any(len(v) for v in task2patient2idxs[t].values())
+
+        batches_emitted = 0
+        total_needed_batches = len(self)  # for early exit when drop_last True
+
+        # create a pool of tasks that still have samples
+        def available_tasks():
+            return [t for t in self.tasks if task_has_data(t)]
+
+        while True:
+            avail = available_tasks()
+            if not avail:
+                break
+
+            # choose a task, then emit block_size batches (or until that task empties)
+            task = self._pick_task(avail)
+
+            for _ in range(self.block_size):
+                # if task ran empty, break to re-pick
+                if not task_has_data(task):
+                    break
+
+                current_batch = []
+
+                if self.patient_homogeneous:
+                    # try to fill from one patient first
+                    # rotate through patient list until we find one with data
+                    patients = task2patients[task]
+                    found_patient = None
+                    for _rot in range(len(patients)):
+                        if task2patient2idxs[task][patients[0]]:
+                            found_patient = patients[0]
+                            break
+                        else:
+                            patients.append(patients.pop(0))  # rotate
+
+                    if found_patient is None:
+                        # no patient has data (shouldn't happen if task_has_data is True)
+                        # fallback to non-homogeneous
+                        self._fill_batch_non_homogeneous(task2patient2idxs, task, current_batch)
+                    else:
+                        # take as many as possible from that patient
+                        bucket = task2patient2idxs[task][found_patient]
+                        n_take = min(len(bucket), self.batch_size)
+                        current_batch.extend(bucket[:n_take])
+                        del bucket[:n_take]
+
+                        # top up from other patients of the same task
+                        if len(current_batch) < self.batch_size:
+                            remaining = self.batch_size - len(current_batch)
+                            # iterate other patients in current order
+                            for p in patients:
+                                if p == found_patient: 
+                                    continue
+                                b = task2patient2idxs[task][p]
+                                if not b:
+                                    continue
+                                n = min(len(b), remaining)
+                                current_batch.extend(b[:n])
+                                del b[:n]
+                                remaining -= n
+                                if remaining == 0:
+                                    break
+                else:
+                    # non-homogeneous: fill from any patients in this task
+                    self._fill_batch_non_homogeneous(task2patient2idxs, task, current_batch)
+
+                if len(current_batch) == self.batch_size or (len(current_batch) > 0 and not self.drop_last):
+                    yield current_batch
+                    batches_emitted += 1
+
+                # early stop if we hit nominal batch count (important when drop_last=True)
+                if batches_emitted >= total_needed_batches:
+                    return
+
+            # move on to next task (weighted again in outer loop)
+
+    def _fill_batch_non_homogeneous(self, task2patient2idxs, task, current_batch):
+        # flatten available idxs for this task (lazy-ish)
+        # to keep it fast, walk patients in order and grab until full
+        for p, bucket in list(task2patient2idxs[task].items()):
+            if not bucket:
+                continue
+            n_take = min(len(bucket), self.batch_size - len(current_batch))
+            current_batch.extend(bucket[:n_take])
+            del bucket[:n_take]
+            if len(current_batch) == self.batch_size:
+                break
+
+
+
+class TaggedDataset(Dataset):
+    """
+    Wrap several per-task datasets into one dataset and tag each sample with its task_id.
+    Assumes each underlying dataset returns a dict (you do already).
+    """
+    def __init__(self, datasets: List[Dataset], task_ids: Optional[List[str]] = None):
+        assert len(datasets) > 0
+        self.datasets = datasets
+        if task_ids is None:
+            task_ids = [f"task{idx}" for idx in range(len(datasets))]
+        assert len(task_ids) == len(datasets)
+        self.task_ids = task_ids
+
+        self._offsets = []
+        total = 0
+        for ds in datasets:
+            self._offsets.append(total)
+            total += len(ds)
+        self._total_len = total
+
+        # map global index -> (task_idx, local_idx)
+        self._global2local = []
+        for t_idx, ds in enumerate(datasets):
+            for i in range(len(ds)):
+                self._global2local.append((t_idx, i))
+
+    def __len__(self):
+        return self._total_len
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        t_idx, i = self._global2local[idx]
+        item = self.datasets[t_idx][i]
+        # attach task_id (and keep your fields untouched)
+        item = dict(item)
+        item["task_id"] = self.task_ids[t_idx]
+        return item
+
+def make_mixed_train_loader(
+    task_train_datasets: Dict[str, Dataset],   # e.g. {"H_JSN_PIPIII": ds1, "H_Erosions": ds2, ...}
+    *,
+    batch_size: int,
+    num_workers: int = 4,
+    task_weights: Optional[Dict[str, float]] = None,
+    block_size: int = 1,
+    patient_homogeneous: bool = True,
+    drop_last: bool = False,
+):
+    task_ids = list(task_train_datasets.keys())
+    datasets = [task_train_datasets[t] for t in task_ids]
+
+    tagged = TaggedDataset(datasets=datasets, task_ids=task_ids)
+
+    sampler = MultiTaskPatientBatchSampler(
+        dataset=tagged,
+        batch_size=batch_size,
+        task_weights=task_weights,
+        block_size=block_size,
+        patient_homogeneous=patient_homogeneous,
+        drop_last=drop_last,
+    )
+
+    loader = DataLoader(
+        tagged,
+        batch_sampler=sampler,  # <- NOTE: use batch_sampler, not sampler
+        num_workers=num_workers,
+    )
+    return loader
 
 class WeightedPatientBatchSampler(Sampler):
     """
@@ -1250,20 +1467,49 @@ class WeightedPatientBatchSampler(Sampler):
 
 
 
+
+
 # ---------------------------------------------------------------------
 #  Data-loader factory
 # ---------------------------------------------------------------------
-def prepare_dataloaders(datasets, config):
+
+def prepare_dataloaders_tr(datasets, config):
     tr_cfg       = config["training"]
     batch_size   = tr_cfg["batch_size"]
     num_workers  = tr_cfg["num_workers"]
 
+    
 
     sampler_name        = tr_cfg.get("sampler_name", None)
     print(" Sampler for training: ", sampler_name)
 
     # ---------- classic image-level weighted sampler ----------
-    if sampler_name == "WeightedRandomSampler": 
+
+    if sampler_name == "MultiTaskPatientBatchSamplerPatient":
+        train_loader = make_mixed_train_loader(
+            task_train_datasets=datasets["dataset_train"],
+            batch_size=batch_size,
+            num_workers=num_workers,
+            task_weights=config.get("data", {}).get("task_weights", None), #  {"H_JSN_PIPIII": 2.0, "H_JSN_PIPII": 1.0, "H_JSN_DIPIII": 1.0},
+            block_size=tr_cfg.get("block_size", None),                  # emit 2 batches per picked task before switching
+            patient_homogeneous=config.get("data", {}).get("patient_homogeneous", True),
+            drop_last=False,
+        )
+
+        train_loader_with_val_transforms = make_mixed_train_loader(
+            task_train_datasets=datasets["dataset_train"],
+            batch_size=batch_size,
+            num_workers=num_workers,
+            task_weights=config.get("data", {}).get("task_weights", None), #  {"H_JSN_PIPIII": 2.0, "H_JSN_PIPII": 1.0, "H_JSN_DIPIII": 1.0},
+            block_size=tr_cfg.get("block_size", None),                  # emit 2 batches per picked task before switching
+            patient_homogeneous=config.get("data", {}).get("patient_homogeneous", True),
+            drop_last=False,
+        )
+
+
+
+
+    elif sampler_name == "WeightedRandomSampler": 
         labels         = [item['score'] for item in datasets["dataset_train"].data]
         class_count    = torch.bincount(torch.tensor(labels))
         class_weights  = 1.0 / class_count.float()
@@ -1286,6 +1532,8 @@ def prepare_dataloaders(datasets, config):
                                   sampler=sampler,
                                   num_workers=num_workers,
                                   drop_last=False)
+
+
 
 
     # ---------- patient-homogeneous batches, no weights ----------
@@ -1341,6 +1589,144 @@ def prepare_dataloaders(datasets, config):
     else: 
         raise ValueError(f"Sampler name is not allowed {sampler_name = }. Use one of the implemented ones (E.g. 'WeightedRandomSampler', 'PatientLevelWeightedRandomSampler', 'PatientBatchSampler', None)")
 
+
+
+    return {
+        "train_loader": train_loader,
+        "train_loader_with_val_transforms": train_loader_with_val_transforms
+    }
+
+
+
+def prepare_dataloaders_tr_V2(datasets, config):
+    tr_cfg       = config["training"]
+    batch_size   = tr_cfg["batch_size"]
+    num_workers  = tr_cfg["num_workers"]
+
+    
+
+    sampler_name        = tr_cfg.get("sampler_name", None)
+    print(" Sampler for training: ", sampler_name)
+
+    # ---------- classic image-level weighted sampler ----------
+
+    if sampler_name == "MultiTaskPatientBatchSamplerPatient":
+        train_loader = make_mixed_train_loader(
+            task_train_datasets=datasets["dataset_train"],
+            batch_size=batch_size,
+            num_workers=num_workers,
+            task_weights=config.get("data", {}).get("task_weights", None), #  {"H_JSN_PIPIII": 2.0, "H_JSN_PIPII": 1.0, "H_JSN_DIPIII": 1.0},
+            block_size=tr_cfg.get("block_size", None),                  # emit 2 batches per picked task before switching
+            patient_homogeneous=config.get("data", {}).get("patient_homogeneous", True),
+            drop_last=False,
+        )
+
+        train_loader_with_val_transforms = make_mixed_train_loader(
+            task_train_datasets=datasets["dataset_train"],
+            batch_size=batch_size,
+            num_workers=num_workers,
+            task_weights=config.get("data", {}).get("task_weights", None), #  {"H_JSN_PIPIII": 2.0, "H_JSN_PIPII": 1.0, "H_JSN_DIPIII": 1.0},
+            block_size=tr_cfg.get("block_size", None),                  # emit 2 batches per picked task before switching
+            patient_homogeneous=config.get("data", {}).get("patient_homogeneous", True),
+            drop_last=False,
+        )
+
+
+
+
+    elif sampler_name == "WeightedRandomSampler": 
+        labels         = [item['score'] for item in datasets["dataset_train"].data]
+        class_count    = torch.bincount(torch.tensor(labels))
+        class_weights  = 1.0 / class_count.float()
+        sample_weights = [class_weights[l] for l in labels]
+
+        sampler = WeightedRandomSampler(sample_weights,
+                                        num_samples=len(sample_weights),
+                                        replacement=True)
+
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  sampler=sampler,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_size=batch_size,
+                                  shuffle=False,
+                                  sampler=sampler,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+
+
+
+
+    # ---------- patient-homogeneous batches, no weights ----------
+    elif sampler_name == "PatientBatchSampler": 
+        patient_ids  = [d["patient_id"] for d in datasets["dataset_train"].data]
+        batch_sampler = PatientBatchSampler(patient_ids,
+                                            batch_size=batch_size,
+                                            drop_last=False)
+
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+        
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+
+    # ---------- patient-homogeneous batches, WITH weights ----------
+    elif sampler_name == "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
+        # Build patient → weight dict (default 1.0)
+        patient_weights = {}
+        for d in datasets["dataset_train"].data:
+            pid = d["patient_id"]
+            w   = d.get("patient_weight", 1.0)
+            patient_weights.setdefault(pid, w)
+
+        batch_sampler = WeightedPatientBatchSampler(datasets["dataset_train"],
+                                                    patient_weights=patient_weights,
+                                                    batch_size=batch_size,
+                                                    drop_last=False)
+
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+        
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_sampler=batch_sampler,
+                                  num_workers=num_workers)
+
+    # ---------- plain shuffle (baseline) ----------
+    elif sampler_name is None: # "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
+        train_loader = DataLoader(datasets["dataset_train"],
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+        
+        train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
+                                  batch_size=batch_size,
+                                  shuffle=True,
+                                  num_workers=num_workers,
+                                  drop_last=False)
+    else: 
+        raise ValueError(f"Sampler name is not allowed {sampler_name = }. Use one of the implemented ones (E.g. 'WeightedRandomSampler', 'PatientLevelWeightedRandomSampler', 'PatientBatchSampler', None)")
+
+
+
+    return {
+        "train_loader": train_loader,
+        "train_loader_with_val_transforms": train_loader_with_val_transforms
+    }
+
+
+def prepare_dataloaders_val_ts(datasets, config):
+    tr_cfg       = config["training"]
+    batch_size   = tr_cfg["batch_size"]
+    num_workers  = tr_cfg["num_workers"]
+
     # validation / test unchanged
     val_loader = DataLoader(datasets["dataset_validation"],
                             batch_size=batch_size,
@@ -1353,10 +1739,8 @@ def prepare_dataloaders(datasets, config):
                              num_workers=num_workers)
 
     return {
-        "train_loader": train_loader,
         "val_loader":   val_loader,
         "test_loader":  test_loader,
-        "train_loader_with_val_transforms": train_loader_with_val_transforms
     }
 
 # def prepare_dataloaders(datasets, config):
@@ -1408,6 +1792,23 @@ def dataset_and_loader_several(data_tables_several, config):
         data = dataset_and_loader(item, config)
         return_dct[key] = data
     return return_dct
+
+def dataset_and_loader_several_with_mixing(data_tables_several, config):
+    datasets_dict = {}
+    for key, data_table in data_tables_several.items():    
+        datasets = prepare_datasets(data_table, config)
+        datasets_dict[key] = datasets
+    
+    # fip dict inside out
+    datasets_dict_fipped = {}
+    for ds_type_key in ["dataset_train", "dataset_validation", "dataset_test", "dataset_train_with_val_transforms"]:
+        datasets_dict_fipped[ds_type_key] = {}
+        for task_key in datasets_dict.keys():
+            datasets_dict_fipped[ds_type_key][task_key] = datasets_dict[task_key][ds_type_key]
+
+
+    loaders = prepare_dataloaders_tr(datasets, config, datasets_dict_fipped)
+    return {**datasets, **loaders}    
 
 def check_duplicates_in_dataloader(data: Dict[str, Dict[str, DataLoader]], ds_key: str = "test_loader") -> None:
     """

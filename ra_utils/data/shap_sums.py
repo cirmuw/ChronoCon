@@ -350,7 +350,26 @@ def sum_scores_df_ERO_H(
     # ---------------------------------------------------------------------
     # 3.  FINAL AGGREGATION  (pairs  +  singles)
     # ---------------------------------------------------------------------
-    df_all = pd.concat([df_summed_pairs, df_summed_singles], ignore_index=True)
+    
+    # Check if any of the dataframes are empty before concatenation
+    if len(df_summed_pairs) == 0 and len(df_summed_singles) == 0:
+        # Return an empty dataframe with the expected columns
+        return pd.DataFrame(columns=["patientId_date", "labels_summed", "preds_summed", "limit_summed"])
+    elif len(df_summed_pairs) == 0:
+        df_all = df_summed_singles.copy()
+    elif len(df_summed_singles) == 0:
+        df_all = df_summed_pairs.copy()
+    else:
+        # Ensure consistent dtypes before concatenation to avoid FutureWarning
+        columns_to_align = ['patientId_date', 'labels_summed', 'preds_summed', 'limit_summed']
+        for col in columns_to_align:
+            if col in df_summed_pairs.columns and col in df_summed_singles.columns:
+                dtype = max(df_summed_pairs[col].dtype, df_summed_singles[col].dtype)
+                df_summed_pairs[col] = df_summed_pairs[col].astype(dtype)
+                df_summed_singles[col] = df_summed_singles[col].astype(dtype)
+        
+        df_all = pd.concat([df_summed_pairs, df_summed_singles], ignore_index=True)
+
 
     df_summed = (
         df_all
@@ -476,9 +495,9 @@ def sum_and_extrapolate_scores_df(
     return df_summed
 
 
-def sum_and_extrapolate_scores_df_JSN_H(df: pd.DataFrame, fraction_required_valid_scores=0.0): 
+def sum_and_extrapolate_scores_df_JSN_H(df: pd.DataFrame, fraction_required_valid_scores=0.0, max_total = 120): 
     df_summed = sum_scores_df_JSN_H(df)
-    m = 120
+    m = max_total
     df_summed["preds_summed_extrapolated"]  = df_summed["preds_summed"]  * m / df_summed["limit_summed"]
     df_summed["labels_summed_extrapolated"] = df_summed["labels_summed"] * m / df_summed["limit_summed"]
     m_valid = (df_summed["limit_summed"] / m) >= fraction_required_valid_scores
@@ -486,9 +505,9 @@ def sum_and_extrapolate_scores_df_JSN_H(df: pd.DataFrame, fraction_required_vali
     return df_summed
 
 
-def sum_and_extrapolate_scores_df_JSN_F(df: pd.DataFrame, fraction_required_valid_scores=0.75): 
+def sum_and_extrapolate_scores_df_JSN_F(df: pd.DataFrame, fraction_required_valid_scores=0.75, max_total = 48): 
     df_summed = sum_scores_df_JSN_F(df)
-    m = 48
+    m = max_total
     df_summed["preds_summed_extrapolated"]  = df_summed["preds_summed"]  * m / df_summed["limit_summed"]
     df_summed["labels_summed_extrapolated"] = df_summed["labels_summed"] * m / df_summed["limit_summed"]
     m_valid = (df_summed["limit_summed"] / m) >= fraction_required_valid_scores
@@ -497,9 +516,10 @@ def sum_and_extrapolate_scores_df_JSN_F(df: pd.DataFrame, fraction_required_vali
 
 
 def sum_and_extrapolate_scores_df_ERO_F(df: pd.DataFrame,
-                                        fraction_required_valid_scores=0.0):
+                                        fraction_required_valid_scores=0.0, 
+                                        max_total = 120):
     df_summed = sum_scores_df_ERO_F(df)
-    m = 120
+    m = max_total
     df_summed["preds_summed_extrapolated"]  = df_summed["preds_summed"]  * m / df_summed["limit_summed"]
     df_summed["labels_summed_extrapolated"] = df_summed["labels_summed"] * m / df_summed["limit_summed"]
 
@@ -512,11 +532,12 @@ def sum_and_extrapolate_scores_df_ERO_F(df: pd.DataFrame,
 def sum_and_extrapolate_scores_df_ERO_H(
     df: pd.DataFrame,
     limit_treatment_ED: Literal["cap E_D sum to 5", "E_D_mean"] = "cap E_D sum to 5",
-    fraction_required_valid_scores=0.0 # for 0 all are returned 
+    fraction_required_valid_scores=0.0, # for 0 all are returned 
+    max_total = 160
 ) -> pd.DataFrame:
     
     df_summed = sum_scores_df_ERO_H(df, limit_treatment_ED=limit_treatment_ED)
-    max_total = 80 * 2   # left + right  → 160
+    # max_total = 80 * 2   # left + right  → 160
     df_summed["preds_summed_extrapolated"]  = df_summed["preds_summed"]  * max_total / df_summed["limit_summed"]
     df_summed["labels_summed_extrapolated"] = df_summed["labels_summed"] * max_total / df_summed["limit_summed"]
 
