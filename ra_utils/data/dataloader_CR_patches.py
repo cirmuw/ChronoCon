@@ -1030,6 +1030,7 @@ def df_scores_to_dct_list(df: pd.DataFrame,
         # Each dict is a sample, referencing row["patch"] plus additional metadata
         d = {
             "img": row["image_path"],  # .npy file path on disk
+            "image_path": row["image_path"],  # .npy file path on disk            
             "file_name": row["file_name"],
             "score": row["score"],
             "score_type": row["chosen_score"],
