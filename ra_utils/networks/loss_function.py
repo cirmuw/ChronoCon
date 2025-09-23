@@ -31,7 +31,10 @@ def get_score_loss_function(cfg: dict):
         loss = MSEandCELoss(**params)
     elif name == "MSEandFocalLoss":
         loss = MSEandFocalLoss(**params)
-        
+    elif name == "MSEandCELossSoft":
+        loss = MSEandCELossSoft(**params)
+
+
     else: 
         raise NotImplementedError(f"{name=}")
     return loss
@@ -309,6 +312,61 @@ class MSEandCELoss(nn.Module):
     
  
  
+class MSEandCELossSoft(nn.Module):
+    """
+    outputs: (N, 1 + C)  -> [regression_scalar, class_logits...]
+    targets: (N,) or (N,1) real-valued scalar in [0, C-1]
+    """
+    def __init__(self, mse_weight=0.5, class_weight=0.5, label_smoothing=0.0):
+        super().__init__()
+        assert 0.0 <= mse_weight <= 1.0
+        assert 0.0 <= class_weight <= 1.0
+        assert abs(mse_weight + class_weight - 1.0) < 1e-6
+        self.mse_weight = mse_weight
+        self.class_weight = class_weight
+        self.label_smoothing = label_smoothing
+
+        self.mse_loss = nn.MSELoss()
+        # CrossEntropyLoss now supports soft targets (float, same shape as logits)
+        # If you already pass soft targets, built-in label_smoothing is typically unnecessary.
+        self.class_loss = nn.CrossEntropyLoss(label_smoothing=0.0)
+
+    @staticmethod
+    def _to_soft_probs(targets, C):
+        """
+        Linear interpolation between floor and ceil class.
+        targets: (N,) real
+        returns: (N, C) probs summing to 1
+        """
+        t = targets.clamp(0, C-1)
+        lower = torch.floor(t).long()
+        upper = torch.clamp(lower + 1, max=C-1)
+        w_upper = (t - lower.float())
+        w_lower = 1.0 - w_upper
+
+        probs = torch.zeros(targets.size(0), C, device=targets.device, dtype=targets.dtype)
+        idx = torch.arange(targets.size(0), device=targets.device)
+        probs[idx, lower] = w_lower
+        probs[idx, upper] += w_upper
+        return probs
+
+    def forward(self, outputs, targets):
+        pred_scalar = outputs[:, 0]      # (N,)
+        pred_logits = outputs[:, 1:]     # (N, C)
+        N, C = pred_logits.shape
+
+        targets = targets.view(-1).to(pred_scalar.dtype)  # (N,)
+        target_probs = self._to_soft_probs(targets, C)    # (N, C)
+
+        # optional extra smoothing on top of soft targets (usually not needed)
+        if self.label_smoothing > 0.0:
+            target_probs = (1 - self.label_smoothing) * target_probs + self.label_smoothing / C
+
+        mse = self.mse_loss(pred_scalar, targets)
+        ce  = self.class_loss(pred_logits, target_probs)
+        return self.mse_weight * mse + self.class_weight * ce
+
+
 
 class MSEandFocalLoss(MSEandCELoss):
     def __init__(

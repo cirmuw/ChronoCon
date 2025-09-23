@@ -410,7 +410,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         config["task_type_y"] = "classification"
 
     elif classifier_name == "MixLogAndReg":  # New default!
-        raise NotImplementedError("MixLogAndReg is not implemented yet!")
+        #raise NotImplementedError("MixLogAndReg is not implemented yet!")
         config["task_type_y"] = "classification_regression_mix"
         for k in classifier_head_infos.keys():
             classifier_head_infos[k]["out_dim"] += 1 # 0 is Regression output; 1...out_dim+1 = class logits                

@@ -422,13 +422,16 @@ def val_epoch_AE_v4(
                 loss_y_delta = torch.tensor(0.0, device=device)
 
                 batch_preds_float = torch.empty(B, dtype=torch.float32, device=device)   
-                if task_type_y == "classification":
-                    batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
-                    batch_preds = torch.empty(B, dtype=torch.long, device=device)
-                elif task_type_y == "regression":
-                    batch_preds = torch.empty(B, dtype=torch.float32, device=device)                
-                else: 
-                    raise NotImplementedError(f"{task_type_y = }")
+                batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+                batch_preds = torch.empty(B, dtype=torch.long, device=device)
+
+                # if task_type_y == "classification":
+                #     batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+                #     batch_preds = torch.empty(B, dtype=torch.long, device=device)
+                # elif task_type_y == "regression":
+                #     batch_preds = torch.empty(B, dtype=torch.float32, device=device)                
+                # else: 
+                #     raise NotImplementedError(f"{task_type_y = }")
 
                 if model_classifier is not None:
                     out_dict = model_classifier(z, s_type, return_dict=True)
@@ -448,8 +451,14 @@ def val_epoch_AE_v4(
                         if task_type_y == "classification":
                             loss_fn_y_input = logits
                             score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")                              
-                        if task_type_y == "classification_regression_mix":
-                            raise NotImplementedError("task_type_y = classification_regression_mix")
+                        if task_type_y == "classification_regression_mix": 
+                            #raise NotImplementedError("task_type_y == 'classification_regression_mix'")
+                            loss_fn_y_input = logits
+                            score_estimation_1 = loss_fn_y_input[..., 0]  #  These are not logits! First element is assumed to be the reg. value
+                            score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
+                            score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                            # head_target_float = head_target.float().to(device)
+
 
                         head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
                         head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
@@ -474,6 +483,8 @@ def val_epoch_AE_v4(
                             batch_preds[idx] = logits.argmax(dim=1)
                         elif task_type_y == "regression":
                             batch_preds[idx] = logits.squeeze(-1) # these are not logits
+                        elif task_type_y == "classification_regression_mix":
+                            batch_preds[idx] = score_estimation
                         else: 
                             raise NotImplementedError(f"{task_type_y = }")
                         batch_preds_float[idx] = score_estimation
@@ -526,7 +537,8 @@ def val_epoch_AE_v4(
                 all_labels.extend(y.cpu().numpy())                        
                 if task_type_y == "classification":
                     all_logits.extend(batch_logits.cpu().numpy())
-
+                if task_type_y == "classification_regression_mix":
+                    all_logits.extend(batch_logits.cpu().numpy())  # I could also just save probs... 
 
                 for k in extra_keys:
                     if k in batch:
@@ -560,7 +572,7 @@ def val_epoch_AE_v4(
     if task_type_y == "classification":
         all_preds_np_classes = all_preds_np
         all_probs_np = F.softmax(torch.from_numpy(all_logits_np), dim=1).numpy()
-    elif task_type_y == "regression":
+    elif (task_type_y == "regression") or (task_type_y == "classification_regression_mix") :
         # round to nearest class for classification metrics
         all_preds_np_classes = np.round(all_preds_np)
         all_preds_np_classes = np.clip(all_preds_np_classes, 0, np.inf)
@@ -579,7 +591,7 @@ def val_epoch_AE_v4(
     metrics.update(metrics_)
 
     
-    if task_type_y == "regression": # to calculate RMSE, ... on non-rounded parts
+    if (task_type_y == "regression") or (task_type_y == "classification_regression_mix") : # to calculate RMSE, ... on non-rounded parts
         regression_metrics = calculate_some_classification_metrics(
             all_preds_np,           # raw scores
             all_labels_np,
@@ -685,6 +697,8 @@ def training_epoch_AE_v4(
     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
 
+    # TODO add triplet loss over time!
+
     loss_terms_ = ["x", "y", "z", 
                   "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
@@ -783,9 +797,9 @@ def training_epoch_AE_v4(
                         loss_fn_y_input = logits
                         score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")
                     if task_type_y == "classification_regression_mix": 
-                        raise NotImplementedError("task_type_y == 'classification_regression_mix'")
-                        loss_fn_y_input = logits[..., 0]
-                        score_estimation_1 = loss_fn_y_input
+                        #raise NotImplementedError("task_type_y == 'classification_regression_mix'")
+                        loss_fn_y_input = logits
+                        score_estimation_1 = loss_fn_y_input[..., 0]  #  These are not logits! First element is assumed to be the reg. value
                         score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
                         score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
                         # head_target_float = head_target.float().to(device)

@@ -900,10 +900,17 @@ def process_single_score_group(chosen_score, df_paths, data_config):
             with open(surgery_patientids_list_path_json, "r") as f:
                 surgery_patientids_list = json.load(f)
         df_include, df_exclude = exclude_ROIS_according_surgery_status(paths_scores_df, surgery_patientids_list=surgery_patientids_list)
+        def num_classes_foo(row):
+            t = row["chosen_score"]
+            limit = limits_dct[t]
+            return limit + 1 # 0 is class
+        df_include["number of score classes"] = df_include.apply(num_classes_foo, axis=1)        
+
 
     elif how_to_deal_with_surgery == "keep as is":
         df_include = paths_scores_df
         df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
+
 
     elif how_to_deal_with_surgery == "keep: map over limit to limit plus one":
         df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
@@ -914,6 +921,12 @@ def process_single_score_group(chosen_score, df_paths, data_config):
             s = row["score"]
             return limit_treatment_number(s, limit, limit_treatment="over_limit_to_limit_plus_1")
         df_include["score"] = df_include.apply(foo, axis=1)
+        def num_classes_foo(row):
+            t = row["chosen_score"]
+            limit = limits_dct[t]
+            return limit + 2 # 0 is class anb over limit to limit + 1
+        df_include["number of score classes"] = df_include.apply(num_classes_foo, axis=1)        
+
     
     elif how_to_deal_with_surgery == "keep: map over limit to limit":
         df_exclude = pd.DataFrame(columns=paths_scores_df.columns)
@@ -924,6 +937,12 @@ def process_single_score_group(chosen_score, df_paths, data_config):
             s = row["score"]
             return limit_treatment_number(s, limit, limit_treatment="over_limit_to_limit")
         df_include["score"] = df_include.apply(foo, axis=1)
+        def num_classes_foo(row):
+            t = row["chosen_score"]
+            limit = limits_dct[t]
+            return limit + 1 # 0 is class
+        df_include["number of score classes"] = df_include.apply(num_classes_foo, axis=1)       
+
     else:
         raise ValueError(f"Unknown how_to_deal_with_surgery: {how_to_deal_with_surgery}")
 
@@ -945,7 +964,19 @@ def process_single_score_group(chosen_score, df_paths, data_config):
 
 
 
-
+    df_include = add__image_series_length(df_include)
+    df_include = add__score_maxdiff(df_include)
+    df_include = add__progession(df_include)
+    
+    time_scale = data_config.get("tSLR_time_scale", 0.0) # 0.1 is good default value, but want to keep backward compatible
+    forward_scale = data_config.get("tSLR_forward_scale", 1.0) 
+    backward_scale = data_config.get("tSLR_backward_scale", 1.0)
+    score_correction = score_modification_tSLR(df_include, 
+                                        time_scale = time_scale, 
+                                        forward_scale = forward_scale, 
+                                        backward_scale = backward_scale
+                                        )
+    df_include["score tSLR"] = df_include["score"] + score_correction
 
     if data_config.get("use_splits_file", False):
         df_train, df_val, df_test, df_missed = split_using_file(df_include, data_config["splits_file"])
@@ -963,7 +994,11 @@ def process_single_score_group(chosen_score, df_paths, data_config):
     df_val   = add_patient_class_weights_and_labels(df_val,   rule = rule, n_buckets=n_buckets)
     df_test  = add_patient_class_weights_and_labels(df_test,  rule = rule, n_buckets=n_buckets)
 
-
+    # Score correction t-SLR (time-soft-label regularization) only on training set!
+    enable_tSLR = data_config.get("enable_tSLR", False)
+    if enable_tSLR: 
+        print("t-SLR for training set is activate!")
+        df_train["score"] = df_train["score tSLR"]
 
 
     return {
@@ -1062,7 +1097,7 @@ def dataset_and_loader(data_tables, config):
     return {**datasets, **loaders}
 
 
-def prepare_datasets(data_tables, config):
+def transforms_from_config(config: dict):
     use_triplet_transforms = config["transforms"].get("ACTIVATE_TRIPLET_TRAINING_TRANSFORMS", False)
     if use_triplet_transforms:
         transform_train = Compose(make_training_transforms_triplet(config["transforms"]))
@@ -1070,25 +1105,149 @@ def prepare_datasets(data_tables, config):
         transform_train = Compose(make_trainings_transforms(config["transforms"]))
 
     transform_val = Compose(make_validation_transforms(config["transforms"]))
+    return {"transform_train": transform_train, 
+            "transform_val": transform_val}
+
+
+def prepare_datasets(data_tables, config):
+    tran = transforms_from_config(config)
+    transform_train = tran["transform_train"]
+    transform_val = tran["transform_val"]
+
+    # TODO: Read from config
+    optional_keys=["patient_cls_lbl", "patient_weight", 'preds', 'preds_float', 'model_confidence',
+                   'score_change_per_year_to_next', 'score_change_per_year_to_prev',
+                   'years_to_next_visit', 'years_to_prev_visit',
+                   'score_difference_prev_visit', 'score_difference_next_visit', 
+                   "number of score classes",  'score tSLR'
+                   ]
 
     return {
         "dataset_train": Dataset(
-            data=df_scores_to_dct_list(data_tables["df_train"]),
+            data=df_scores_to_dct_list(data_tables["df_train"], optional_keys=optional_keys),
             transform=transform_train
         ),
         "dataset_validation": Dataset(
-            data=df_scores_to_dct_list(data_tables["df_val"]),
+            data=df_scores_to_dct_list(data_tables["df_val"], optional_keys=optional_keys),
             transform=transform_val
         ),
         "dataset_test": Dataset(
-            data=df_scores_to_dct_list(data_tables["df_test"]),
+            data=df_scores_to_dct_list(data_tables["df_test"], optional_keys=optional_keys),
             transform=transform_val
         ),
         "dataset_train_with_val_transforms": Dataset(
-            data=df_scores_to_dct_list(data_tables["df_train"]),
+            data=df_scores_to_dct_list(data_tables["df_train"], optional_keys=optional_keys),
             transform=transform_val
         ),
     }
+
+
+
+
+def add__image_series_length(df):
+    group_sizes = df.groupby(["patient_id", "left_or_right", "chosen_score"]).size()
+    group_sizes_df = group_sizes.reset_index(name='image_series_length')
+    df = df.merge(group_sizes_df, on=["patient_id", "left_or_right", "chosen_score"])
+    return df 
+
+def add__score_maxdiff(df):
+    group_progression = df.groupby(["patient_id", "left_or_right", "chosen_score"])["score"].max() - df.groupby(["patient_id", "left_or_right", "chosen_score"])["score"].min()
+    group_progression_df = group_progression.reset_index(name='score maxdiff')
+    df = df.merge(group_progression_df, on=["patient_id", "left_or_right", "chosen_score"])
+    return df
+
+
+
+def score_modification_tSLR(sub: pd.DataFrame, time_scale = 0.1, forward_scale = 1.0, backward_scale = 1.0):
+
+    # will_progress = (sub["score_difference_next_visit"] > 0)
+    # did_progress = (sub["score_difference_prev_visit"] > 0)
+    is_first = (sub["years_to_prev_visit"].isna())
+    is_last = (sub["years_to_next_visit"].isna())
+
+    correction_f = (sub["years_to_next_visit"]*time_scale) * sub["score_change_per_year_to_next"]
+    correction_f *= (~is_first).astype(float)
+
+    correction_b = -(sub["years_to_prev_visit"]*time_scale) * sub["score_change_per_year_to_prev"]
+    correction_b *= (~is_last).astype(float)
+
+    correction = correction_b * backward_scale + correction_f * forward_scale
+    correction.iloc[is_last] = 0.0
+    correction.iloc[is_first] = 0.0
+
+    return correction
+
+
+
+
+
+def add__progession(df):
+    """
+    Adds per-series (patient_id, left_or_right, chosen_score):
+      - years_to_next_visit
+      - score_difference_next_visit
+      - score_change_per_year_to_next      (NaN if time<=0 or missing)
+
+      - years_to_prev_visit
+      - score_difference_prev_visit
+      - score_change_per_year_to_prev      (NaN if time<=0 or missing)
+    """
+    group_cols = ["patient_id", "left_or_right", "chosen_score"]
+    orig_index = df.index
+
+    # Work on a copy sorted within groups by date (parse if needed)
+    tmp = df.copy()
+    if "date_dt" not in tmp.columns:
+        tmp["date_dt"] = pd.to_datetime(tmp["date_str"], errors="coerce")
+
+    tmp = tmp.sort_values(group_cols + ["date_dt"])
+
+    # ---------- NEXT visit (lead)
+    tmp["_score_next"] = tmp.groupby(group_cols)["score"].shift(-1)
+    tmp["_date_next"]  = tmp.groupby(group_cols)["date_dt"].shift(-1)
+
+    tmp["score_difference_next_visit"] = tmp["_score_next"] - tmp["score"]
+    dt_next = (tmp["_date_next"] - tmp["date_dt"])
+    tmp["years_to_next_visit"] = dt_next.dt.days / 365.25
+
+    tmp["score_change_per_year_to_next"] = (
+        tmp["score_difference_next_visit"] / tmp["years_to_next_visit"]
+    )
+    tmp.loc[tmp["years_to_next_visit"] <= 0, "score_change_per_year_to_next"] = np.nan
+
+    # ---------- PREVIOUS visit (lag)
+    tmp["_score_prev"] = tmp.groupby(group_cols)["score"].shift(1)
+    tmp["_date_prev"]  = tmp.groupby(group_cols)["date_dt"].shift(1)
+
+    tmp["score_difference_prev_visit"] = tmp["score"] - tmp["_score_prev"]
+    dt_prev = (tmp["date_dt"] - tmp["_date_prev"])
+    tmp["years_to_prev_visit"] = dt_prev.dt.days / 365.25
+
+    tmp["score_change_per_year_to_prev"] = (
+        tmp["score_difference_prev_visit"] / tmp["years_to_prev_visit"]
+    )
+    tmp.loc[tmp["years_to_prev_visit"] <= 0, "score_change_per_year_to_prev"] = np.nan
+
+    # Cleanup helpers and restore original row order
+    tmp = tmp.drop(columns=["_score_next", "_date_next", "_score_prev", "_date_prev"]).reindex(orig_index)
+
+    return tmp
+
+
+def filter_dataset_to_instance(df, transform, chosen_score="PIPII", left_or_right = "L", patient_id="557"):
+    m_1 = (df["chosen_score"] == chosen_score)
+    m_2 = (df["left_or_right"] == left_or_right)
+    m_3 = (df["patient_id"] == patient_id)
+    m = m_1 & m_2 & m_3
+
+    df_tmp = df[m].sort_values("date_str")#[["date_str", "score"]]
+
+    ds = Dataset(
+        data=df_scores_to_dct_list(df_tmp.reset_index(drop=True)),
+        transform=transform
+    )
+    return ds
+
 
 
 # ---------------------------------------------------------------------
