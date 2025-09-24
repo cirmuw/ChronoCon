@@ -267,48 +267,45 @@ def train_loop_AE_v4(
 ######################################################################################
 ######################################################################################
 
-
-
-
 def val_epoch_AE_v4(
     model_AE: torch.nn.Module,
     dataloaders: Dict[str, torch.utils.data.DataLoader],
-    loss_fn_dict: dict, 
+    loss_fn_dict: dict,
     model_classifier: Optional[torch.nn.Module] = None,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
     return_all_predictions: bool = False,
     calc_ICC3=0,
-    task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
+    task_type_y: Literal["classification", "regression", "classification_regression_mix"] = "classification",
 ):
     """
-    Difference to v1: 
+    Difference to v1:
      dataloader -> dataloaders (dict)
      model(img) -> mode(img, score_type)
 
     Returns
     -------
     metrics : dict
-        Scalar losses (L, Lx, Ly, Lz, per‑head Ly_*), classical classification
+        Scalar losses (L, Lx, Ly, Lz, per-head Ly_*), classical classification
         metrics, confusion matrix and sklearn classification report.
     outputs_all_samples : dict, optional
         Returned only when *return_all_predictions* is *True*.
     """
 
     # ------------------------------------------------------------------
-    # 0) Book‑keeping & preparation
+    # 0) Book-keeping & preparation
     # ------------------------------------------------------------------
     loss_fn_x = loss_fn_dict["x"]["function"];  lambda_x = loss_fn_dict["x"]["lambda"]
     loss_fn_y = loss_fn_dict["y"]["function"];  lambda_y = loss_fn_dict["y"]["lambda"]
     loss_fn_z = loss_fn_dict["z"]["function"];  lambda_z = loss_fn_dict["z"]["lambda"]
-    
+
     loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
     lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
 
     loss_fn_z_triplet_WST_score = loss_fn_dict["z_triplet_WST_score"]["function"];  
     #lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
-    lambda_z_triplet_WST_score = 0.0 # Since dataloader for val does not contain self transforms I simply skip... 
+    lambda_z_triplet_WST_score = 0.0  # Since dataloader for val does not contain self transforms I simply skip...
 
     loss_fn_z_CR = loss_fn_dict["z_score_consistency_regularizer"]["function"];  
     lambda_z_CR  = loss_fn_dict["z_score_consistency_regularizer"]["lambda"]
@@ -319,12 +316,11 @@ def val_epoch_AE_v4(
     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
 
-    loss_terms_ = ["x", "y", "z", 
-                  "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
-                  "y_reg_extra", "y_delta"]
+    loss_terms_ = ["x", "y", "z",
+                   "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer",
+                   "y_reg_extra", "y_delta"]
     assert set(loss_fn_dict.keys()) == set(loss_terms_), \
-     f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
-    
+        f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
 
     model_AE.eval().to(device)
     if model_classifier is not None:
@@ -334,15 +330,13 @@ def val_epoch_AE_v4(
 
         # Max width across all classifier heads – used to build batch_logits
         max_out_dim = max(
-            hinfo["out_dim"]
-            for hinfo in model_classifier.classifier_head_infos.values()
+            hinfo["out_dim"] for hinfo in model_classifier.classifier_head_infos.values()
         )
     else:
         running_head_loss = defaultdict(float)
         head_counts = defaultdict(int)
-        max_out_dim = 1  # trivial – no classifier
+        max_out_dim = 1  # trivial – no classifier
 
-    # running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
     loss_dct_keys = list(loss_fn_dict.keys())
     running_loss = dict(L=0.0)
     for k in loss_dct_keys:
@@ -354,15 +348,10 @@ def val_epoch_AE_v4(
     all_preds = []
     all_preds_float = []
     all_labels = []
-    all_logits: list[np.ndarray] | None = [] if task_type_y=="classification" else None
+    # collect logits for classification AND mix (in mix: first col is regression, rest are class logits)
+    all_logits: list[np.ndarray] | None = [] if task_type_y in ("classification", "classification_regression_mix") else None
 
-    extra_keys = [
-        "file_name",
-        "score_type",
-        "JSN_or_ERO",
-        "extremity",
-        "patient_id",
-    ]
+    extra_keys = ["file_name", "score_type", "JSN_or_ERO", "extremity", "patient_id"]
     all_extras: Dict[str, list] = {k: [] for k in extra_keys}
 
     # ------------------------------------------------------------------
@@ -372,9 +361,9 @@ def val_epoch_AE_v4(
         for dataloader_name, dataloader in dataloaders.items():
             for batch in dataloader:
                 X = batch["img"].to(device)
-                X_pos  = batch.get("img_pos", None)
-                if X_pos is not None: 
-                    X_pos  = X_pos.to(device) # positive part for triplet loss
+                X_pos = batch.get("img_pos", None)
+                if X_pos is not None:
+                    X_pos = X_pos.to(device)  # positive part for triplet loss
                 y = batch["score"].to(device)
                 s_type = batch["score_type"]  # list[str] – one per sample
                 instance_label = np.array(batch["patient_scoretype_key"])
@@ -385,34 +374,27 @@ def val_epoch_AE_v4(
                 # ----------------------------------------------------------
                 X_pred, z = model_AE(transform(X), s_type)
 
-                if X_pos is not None: 
-                    _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos)
-                else: 
+                if X_pos is not None:
+                    _, z_positive = model_AE(X_pos, score_types=s_type)
+                else:
                     z_positive = z  # Fall back (Note that in this case lambda should be 0!)
-                    # Note that triplet loss with self-transform does not really work without transforms (in the val loop...)
-                    # assert lambda_z_triplet_WST_score == 0.0
 
                 loss_x = loss_fn_x(X_pred, X)
                 loss_z = loss_fn_z(z, z * 0)
 
-                # triplet loss on classes: 
-                loss_z_triplet_classes = ( 
-                    loss_fn_z_triplet_classes(labels=y, embeddings=z, 
-                    ids=instance_label,  # Use None for ablation study!
-                    margin_scores=y # score dependent margin
-                    ))
+                # triplet/class losses
+                loss_z_triplet_classes = loss_fn_z_triplet_classes(
+                    labels=y, embeddings=z, ids=instance_label, margin_scores=y
+                )
                 loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_classes
 
-                loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
-                                                                                embeddings=z, 
-                                                                                embeddings_self_transform = z_positive,
-                                                                                ids=instance_label,  # Use None for ablation study!
-                                                                                margin_scores=y # score dependent margin
-                                                                )
+                loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(
+                    labels=y, embeddings=z, embeddings_self_transform=z_positive,
+                    ids=instance_label, margin_scores=y
+                )
                 loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
-                
-                loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
+                loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -421,17 +403,19 @@ def val_epoch_AE_v4(
                 loss_y_reg_extra = torch.tensor(0.0, device=device)
                 loss_y_delta = torch.tensor(0.0, device=device)
 
-                batch_preds_float = torch.empty(B, dtype=torch.float32, device=device)   
-                batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
-                batch_preds = torch.empty(B, dtype=torch.long, device=device)
+                batch_preds_float = torch.empty(B, dtype=torch.float32, device=device)
 
-                # if task_type_y == "classification":
-                #     batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
-                #     batch_preds = torch.empty(B, dtype=torch.long, device=device)
-                # elif task_type_y == "regression":
-                #     batch_preds = torch.empty(B, dtype=torch.float32, device=device)                
-                # else: 
-                #     raise NotImplementedError(f"{task_type_y = }")
+                if task_type_y == "classification":
+                    batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+                    batch_preds = torch.empty(B, dtype=torch.long, device=device)
+                elif (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
+                    batch_preds = torch.empty(B, dtype=torch.float32, device=device)
+                    if task_type_y == "classification_regression_mix":
+                        # 1 for regression + max_out_dim for class logits
+                        # batch_logits = torch.full((B, 1 + max_out_dim), float("-inf"), device=device)
+                        batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+                else:
+                    raise NotImplementedError(f"{task_type_y = }")
 
                 if model_classifier is not None:
                     out_dict = model_classifier(z, s_type, return_dict=True)
@@ -444,36 +428,36 @@ def val_epoch_AE_v4(
                         # ---- loss ------------------------------------------------
                         head_target = y[idx]
                         head_instance_label = instance_label[idx.cpu().numpy()]
+
                         if task_type_y == "regression":
-                            loss_fn_y_input = logits.squeeze(-1) #logits[:,0]
-                            score_estimation = loss_fn_y_input                              
+                            loss_fn_y_input = logits.squeeze(-1)
+                            score_estimation = loss_fn_y_input
                             head_target = head_target.float().to(device)
+
                         if task_type_y == "classification":
                             loss_fn_y_input = logits
-                            score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")                              
-                        if task_type_y == "classification_regression_mix": 
-                            #raise NotImplementedError("task_type_y == 'classification_regression_mix'")
+                            score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
+                                logits, mode="expectation_value"
+                            )
+
+                        if task_type_y == "classification_regression_mix":
                             loss_fn_y_input = logits
-                            score_estimation_1 = loss_fn_y_input[..., 0]  #  These are not logits! First element is assumed to be the reg. value
-                            score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
+                            score_estimation_1 = loss_fn_y_input[..., 0]  # regression value
+                            score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
+                                logits[..., 1:], mode="expectation_value"
+                            )
                             score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
-                            # head_target_float = head_target.float().to(device)
 
-
-                        head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
+                        head_loss = loss_fn_y(loss_fn_y_input, head_target)
                         head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
                         head_loss_y_delta = loss_fn_y_delta(score_estimation, head_target.float().to(device), head_instance_label)
-                        
-                        
-                        w = model_classifier.classifier_head_infos[head_name].get(
-                            "loss_weight", 1.0
-                        )
-                        loss_y += head_loss * cnt * w  # Σ (loss_i * w)
+
+                        w = model_classifier.classifier_head_infos[head_name].get("loss_weight", 1.0)
+                        loss_y += head_loss * cnt * w
                         loss_y_reg_extra += head_loss_y_extra * cnt * w
                         loss_y_delta += head_loss_y_delta * cnt * w
 
-
-                        # per‑head running sums (raw, un‑weighted)
+                        # per-head running sums (raw, un-weighted)
                         running_head_loss[head_name] += head_loss.item() * cnt
                         head_counts[head_name] += cnt
 
@@ -482,40 +466,50 @@ def val_epoch_AE_v4(
                             batch_logits[idx, : logits.shape[1]] = logits
                             batch_preds[idx] = logits.argmax(dim=1)
                         elif task_type_y == "regression":
-                            batch_preds[idx] = logits.squeeze(-1) # these are not logits
+                            batch_preds[idx] = logits.squeeze(-1)  # these are not logits
                         elif task_type_y == "classification_regression_mix":
+                            # save both regression (col0) and class logits (col1..)
+                            batch_logits[idx, : logits.shape[1]] = logits
                             batch_preds[idx] = score_estimation
-                        else: 
+                        else:
                             raise NotImplementedError(f"{task_type_y = }")
+
                         batch_preds_float[idx] = score_estimation
 
                     # convert Σ(loss*count) ➜ mean per sample of *whole batch*
                     loss_y = loss_y / B
                     loss_y_reg_extra = loss_y_reg_extra / B
                     loss_y_delta = loss_y_delta / B
+
                 else:
-                    # no classifier – leave loss_y = 0, predictions dummy‑filled
+                    # no classifier – leave loss_y = 0, predictions dummy-filled
                     if task_type_y == "classification":
+                        batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
                         batch_logits.zero_()
                         batch_preds.fill_(0)
                     elif task_type_y == "regression":
                         batch_preds.fill_(0)
-                    else: 
+                    elif task_type_y == "classification_regression_mix":
+                        batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+                        batch_logits.zero_()
+                        batch_preds.fill_(0)
+                    else:
                         raise NotImplementedError(f"{task_type_y = }")
                     batch_preds_float.fill_(0.0)
 
                 # ----------------------------------------------------------
                 # 1.3 Total weighted loss & running sums
                 # ----------------------------------------------------------
-                loss_total = (lambda_x * loss_x + 
-                              lambda_y * loss_y + 
-                              lambda_z * loss_z + 
-                              lambda_z_triplet_classes * loss_z_triplet_classes + 
-                              lambda_z_CR * loss_z_CRL + 
-                              lambda_z_triplet_WST_score * loss_z_triplet_WST_scores +                               
-                              lambda_y_delta * loss_y_delta + 
-                              lambda_y_reg_extra * loss_y_reg_extra
-                             )                               
+                loss_total = (
+                    lambda_x * loss_x
+                    + lambda_y * loss_y
+                    + lambda_z * loss_z
+                    + lambda_z_triplet_classes * loss_z_triplet_classes
+                    + lambda_z_CR * loss_z_CRL
+                    + lambda_z_triplet_WST_score * loss_z_triplet_WST_scores
+                    + lambda_y_delta * loss_y_delta
+                    + lambda_y_reg_extra * loss_y_reg_extra
+                )
 
                 running_loss["Lx"] += loss_x.item() * B
                 running_loss["Ly"] += loss_y.item() * B
@@ -525,20 +519,18 @@ def val_epoch_AE_v4(
                 running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
                 running_loss["Ly_delta"] += loss_y_delta.item() * B
                 running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
-
                 running_loss["L"] += loss_total.item() * B
                 n_samples += B
 
                 # ----------------------------------------------------------
-                # 1.4 Collect per‑sample statistics for later metrics
+                # 1.4 Collect per-sample statistics for later metrics
                 # ----------------------------------------------------------
                 all_preds.extend(batch_preds.cpu().numpy())
                 all_preds_float.extend(batch_preds_float.cpu().numpy())
-                all_labels.extend(y.cpu().numpy())                        
-                if task_type_y == "classification":
+                all_labels.extend(y.cpu().numpy())
+
+                if (model_classifier is not None) and (task_type_y in ("classification", "classification_regression_mix")):
                     all_logits.extend(batch_logits.cpu().numpy())
-                if task_type_y == "classification_regression_mix":
-                    all_logits.extend(batch_logits.cpu().numpy())  # I could also just save probs... 
 
                 for k in extra_keys:
                     if k in batch:
@@ -553,78 +545,71 @@ def val_epoch_AE_v4(
     if model_classifier is not None:
         for head_name in model_classifier.classifier_head_infos:
             cnt = head_counts[head_name]
-            running_loss[f"Ly_{head_name}"] = (
-                running_head_loss[head_name] / cnt if cnt else 0.0
-            )
+            running_loss[f"Ly_{head_name}"] = (running_head_loss[head_name] / cnt if cnt else 0.0)
 
     # ------------------------------------------------------------------
     # 3) Classical classification statistics (global)
     # ------------------------------------------------------------------
-    metrics = {
-        **running_loss,
-        "loss": running_loss["L"],  # compatibility with legacy logger
-    }
+    metrics = {**running_loss, "loss": running_loss["L"]}
 
     all_preds_np = np.array(all_preds)
     all_preds_np_float = np.array(all_preds_float)
     all_labels_np = np.array(all_labels)
-    all_logits_np = np.array(all_logits) if task_type_y == "classification" else None         
+
     if task_type_y == "classification":
+        all_logits_np = np.array(all_logits)  # (N, C)
         all_preds_np_classes = all_preds_np
         all_probs_np = F.softmax(torch.from_numpy(all_logits_np), dim=1).numpy()
-    elif (task_type_y == "regression") or (task_type_y == "classification_regression_mix") :
-        # round to nearest class for classification metrics
+
+    elif task_type_y == "classification_regression_mix":
+        all_logits_np = np.array(all_logits)  # (N, 1 + C)  [col0=regression, col1..=class logits]
+        class_logits_np = all_logits_np[:, 1:]  # drop regression column for probs
+        all_probs_np = F.softmax(torch.from_numpy(class_logits_np), dim=1).numpy()
+
+        # round regression/class-mix predictions for classification metrics
         all_preds_np_classes = np.round(all_preds_np)
         all_preds_np_classes = np.clip(all_preds_np_classes, 0, np.inf)
         if classes is not None:
-            all_preds_np_classes = np.clip(all_preds_np_classes, 0, len(classes)-1)
+            all_preds_np_classes = np.clip(all_preds_np_classes, 0, len(classes) - 1)
+
+    else:  # pure regression
+        all_logits_np = None
+        all_preds_np_classes = np.round(all_preds_np)
+        all_preds_np_classes = np.clip(all_preds_np_classes, 0, np.inf)
+        if classes is not None:
+            all_preds_np_classes = np.clip(all_preds_np_classes, 0, len(classes) - 1)
 
     all_preds_np_classes = all_preds_np_classes.astype(np.int64)
-    all_labels_np        = all_labels_np.astype(np.int64)
+    all_labels_np = all_labels_np.astype(np.int64)
 
-    
-    metrics_ = calculate_some_classification_metrics(all_preds_np_classes, 
-                                                     all_labels_np, 
-                                                     calc_ICC3=calc_ICC3, 
-                                                     # add_classification_metrics = (task_type_y=="classification")
-                                                     )
+    metrics_ = calculate_some_classification_metrics(
+        all_preds_np_classes, all_labels_np, calc_ICC3=calc_ICC3,
+    )
     metrics.update(metrics_)
 
-    
-    if (task_type_y == "regression") or (task_type_y == "classification_regression_mix") : # to calculate RMSE, ... on non-rounded parts
+    if (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
+        # regression-style metrics on the raw (non-rounded) predictions
         regression_metrics = calculate_some_classification_metrics(
-            all_preds_np,           # raw scores
-            all_labels_np,
-            calc_ICC3=calc_ICC3,
-            add_classification_metrics=False,   # no acc / bal-acc here
-            add_spearman=True,
-            add_kappa=False,
+            all_preds_np, all_labels_np, calc_ICC3=calc_ICC3,
+            add_classification_metrics=False, add_spearman=True, add_kappa=False,
         )
         metrics.update(regression_metrics)
 
-
     if task_type_y == "classification":
-        # ---- top‑2 accuracy --------------------------------------------------
+        # ---- top-2 accuracy --------------------------------------------------
         top2 = np.argsort(all_probs_np, axis=1)[:, -2:]
         top2_correct = sum(label in top2[i] for i, label in enumerate(all_labels_np))
         metrics["top2_accuracy"] = top2_correct / len(all_labels_np)
-
 
     # ---- confusion matrix & classification report -----------------------
     cm = confusion_matrix(all_labels_np, all_preds_np_classes)
     metrics["confusion_matrix"] = cm.tolist()
 
-
-
     if classes is not None:
         labels = list(range(len(classes)))
         report = classification_report(
-            all_labels_np,
-            all_preds_np_classes,
-            labels=labels,
-            target_names=classes,
-            output_dict=True,
-            zero_division=0.0,
+            all_labels_np, all_preds_np_classes, labels=labels, target_names=classes,
+            output_dict=True, zero_division=0.0,
         )
     else:
         report = classification_report(
@@ -633,20 +618,414 @@ def val_epoch_AE_v4(
     metrics["classification_report"] = report
 
     # ------------------------------------------------------------------
-    # 4) Optionally return per‑sample outputs
+    # 4) Optionally return per-sample outputs
     # ------------------------------------------------------------------
     if return_all_predictions:
         outputs_all_samples = {
             "labels": all_labels_np,
-            "preds": all_preds_np,
+            "preds": all_preds_np_classes, 
             "preds_float": all_preds_np_float,
             **all_extras,
         }
-        if task_type_y == "classification":
-            outputs_all_samples["probs"] = all_probs_np
+        if task_type_y in ("classification", "classification_regression_mix"):
+            outputs_all_samples["logits"] = all_logits_np  # in mix: includes regression in col0
+            outputs_all_samples["probs"] = all_probs_np    # in mix: probs from class logits only
         return metrics, outputs_all_samples
 
     return metrics
+
+
+# def val_epoch_AE_v4(
+#     model_AE: torch.nn.Module,
+#     dataloaders: Dict[str, torch.utils.data.DataLoader],
+#     loss_fn_dict: dict, 
+#     model_classifier: Optional[torch.nn.Module] = None,
+#     transform=lambda x: x,
+#     device: str = "cuda",
+#     classes: Optional[List[str]] = None,
+#     return_all_predictions: bool = False,
+#     calc_ICC3=0,
+#     task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
+# ):
+#     """
+#     Difference to v1: 
+#      dataloader -> dataloaders (dict)
+#      model(img) -> mode(img, score_type)
+
+#     Returns
+#     -------
+#     metrics : dict
+#         Scalar losses (L, Lx, Ly, Lz, per‑head Ly_*), classical classification
+#         metrics, confusion matrix and sklearn classification report.
+#     outputs_all_samples : dict, optional
+#         Returned only when *return_all_predictions* is *True*.
+#     """
+
+#     # ------------------------------------------------------------------
+#     # 0) Book‑keeping & preparation
+#     # ------------------------------------------------------------------
+#     loss_fn_x = loss_fn_dict["x"]["function"];  lambda_x = loss_fn_dict["x"]["lambda"]
+#     loss_fn_y = loss_fn_dict["y"]["function"];  lambda_y = loss_fn_dict["y"]["lambda"]
+#     loss_fn_z = loss_fn_dict["z"]["function"];  lambda_z = loss_fn_dict["z"]["lambda"]
+    
+#     loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
+#     lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
+
+#     loss_fn_z_triplet_WST_score = loss_fn_dict["z_triplet_WST_score"]["function"];  
+#     #lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
+#     lambda_z_triplet_WST_score = 0.0 # Since dataloader for val does not contain self transforms I simply skip... 
+
+#     loss_fn_z_CR = loss_fn_dict["z_score_consistency_regularizer"]["function"];  
+#     lambda_z_CR  = loss_fn_dict["z_score_consistency_regularizer"]["lambda"]
+
+#     loss_fn_y_reg_extra = loss_fn_dict["y_reg_extra"]["function"];  
+#     lambda_y_reg_extra = loss_fn_dict["y_reg_extra"]["lambda"]
+
+#     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
+#     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
+
+#     loss_terms_ = ["x", "y", "z", 
+#                   "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
+#                   "y_reg_extra", "y_delta"]
+#     assert set(loss_fn_dict.keys()) == set(loss_terms_), \
+#      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
+    
+
+#     model_AE.eval().to(device)
+#     if model_classifier is not None:
+#         model_classifier.eval().to(device)
+#         running_head_loss: defaultdict[str, float] = defaultdict(float)
+#         head_counts: defaultdict[str, int] = defaultdict(int)
+
+#         # Max width across all classifier heads – used to build batch_logits
+#         max_out_dim = max(
+#             hinfo["out_dim"]
+#             for hinfo in model_classifier.classifier_head_infos.values()
+#         )
+#     else:
+#         running_head_loss = defaultdict(float)
+#         head_counts = defaultdict(int)
+#         max_out_dim = 1  # trivial – no classifier
+
+#     # running_loss = dict(Lx=0.0, Ly=0.0, Lz=0.0, L=0.0, Lz_triplet_classes=0.0, Ly_delta=0.0, Ly_reg_extra=0.0)
+#     loss_dct_keys = list(loss_fn_dict.keys())
+#     running_loss = dict(L=0.0)
+#     for k in loss_dct_keys:
+#         running_loss[f"L{k}"] = 0.0
+
+#     n_samples = 0
+
+#     # containers for classification statistics
+#     all_preds = []
+#     all_preds_float = []
+#     all_labels = []
+#     all_logits: list[np.ndarray] | None = [] if task_type_y in ("classification", "classification_regression_mix") else None
+
+#     extra_keys = [
+#         "file_name",
+#         "score_type",
+#         "JSN_or_ERO",
+#         "extremity",
+#         "patient_id",
+#     ]
+#     all_extras: Dict[str, list] = {k: [] for k in extra_keys}
+
+#     # ------------------------------------------------------------------
+#     # 1) Main validation loop
+#     # ------------------------------------------------------------------
+#     with torch.no_grad():
+#         for dataloader_name, dataloader in dataloaders.items():
+#             for batch in dataloader:
+#                 X = batch["img"].to(device)
+#                 X_pos  = batch.get("img_pos", None)
+#                 if X_pos is not None: 
+#                     X_pos  = X_pos.to(device) # positive part for triplet loss
+#                 y = batch["score"].to(device)
+#                 s_type = batch["score_type"]  # list[str] – one per sample
+#                 instance_label = np.array(batch["patient_scoretype_key"])
+#                 B = X.size(0)
+
+#                 # ----------------------------------------------------------
+#                 # 1.1 Autoencoder forward & reconstruction/latent losses
+#                 # ----------------------------------------------------------
+#                 X_pred, z = model_AE(transform(X), s_type)
+
+#                 if X_pos is not None: 
+#                     _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos)
+#                 else: 
+#                     z_positive = z  # Fall back (Note that in this case lambda should be 0!)
+#                     # Note that triplet loss with self-transform does not really work without transforms (in the val loop...)
+#                     # assert lambda_z_triplet_WST_score == 0.0
+
+#                 loss_x = loss_fn_x(X_pred, X)
+#                 loss_z = loss_fn_z(z, z * 0)
+
+#                 # triplet loss on classes: 
+#                 loss_z_triplet_classes = ( 
+#                     loss_fn_z_triplet_classes(labels=y, embeddings=z, 
+#                     ids=instance_label,  # Use None for ablation study!
+#                     margin_scores=y # score dependent margin
+#                     ))
+#                 loss_z_triplet_classes, fraction_positive_triplets__classes, number_of_valid_triplets__classes = loss_z_triplet_classes
+
+#                 loss_z_triplet_WST_scores = loss_fn_z_triplet_WST_score(labels=y, 
+#                                                                                 embeddings=z, 
+#                                                                                 embeddings_self_transform = z_positive,
+#                                                                                 ids=instance_label,  # Use None for ablation study!
+#                                                                                 margin_scores=y # score dependent margin
+#                                                                 )
+#                 loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
+                
+#                 loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
+
+
+#                 # ----------------------------------------------------------
+#                 # 1.2 Classification path (if present)
+#                 # ----------------------------------------------------------
+#                 loss_y = torch.tensor(0.0, device=device)
+#                 loss_y_reg_extra = torch.tensor(0.0, device=device)
+#                 loss_y_delta = torch.tensor(0.0, device=device)
+
+#                 batch_preds_float = torch.empty(B, dtype=torch.float32, device=device)   
+
+#                 if task_type_y == "classification":
+#                     batch_logits = torch.full((B, max_out_dim), float("-inf"), device=device)
+#                     batch_preds = torch.empty(B, dtype=torch.long, device=device)
+#                 elif (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
+#                     batch_preds = torch.empty(B, dtype=torch.float32, device=device)                
+#                 else: 
+#                     raise NotImplementedError(f"{task_type_y = }")
+
+#                 if model_classifier is not None:
+#                     out_dict = model_classifier(z, s_type, return_dict=True)
+
+#                     for head_name, (idx, logits) in out_dict.items():
+#                         cnt = idx.numel()
+#                         if cnt == 0:
+#                             continue
+
+#                         # ---- loss ------------------------------------------------
+#                         head_target = y[idx]
+#                         head_instance_label = instance_label[idx.cpu().numpy()]
+#                         if task_type_y == "regression":
+#                             loss_fn_y_input = logits.squeeze(-1) #logits[:,0]
+#                             score_estimation = loss_fn_y_input                              
+#                             head_target = head_target.float().to(device)
+#                         if task_type_y == "classification":
+#                             loss_fn_y_input = logits
+#                             score_estimation = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits, mode="expectation_value")                              
+#                         if task_type_y == "classification_regression_mix": 
+#                             #raise NotImplementedError("task_type_y == 'classification_regression_mix'")
+#                             loss_fn_y_input = logits
+#                             score_estimation_1 = loss_fn_y_input[..., 0]  #  These are not logits! First element is assumed to be the reg. value
+#                             score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
+#                             score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+#                             # head_target_float = head_target.float().to(device)
+
+
+#                         head_loss   = loss_fn_y(loss_fn_y_input, head_target)   # mean over head-batch
+#                         head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
+#                         head_loss_y_delta = loss_fn_y_delta(score_estimation, head_target.float().to(device), head_instance_label)
+                        
+                        
+#                         w = model_classifier.classifier_head_infos[head_name].get(
+#                             "loss_weight", 1.0
+#                         )
+#                         loss_y += head_loss * cnt * w  # Σ (loss_i * w)
+#                         loss_y_reg_extra += head_loss_y_extra * cnt * w
+#                         loss_y_delta += head_loss_y_delta * cnt * w
+
+
+#                         # per‑head running sums (raw, un‑weighted)
+#                         running_head_loss[head_name] += head_loss.item() * cnt
+#                         head_counts[head_name] += cnt
+
+#                         # ---- store preds & logits ------------------------------
+#                         if task_type_y == "classification":
+#                             batch_logits[idx, : logits.shape[1]] = logits
+#                             batch_preds[idx] = logits.argmax(dim=1)
+#                         elif task_type_y == "regression":
+#                             batch_preds[idx] = logits.squeeze(-1) # these are not logits
+#                         elif task_type_y == "classification_regression_mix":
+#                             batch_preds[idx] = score_estimation  # Should I save integer preds instead?
+#                         else: 
+#                             raise NotImplementedError(f"{task_type_y = }")
+#                         batch_preds_float[idx] = score_estimation
+
+#                     # convert Σ(loss*count) ➜ mean per sample of *whole batch*
+#                     loss_y = loss_y / B
+#                     loss_y_reg_extra = loss_y_reg_extra / B
+#                     loss_y_delta = loss_y_delta / B
+#                 else:
+#                     # no classifier – leave loss_y = 0, predictions dummy‑filled
+#                     if task_type_y == "classification":
+#                         batch_logits.zero_()
+#                         batch_preds.fill_(0)
+#                     elif task_type_y == "regression":
+#                         batch_preds.fill_(0)
+#                     else: 
+#                         raise NotImplementedError(f"{task_type_y = }")
+#                     batch_preds_float.fill_(0.0)
+
+#                 # ----------------------------------------------------------
+#                 # 1.3 Total weighted loss & running sums
+#                 # ----------------------------------------------------------
+#                 loss_total = (lambda_x * loss_x + 
+#                               lambda_y * loss_y + 
+#                               lambda_z * loss_z + 
+#                               lambda_z_triplet_classes * loss_z_triplet_classes + 
+#                               lambda_z_CR * loss_z_CRL + 
+#                               lambda_z_triplet_WST_score * loss_z_triplet_WST_scores +                               
+#                               lambda_y_delta * loss_y_delta + 
+#                               lambda_y_reg_extra * loss_y_reg_extra
+#                              )                               
+
+#                 running_loss["Lx"] += loss_x.item() * B
+#                 running_loss["Ly"] += loss_y.item() * B
+#                 running_loss["Lz"] += loss_z.item() * B
+#                 running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+#                 running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
+#                 running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
+#                 running_loss["Ly_delta"] += loss_y_delta.item() * B
+#                 running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+
+#                 running_loss["L"] += loss_total.item() * B
+#                 n_samples += B
+
+#                 # ----------------------------------------------------------
+#                 # 1.4 Collect per‑sample statistics for later metrics
+#                 # ----------------------------------------------------------
+#                 all_preds.extend(batch_preds.cpu().numpy())
+#                 all_preds_float.extend(batch_preds_float.cpu().numpy())
+#                 all_labels.extend(y.cpu().numpy())                        
+#                 if task_type_y == "classification":
+#                     all_logits.extend(batch_logits.cpu().numpy())
+#                 if task_type_y == "classification_regression_mix":
+#                     all_logits.extend(batch_logits.cpu().numpy())  # I could also just save probs... 
+
+#                 for k in extra_keys:
+#                     if k in batch:
+#                         all_extras[k].extend(batch[k])
+
+#     # ------------------------------------------------------------------
+#     # 2) Aggregate scalar losses
+#     # ------------------------------------------------------------------
+#     for k in running_loss:
+#         running_loss[k] /= n_samples if n_samples else 1.0
+
+#     if model_classifier is not None:
+#         for head_name in model_classifier.classifier_head_infos:
+#             cnt = head_counts[head_name]
+#             running_loss[f"Ly_{head_name}"] = (
+#                 running_head_loss[head_name] / cnt if cnt else 0.0
+#             )
+
+#     # ------------------------------------------------------------------
+#     # 3) Classical classification statistics (global)
+#     # ------------------------------------------------------------------
+#     metrics = {
+#         **running_loss,
+#         "loss": running_loss["L"],  # compatibility with legacy logger
+#     }
+
+#     all_preds_np = np.array(all_preds)
+#     all_preds_np_float = np.array(all_preds_float)
+#     all_labels_np = np.array(all_labels)
+     
+
+#     if task_type_y == "classification":
+#         all_logits_np = np.array(all_logits)
+#         all_preds_np_classes = all_preds_np
+#         all_probs_np = F.softmax(torch.from_numpy(all_logits_np), dim=1).numpy()
+
+#     elif task_type_y == "classification_regression_mix":
+#         all_logits_np = np.array(all_logits)      # shape (N, 1+C)
+#         class_logits_np = all_logits_np[:, 1:]    # drop regression column
+#         all_probs_np = F.softmax(torch.from_numpy(class_logits_np), dim=1).numpy()
+
+#         # round regression/class-mix predictions for classification metrics
+#         all_preds_np_classes = np.round(all_preds_np)
+#         all_preds_np_classes = np.clip(all_preds_np_classes, 0, np.inf)
+#         if classes is not None:
+#             all_preds_np_classes = np.clip(all_preds_np_classes, 0, len(classes)-1)
+
+#     else:  # pure regression
+#         all_logits_np = None
+#         all_preds_np_classes = np.round(all_preds_np)
+#         all_preds_np_classes = np.clip(all_preds_np_classes, 0, np.inf)
+#         if classes is not None:
+#             all_preds_np_classes = np.clip(all_preds_np_classes, 0, len(classes)-1)
+
+#     all_preds_np_classes = all_preds_np_classes.astype(np.int64)
+#     all_labels_np        = all_labels_np.astype(np.int64)
+
+    
+#     metrics_ = calculate_some_classification_metrics(all_preds_np_classes, 
+#                                                      all_labels_np, 
+#                                                      calc_ICC3=calc_ICC3, 
+#                                                      # add_classification_metrics = (task_type_y=="classification")
+#                                                      )
+#     metrics.update(metrics_)
+
+    
+#     if (task_type_y == "regression") or (task_type_y == "classification_regression_mix") : # to calculate RMSE, ... on non-rounded parts
+#         regression_metrics = calculate_some_classification_metrics(
+#             all_preds_np,           # raw scores
+#             all_labels_np,
+#             calc_ICC3=calc_ICC3,
+#             add_classification_metrics=False,   # no acc / bal-acc here
+#             add_spearman=True,
+#             add_kappa=False,
+#         )
+#         metrics.update(regression_metrics)
+
+
+#     if task_type_y == "classification":
+#         # ---- top‑2 accuracy --------------------------------------------------
+#         top2 = np.argsort(all_probs_np, axis=1)[:, -2:]
+#         top2_correct = sum(label in top2[i] for i, label in enumerate(all_labels_np))
+#         metrics["top2_accuracy"] = top2_correct / len(all_labels_np)
+
+
+#     # ---- confusion matrix & classification report -----------------------
+#     cm = confusion_matrix(all_labels_np, all_preds_np_classes)
+#     metrics["confusion_matrix"] = cm.tolist()
+
+
+
+#     if classes is not None:
+#         labels = list(range(len(classes)))
+#         report = classification_report(
+#             all_labels_np,
+#             all_preds_np_classes,
+#             labels=labels,
+#             target_names=classes,
+#             output_dict=True,
+#             zero_division=0.0,
+#         )
+#     else:
+#         report = classification_report(
+#             all_labels_np, all_preds_np_classes, output_dict=True, zero_division=0.0
+#         )
+#     metrics["classification_report"] = report
+
+#     # ------------------------------------------------------------------
+#     # 4) Optionally return per‑sample outputs
+#     # ------------------------------------------------------------------
+#     if return_all_predictions:
+#         outputs_all_samples = {
+#             "labels": all_labels_np,
+#             "preds": all_preds_np,
+#             "preds_float": all_preds_np_float,
+#             **all_extras,
+#         }
+#         if task_type_y == "classification":
+#             outputs_all_samples["probs"] = all_probs_np
+#         return metrics, outputs_all_samples
+
+#     return metrics
+
+
 
 
 
@@ -932,22 +1311,45 @@ def evaluate_and_log_testset_results_AE_v4(
     y_true = outputs_all["labels"]
     y_pred = outputs_all["preds"]
 
-    # round & clip when we came from regression
-    if task_type_y == "regression":
-        y_pred = np.round(y_pred)
-        y_pred = np.clip(y_pred, 0, np.inf)
+    # Build integer class labels for classification metrics
+    if task_type_y in ("regression", "classification_regression_mix"):
+        y_pred_for_cls = np.round(y_pred)
+        y_pred_for_cls = np.clip(y_pred_for_cls, 0, np.inf)
         if classes is not None:
-            y_pred = np.clip(y_pred, 0, len(classes) - 1)
-        y_pred = y_pred.astype(np.int64)
-        y_true = y_true.astype(np.int64)
+            y_pred_for_cls = np.clip(y_pred_for_cls, 0, len(classes) - 1)
+        y_pred_for_cls = y_pred_for_cls.astype(np.int64)
+        y_true_for_cls = y_true.astype(np.int64)
+    else:
+        # pure classification: already class indices
+        y_pred_for_cls = y_pred
+        y_true_for_cls = y_true
+
+    # # round & clip when we came from regression
+    # if task_type_y == "regression":
+    #     y_pred = np.round(y_pred)
+    #     y_pred = np.clip(y_pred, 0, np.inf)
+    #     if classes is not None:
+    #         y_pred = np.clip(y_pred, 0, len(classes) - 1)
+    #     y_pred = y_pred.astype(np.int64)
+    #     y_true = y_true.astype(np.int64)
 
     if score_types is not None:
         score_types = np.asarray(score_types)
 
+        # def _class_rep(idx):
+        #     return classification_report(
+        #         y_true[idx],
+        #         y_pred[idx],
+        #         labels=list(range(len(classes))) if classes else None,
+        #         target_names=classes if classes else None,
+        #         output_dict=True,
+        #         zero_division=0.0,
+        #     )
+
         def _class_rep(idx):
             return classification_report(
-                y_true[idx],
-                y_pred[idx],
+                y_true_for_cls[idx],
+                y_pred_for_cls[idx],
                 labels=list(range(len(classes))) if classes else None,
                 target_names=classes if classes else None,
                 output_dict=True,

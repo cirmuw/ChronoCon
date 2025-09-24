@@ -1425,6 +1425,7 @@ def prepare_dataloaders(datasets, config):
     # ---------- classic image-level weighted sampler ----------
     if sampler_name == "WeightedRandomSampler": 
         labels         = [item['score'] for item in datasets["dataset_train"].data]
+        labels = np.int_(np.round(labels))  # Labels were maybe modified... Undo change by rounding
         class_count    = torch.bincount(torch.tensor(labels))
         class_weights  = 1.0 / class_count.float()
         sample_weights = [class_weights[l] for l in labels]

@@ -415,6 +415,12 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         for k in classifier_head_infos.keys():
             classifier_head_infos[k]["out_dim"] += 1 # 0 is Regression output; 1...out_dim+1 = class logits                
 
+    # Check that if label is transformed to float (in training) the 
+    if config["data"].get("enable_tSLR", False):
+        classifier_name = config["model"]["classifier"]["name"]
+        assert classifier_name in ("MixLogAndReg", "Reg"), f"Not allowed combination with {classifier_name = } and data['enable_tSLR'] = True"
+
+
 
     model_name = config["model_name"]
     model_AE, model_c = build_models_AE_v1_and2(
