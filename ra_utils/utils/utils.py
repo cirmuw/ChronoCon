@@ -174,6 +174,31 @@ def reroot_filepath(p: str, roots: dict, chill=False):
 
 
 
+def datestr_to_years_since_2000(date_strs, avg_year_days: float = 365.2425, 
+                                np_dtype=np.float32#, torch_device: str = "cpu"
+                                ):
+    """
+    Convert ['YYYYMMDD', ...] -> numpy float array of years since 2000-01-01,
+    then to a torch.float32 tensor on the chosen device.
+    """
+    # 1) Normalize to ISO strings 'YYYY-MM-DD' (vectorizable, no loops in the math)
+    iso = np.array([f"{s[:4]}-{s[4:6]}-{s[6:8]}" for s in date_strs], dtype="U10")
+
+    # 2) NumPy datetime arithmetic in days
+    dates = iso.astype("datetime64[D]")
+    base  = np.datetime64("2000-01-01", "D")
+    days  = (dates - base).astype("timedelta64[D]").astype(np.int64)
+
+    # 3) Convert to (fractional) years using mean Gregorian year length
+    years_np = (days.astype(np.float64) / avg_year_days).astype(np_dtype)
+
+    # 4) NumPy -> Torch tensor
+    # years_t = torch.from_numpy(years_np).to(torch_device)
+    return years_np#, years_t
+
+# years_np = datestr_to_years_since_2000(batch["date_str"])
+# years_t = torch.from_numpy(years_np).to(torch_device)
+
 
 if __name__ == "__main__":
     import doctest

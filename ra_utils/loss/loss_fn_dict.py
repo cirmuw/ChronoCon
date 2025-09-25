@@ -33,7 +33,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_y = {
             "function": loss_fn_y, 
             "lambda": lambda_y, 
-            "options": None
+            "options": config["loss"].get("score", {}).get("options", {})
         }
     
 
@@ -45,7 +45,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_x = {
             "function": loss_fn_x, 
             "lambda": lambda_x, 
-            "options": None
+            "options": {} #
         }
     
 
@@ -58,7 +58,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_z = {
             "function": loss_fn_z, 
             "lambda": lambda_z, 
-            "options": None
+            "options": {}
         }
 
 
@@ -70,7 +70,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_z_triplet_classes = {
             "function": loss_fn_z_triplet_classes, 
             "lambda": lambda_z_triplet_classes, 
-            "options": None
+            "options": config["loss"].get("triplet_scores_classes", {}).get("options", {})
         }
     
     # Triplet loss with self transform (WST) on scores
@@ -81,30 +81,30 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_z_triplet_WST_score = {
             "function": loss_fn_z_triplet_WST_score, 
             "lambda": lambda_z_triplet_WST_score, 
-            "options": None
+            "options": config["loss"].get("triplet_WST_scores", {}).get("options", {})
         }
     
     # # Triplet loss with self transform (WST) on time
-    # lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
-    # loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
-    # if lambda_z_triplet_WST_time < 1.0e-8: 
-    #         loss_fn_z_triplet_WST_time = dummy2
-    # loss_dct_z_triplet_WST_time = {
-    #         "function": loss_fn_z_triplet_WST_time, 
-    #         "lambda": lambda_z_triplet_WST_time, 
-    #         "options": None
-    #     }
+    lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
+    loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
+    if lambda_z_triplet_WST_time < 1.0e-8: 
+            loss_fn_z_triplet_WST_time = dummy3
+    loss_dct_z_triplet_WST_time = {
+            "function": loss_fn_z_triplet_WST_time, 
+            "lambda": lambda_z_triplet_WST_time, 
+            "options": config["loss"].get("triplet_WST_time", {}).get("options", {})
+        }
 
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
     lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
     loss_fn_z_score_consistency_regularizer = get_consistency_regularization_loss_fn(config["loss"].get("score_consistency_regularizer", {}))
     if lambda_z_score_consistency_regularizer < 1.0e-8: 
-            loss_fn_z_score_consistency_regularizer = dummy
+            loss_fn_z_score_consistency_regularizer = dummy2
     loss_dct_z_score_consistency_regularizer = {
             "function": loss_fn_z_score_consistency_regularizer, 
             "lambda": lambda_z_score_consistency_regularizer, 
-            "options": None
+            "options": config["loss"].get("score_consistency_regularizer", {}).get("options", {})
         }
 
     # Duplet loss (e.g. Huber loss)
@@ -115,7 +115,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_y_delta = {
         "function": loss_fn_y_delta,
         "lambda": lambda_y_delta,
-        "options": None
+        "options": {} # config["loss"].get("XXXX", {}).get("options", {})
     }
 
 
@@ -126,7 +126,7 @@ def get_loss_fn_dict(config, device="cuda"):
     loss_dct_y_reg_extra = {
         "function": loss_fn_y_reg_extra,
         "lambda": lambda_y_reg_extra,
-        "options": None
+        "options": {}# config["loss"].get("XXXX", {}).get("options", {})
     }
 
     r = {
@@ -143,7 +143,7 @@ def get_loss_fn_dict(config, device="cuda"):
         #
         "z_triplet_classes": loss_dct_z_triplet_classes,
         "z_triplet_WST_score": loss_dct_z_triplet_WST_score, 
-        # "z_triplet_WST_time": loss_dct_z_triplet_WST_time,   # Later ... or not 
+        "z_triplet_WST_time": loss_dct_z_triplet_WST_time,   # Later ... or not 
         #
         "z_score_consistency_regularizer": loss_dct_z_score_consistency_regularizer
     }

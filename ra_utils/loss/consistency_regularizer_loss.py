@@ -53,7 +53,7 @@ def consistency_regularizer_loss(
         loss = (mask.float() * scores_bracket * emb_distances).sum() / N
     else: 
         loss = torch.tensor(0.0, dtype=torch.float32, device=device)
-    return loss
+    return loss, N
 
 
 class ConsistencyRegularizerLoss(nn.Module):
@@ -62,13 +62,15 @@ class ConsistencyRegularizerLoss(nn.Module):
         metric_embeddings: Union[Literal["euclidean", "cosine", "tanh_euclidean"], Callable[[torch.Tensor, torch.Tensor], torch.Tensor]] = "tanh_euclidean",
         metric_scores: Union[Literal["abs", "squared"], Callable[[torch.Tensor], torch.Tensor]] = "abs",
         deltino: float = 1.0e-1,
-        squared_embeddings_metric: bool = True
+        squared_embeddings_metric: bool = True,
+        return_N_valid=True
     ):
         super().__init__()
         self.metric_embeddings = metric_embeddings
         self.metric_scores = metric_scores
         self.deltino = deltino
         self.squared_embeddings_metric = squared_embeddings_metric
+        self.return_N_valid = return_N_valid
 
     def forward(self, embeddings: torch.Tensor, scores: torch.Tensor, ids: np.ndarray):
         """
@@ -82,7 +84,8 @@ class ConsistencyRegularizerLoss(nn.Module):
         Returns:
             torch.Tensor: consistency regularizer loss value
         """
-        return consistency_regularizer_loss(
+
+        loss, N_valid = consistency_regularizer_loss(
             embeddings=embeddings,
             scores=scores,
             ids=ids,
@@ -91,3 +94,8 @@ class ConsistencyRegularizerLoss(nn.Module):
             deltino=self.deltino,
             squared_embeddings_metric=self.squared_embeddings_metric
         )
+
+        if self.return_N_valid:
+            return loss, N_valid
+        else: 
+            return loss

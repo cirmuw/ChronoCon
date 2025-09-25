@@ -233,7 +233,7 @@ def batch_all_triplet_loss_WST(
     # Get final mean triplet loss over the positive valid triplets
     triplet_loss = triplet_loss.sum() / (num_positive_triplets + 1e-16)
 
-    return triplet_loss, fraction_positive_triplets
+    return triplet_loss, fraction_positive_triplets, num_valid_triplets
 
 
 

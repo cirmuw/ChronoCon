@@ -125,11 +125,11 @@ def train_loop_AE_v4(
             )
         if verbose > 1:
             train_losses = "  Train:      " + " | ".join(
-            f"{key}: {value:.3f}" for key, value in train_metrics_dct.items() if key != "L"
+            f"{key}: {value:.3f}" for key, value in train_metrics_dct.items() if ((key != "L") and (value != 0.0))
             )
             val_losses = "  Validation: " + " | ".join(
             f"{key}: {value:.3f}" for key, value in val_metrics_dct.items() if (
-                key.startswith("L") and 
+                key.startswith("L") and (value != 0.0) and 
                 key != "L")
             )
             print(train_losses)
@@ -144,7 +144,7 @@ def train_loop_AE_v4(
             train_rel = "     rel. loss contribution Tr.: " + " | ".join(
                 f"{k[1:]}: {(w * train_metrics_dct[k] / train_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
-                if k in train_metrics_dct
+                if ((k in train_metrics_dct)  and (lambda_vals != 0.0))
             )
             print(train_rel)
 
@@ -152,7 +152,7 @@ def train_loop_AE_v4(
             val_rel = "     rel. loss contribution Val: " + " | ".join(
                 f"{k[1:]}: {(w * val_metrics_dct[k] / val_metrics_dct['L']):.2f}"
                 for k, w in zip(loss_keys, lambda_vals)
-                if k in val_metrics_dct
+                if ((k in val_metrics_dct)  and (lambda_vals != 0.0))
             )
             print(val_rel)
 
@@ -302,13 +302,20 @@ def val_epoch_AE_v4(
 
     loss_fn_z_triplet_classes = loss_fn_dict["z_triplet_classes"]["function"];  
     lambda_z_triplet_classes  = loss_fn_dict["z_triplet_classes"]["lambda"]
+    lambda_z_triplet_classes_val_multiplier  = loss_fn_dict["z_triplet_classes"]["options"].get("validation_multiplier", 1.0)
 
     loss_fn_z_triplet_WST_score = loss_fn_dict["z_triplet_WST_score"]["function"];  
-    #lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
-    lambda_z_triplet_WST_score = 0.0  # Since dataloader for val does not contain self transforms I simply skip...
+    lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
+    lambda_z_triplet_WST_score_val_multiplier  = loss_fn_dict["z_triplet_WST_score"]["options"].get("validation_multiplier", 1.0)
+
+    loss_fn_z_triplet_WST_time = loss_fn_dict["z_triplet_WST_time"]["function"];  
+    lambda_z_triplet_WST_time  = loss_fn_dict["z_triplet_WST_time"]["lambda"]
+    lambda_z_triplet_WST_time_val_multiplier  = loss_fn_dict["z_triplet_WST_time"]["options"].get("validation_multiplier", 1.0)
+
 
     loss_fn_z_CR = loss_fn_dict["z_score_consistency_regularizer"]["function"];  
     lambda_z_CR  = loss_fn_dict["z_score_consistency_regularizer"]["lambda"]
+    lambda_z_CR_val_multiplier  = loss_fn_dict["z_score_consistency_regularizer"]["options"].get("validation_multiplier", 1.0)
 
     loss_fn_y_reg_extra = loss_fn_dict["y_reg_extra"]["function"];  
     lambda_y_reg_extra = loss_fn_dict["y_reg_extra"]["lambda"]
@@ -316,11 +323,13 @@ def val_epoch_AE_v4(
     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
 
-    loss_terms_ = ["x", "y", "z",
-                   "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer",
-                   "y_reg_extra", "y_delta"]
-    assert set(loss_fn_dict.keys()) == set(loss_terms_), \
-        f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
+    loss_terms_ = ["x", "y", "z", 
+                  # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
+                  "y_reg_extra", "y_delta"]
+    loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer"]
+
+    assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
+     f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
 
     model_AE.eval().to(device)
     if model_classifier is not None:
@@ -337,10 +346,14 @@ def val_epoch_AE_v4(
         head_counts = defaultdict(int)
         max_out_dim = 1  # trivial – no classifier
 
-    loss_dct_keys = list(loss_fn_dict.keys())
+
+    # running sums for global losses
     running_loss = dict(L=0.0)
-    for k in loss_dct_keys:
+    for k in loss_terms_:
         running_loss[f"L{k}"] = 0.0
+
+    # All 
+    contr_dct = dict() # for the counts pos, ... of the triplet losses 
 
     n_samples = 0
 
@@ -369,6 +382,13 @@ def val_epoch_AE_v4(
                 instance_label = np.array(batch["patient_scoretype_key"])
                 B = X.size(0)
 
+                # Times and date labels
+                years_np = datestr_to_years_since_2000(batch["date_str"])
+                days_np = (years_np*365.2425).astype(int)
+                days_t = torch.from_numpy(days_np).to(device)
+                years_t = torch.from_numpy(years_np).to(device)
+                date_str_np = np.array(batch["date_str"])
+
                 # ----------------------------------------------------------
                 # 1.1 Autoencoder forward & reconstruction/latent losses
                 # ----------------------------------------------------------
@@ -393,8 +413,19 @@ def val_epoch_AE_v4(
                     ids=instance_label, margin_scores=y
                 )
                 loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
+            
 
-                loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
+                # with self-transform on TIME
+                loss_z_triplet_WST_time = loss_fn_z_triplet_WST_time(labels=days_t,
+                                                                    embeddings=z, 
+                                                                    embeddings_self_transform = z_positive,
+                                                                    ids=instance_label,  # pat001_L_PIPII
+                                                                    margin_scores=years_t
+                                                                )
+                loss_z_triplet_WST_time, fraction_positive_triplets__WST_time, number_of_valid_triplets__WST_time = loss_z_triplet_WST_time
+
+
+                loss_z_SCR, number_of_valid_contributions_SCR = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -504,9 +535,10 @@ def val_epoch_AE_v4(
                     lambda_x * loss_x
                     + lambda_y * loss_y
                     + lambda_z * loss_z
-                    + lambda_z_triplet_classes * loss_z_triplet_classes
-                    + lambda_z_CR * loss_z_CRL
-                    + lambda_z_triplet_WST_score * loss_z_triplet_WST_scores
+                    # + lambda_z_triplet_classes * loss_z_triplet_classes * lambda_z_triplet_classes_val_multiplier
+                    # + lambda_z_CR * loss_z_SCR * lambda_z_CR_val_multiplier
+                    # + lambda_z_triplet_WST_score * loss_z_triplet_WST_scores * lambda_z_triplet_WST_score_val_multiplier
+                    # + lambda_z_triplet_WST_time * loss_z_triplet_WST_time * lambda_z_triplet_WST_time_val_multiplier
                     + lambda_y_delta * loss_y_delta
                     + lambda_y_reg_extra * loss_y_reg_extra
                 )
@@ -514,13 +546,44 @@ def val_epoch_AE_v4(
                 running_loss["Lx"] += loss_x.item() * B
                 running_loss["Ly"] += loss_y.item() * B
                 running_loss["Lz"] += loss_z.item() * B
-                running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
-                running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
-                running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
                 running_loss["Ly_delta"] += loss_y_delta.item() * B
                 running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
                 running_loss["L"] += loss_total.item() * B
                 n_samples += B
+
+                # running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+                # running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
+                # running_loss["Lz_triplet_WST_time"] += loss_z_triplet_WST_time.item() * B
+                # running_loss["Lz_score_consistency_regularizer"] += loss_z_SCR.item() * B
+
+                # Add fraction of positive triplets and number of valid triplets to running loss
+                N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__classes.item()
+                l = loss_z_triplet_classes.item()
+                contr_dct["Lz_TriCls"] = contr_dct.get("Lz_TriCls", 0.0) + (l * N_pos)
+                contr_dct["Lz_TriCls_numPosTrip"]   = contr_dct.get("Lz_TriCls_numPosTrip", 0.0) + N_pos
+                contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
+                contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+
+                N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__WST_classes.item()
+                l = loss_z_triplet_WST_scores.item()
+                contr_dct["Lz_TriClsWST"] = contr_dct.get("Lz_TriClsWST", 0.0) + (l * N_pos)
+                contr_dct["Lz_TriClsWST_numPosTrip"]   = contr_dct.get("Lz_TriClsWST_numPosTrip", 0.0) + N_pos            
+                contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
+                contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
+
+
+                N_pos = number_of_valid_triplets__WST_time.item() * fraction_positive_triplets__WST_time.item()
+                l = loss_z_triplet_WST_time.item()
+                contr_dct["Lz_TriTimeWST"] = contr_dct.get("Lz_TriTimeWST", 0.0) + (l * N_pos)
+                contr_dct["Lz_TriTimeWST_numPosTrip"]   = contr_dct.get("Lz_TriTimeWST_numPosTrip", 0.0) + N_pos
+                contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item() * B
+                contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item() * B                    
+
+                N_pos = number_of_valid_contributions_SCR.item()
+                l = loss_z_SCR.item()
+                contr_dct["Lz_SCR"]   = contr_dct.get("Lz_SCR", 0.0) + (N_pos * l) 
+                contr_dct["Lz_SCR_numPos"]   = contr_dct.get("Lz_SCR_numPos", 0.0) + N_pos        
+
 
                 # ----------------------------------------------------------
                 # 1.4 Collect per-sample statistics for later metrics
@@ -541,6 +604,25 @@ def val_epoch_AE_v4(
     # ------------------------------------------------------------------
     for k in running_loss:
         running_loss[k] /= n_samples if n_samples else 1.0
+
+    # Mean per sample for contrastive losses: 
+    contr_dct["Lz_TriCls"] /= (contr_dct["Lz_TriCls_numPosTrip"] + 1.0e-10)
+    contr_dct["Lz_TriClsWST"] /= (contr_dct["Lz_TriClsWST_numPosTrip"]  + 1.0e-10)
+    contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
+    contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
+
+
+
+    # The purpose behind the ..._val_multipliers is that the validation uses a different sampler than the training. 
+    # So these can not really be compared that well and might need to be turned of 
+    running_loss["L"] += (
+              contr_dct["Lz_TriCls"]     * lambda_z_triplet_classes   * lambda_z_triplet_classes_val_multiplier
+            + contr_dct["Lz_TriClsWST"]  * lambda_z_triplet_WST_score * lambda_z_triplet_WST_score_val_multiplier
+            + contr_dct["Lz_TriTimeWST"] * lambda_z_triplet_WST_time  * lambda_z_triplet_WST_time_val_multiplier        
+            + contr_dct["Lz_SCR"]        * lambda_z_CR                * lambda_z_CR_val_multiplier
+    )
+
+    running_loss = {**running_loss, **contr_dct}
 
     if model_classifier is not None:
         for head_name in model_classifier.classifier_head_infos:
@@ -1034,7 +1116,7 @@ def val_epoch_AE_v4(
 ######################################################################################
 
 
-
+from ra_utils.utils.utils import datestr_to_years_since_2000
 
 
 def training_epoch_AE_v4(
@@ -1067,6 +1149,9 @@ def training_epoch_AE_v4(
     loss_fn_z_triplet_WST_score = loss_fn_dict["z_triplet_WST_score"]["function"];  
     lambda_z_triplet_WST_score  = loss_fn_dict["z_triplet_WST_score"]["lambda"]
 
+    loss_fn_z_triplet_WST_time = loss_fn_dict["z_triplet_WST_time"]["function"];  
+    lambda_z_triplet_WST_time  = loss_fn_dict["z_triplet_WST_time"]["lambda"]
+
     loss_fn_z_CR = loss_fn_dict["z_score_consistency_regularizer"]["function"];  
     lambda_z_CR  = loss_fn_dict["z_score_consistency_regularizer"]["lambda"]
 
@@ -1076,14 +1161,14 @@ def training_epoch_AE_v4(
     loss_fn_y_delta = loss_fn_dict["y_delta"]["function"];  
     lambda_y_delta  = loss_fn_dict["y_delta"]["lambda"]
 
-    # TODO add triplet loss over time!
 
     loss_terms_ = ["x", "y", "z", 
-                  "z_triplet_classes", "z_triplet_WST_score", "z_score_consistency_regularizer", 
+                  # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
+    loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer"]
 
     # Checks
-    assert set(loss_fn_dict.keys()) == set(loss_terms_), \
+    assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
 
     if model_classifier is not None:
@@ -1093,11 +1178,12 @@ def training_epoch_AE_v4(
         head_counts = defaultdict(int)          # Σ count
 
     # running sums for global losses
-    loss_dct_keys = list(loss_fn_dict.keys())
     running_loss = dict(L=0.0)
-    for k in loss_dct_keys:
+    for k in loss_terms_:
         running_loss[f"L{k}"] = 0.0
 
+    # All 
+    contr_dct = dict() # for the counts pos, ... of the triplet losses 
 
     samples_tr = 0
 
@@ -1115,7 +1201,12 @@ def training_epoch_AE_v4(
             s_type = batch["score_type"]             # list[str]
             instance_label = np.array(batch["patient_scoretype_key"])
 
-            
+
+            years_np = datestr_to_years_since_2000(batch["date_str"])
+            days_np = (years_np*365.2425).astype(int)
+            days_t = torch.from_numpy(days_np).to(device)
+            years_t = torch.from_numpy(years_np).to(device)
+
 
             B = X.size(0)
             samples_tr += B
@@ -1147,11 +1238,21 @@ def training_epoch_AE_v4(
                                                                )
             loss_z_triplet_WST_scores, fraction_positive_triplets__WST_classes, number_of_valid_triplets__WST_classes = loss_z_triplet_WST_scores
 
+            # with self-transform on TIME
+            loss_z_triplet_WST_time = loss_fn_z_triplet_WST_time(labels=days_t,
+                                                                  embeddings=z, 
+                                                                  embeddings_self_transform = z_positive,
+                                                                  ids=instance_label,  # pat001_L_PIPII
+                                                                  margin_scores=years_t
+                                                               )
+            loss_z_triplet_WST_time, fraction_positive_triplets__WST_time, number_of_valid_triplets__WST_time = loss_z_triplet_WST_time
+
+
             # if i_batch == 0 and  i_dataloader==0 and verbose: 
             #     print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__classes.item()}")
             #     print(f"              first batch first DL:: fraction_positive_triplets__WST_classes     = {fraction_positive_triplets__WST_classes.item() }")        
             
-            loss_z_CRL = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
+            loss_z_SCR, number_of_valid_contributions_SCR = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
             # -- classifier heads ---------------------------------------------- #
             loss_y = torch.tensor(0.0, device=device)
@@ -1217,8 +1318,9 @@ def training_epoch_AE_v4(
                     lambda_y * loss_y + 
                     lambda_z * loss_z + 
                     lambda_z_triplet_classes * loss_z_triplet_classes +
-                    lambda_z_CR * loss_z_CRL + 
+                    lambda_z_CR * loss_z_SCR + 
                     lambda_z_triplet_WST_score * loss_z_triplet_WST_scores + 
+                    lambda_z_triplet_WST_time * loss_z_triplet_WST_time + 
                     lambda_y_delta * loss_y_delta + 
                     lambda_y_reg_extra * loss_y_reg_extra
                     )
@@ -1229,20 +1331,43 @@ def training_epoch_AE_v4(
             running_loss["Lx"] += loss_x.item() * B
             running_loss["Ly"] += loss_y.item() * B
             running_loss["Lz"] += loss_z.item() * B
-            running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
-            running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
-            running_loss["Lz_score_consistency_regularizer"] += loss_z_CRL.item() * B
             running_loss["Ly_delta"] += loss_y_delta.item() * B
             running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
 
-            # Add fraction of positive triplets and number of valid triplets to running loss
-            running_loss["Lz_TriCls_fracPosTrip"] = running_loss.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
-            running_loss["Lz_TriCls_numValidTrip"] = running_loss.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
-            running_loss["Lz_TriClsWST_fracPosTrip"] = running_loss.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
-            running_loss["Lz_TriClsWST_numValidTrip"] = running_loss.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
-            
-            
+            # running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
+            # running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
+            # running_loss["Lz_triplet_WST_time"] += loss_z_triplet_WST_time.item() * B            
+            # running_loss["Lz_score_consistency_regularizer"] += loss_z_SCR.item() * B
 
+            # Add fraction of positive triplets and number of valid triplets to running loss
+            N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__classes.item()
+            l = loss_z_triplet_classes.item()
+            contr_dct["Lz_TriCls"] = contr_dct.get("Lz_TriCls", 0.0) + (l * N_pos)
+            contr_dct["Lz_TriCls_numPosTrip"]   = contr_dct.get("Lz_TriCls_numPosTrip", 0.0) + N_pos
+            contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
+            contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+
+            N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__WST_classes.item()
+            l = loss_z_triplet_WST_scores.item()
+            contr_dct["Lz_TriClsWST"] = contr_dct.get("Lz_TriClsWST", 0.0) + (l * N_pos)
+            contr_dct["Lz_TriClsWST_numPosTrip"]   = contr_dct.get("Lz_TriClsWST_numPosTrip", 0.0) + N_pos            
+            contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
+            contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
+
+
+            N_pos = number_of_valid_triplets__WST_time.item() * fraction_positive_triplets__WST_time.item()
+            l = loss_z_triplet_WST_time.item()
+            contr_dct["Lz_TriTimeWST"] = contr_dct.get("Lz_TriTimeWST", 0.0) + (l * N_pos)
+            contr_dct["Lz_TriTimeWST_numPosTrip"]   = contr_dct.get("Lz_TriTimeWST_numPosTrip", 0.0) + N_pos
+            contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item() * B
+            contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item() * B                    
+
+            N_pos = number_of_valid_contributions_SCR.item()
+            l = loss_z_SCR.item()
+            contr_dct["Lz_SCR"]   = contr_dct.get("Lz_SCR", 0.0) + (N_pos * l) 
+            contr_dct["Lz_SCR_numPos"]   = contr_dct.get("Lz_SCR_numPos", 0.0) + N_pos        
+
+            
             running_loss["L"]  += loss.item()  * B
 
             if debugging:
@@ -1252,6 +1377,14 @@ def training_epoch_AE_v4(
     # ------------------------------- wrap-up ------------------------------- #
     for k in running_loss:
         running_loss[k] /= samples_tr            # mean per sample
+
+    # Mean per sample for contrastive losses: 
+    contr_dct["Lz_TriCls"] /= (contr_dct["Lz_TriCls_numPosTrip"] + 1.0e-10)
+    contr_dct["Lz_TriClsWST"] /= (contr_dct["Lz_TriClsWST_numPosTrip"]  + 1.0e-10)
+    contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
+    contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
+
+    running_loss = {**running_loss, **contr_dct}
 
     # per-head means
     if model_classifier is not None:
