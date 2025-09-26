@@ -356,6 +356,43 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 ############################### V2  ####################################
 ########################################################################
 
+def check_config_consistency_and_partially_make_consistent(config : dict): 
+    attention_paths_dct = config["data"].get("network_score_groups")
+    if attention_paths_dct is None:
+        print("'network_score_groups' not found in config file. Using default attention paths: 'score_groups'")
+        attention_paths_dct = config["data"]["score_groups"]
+
+    classifier_head_infos = config["data"]["classifier_head_infos"]
+    if config["data"].get("how_to_deal_with_surgery")  == "keep: map over limit to limit plus one":
+        print("Adding one to the output dimension of the classifier heads! (surgery class)")
+        for k in classifier_head_infos.keys():
+            v = classifier_head_infos[k]["out_dim"]
+            classifier_head_infos[k]["out_dim"] = v + 1
+
+    # If pure regression -> output-dim has to be 1
+    classifier_name = config["model"].get("classifier", {}).get("name", "LogReg")
+    print(f"{classifier_name = }")
+    if classifier_name == "Reg":
+        for k in classifier_head_infos.keys():
+            classifier_head_infos[k]["out_dim"] = 1
+        config["task_type_y"] = "regression"
+    elif classifier_name == "LogReg":
+        config["task_type_y"] = "classification"
+
+    elif classifier_name == "MixLogAndReg":  # New default!
+        #raise NotImplementedError("MixLogAndReg is not implemented yet!")
+        config["task_type_y"] = "classification_regression_mix"
+        for k in classifier_head_infos.keys():
+            classifier_head_infos[k]["out_dim"] += 1 # 0 is Regression output; 1...out_dim+1 = class logits                
+
+
+    # Check that if label is transformed to float (in training) the 
+    if config["data"].get("enable_tSLR", False):
+        classifier_name = config["model"]["classifier"]["name"]
+        assert classifier_name in ("MixLogAndReg", "Reg"), f"Not allowed combination with {classifier_name = } and data['enable_tSLR'] = True"
+    return classifier_head_infos, attention_paths_dct, config
+
+
 import ra_utils.loss.loss_fn_dict
 
 def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY, 
@@ -387,41 +424,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         print("Done - Checking for duplicates\n ")
 
     # Load/ make model
-    attention_paths_dct = config["data"].get("network_score_groups")
-    if attention_paths_dct is None:
-        print("'network_score_groups' not found in config file. Using default attention paths: 'score_groups'")
-        attention_paths_dct = config["data"]["score_groups"]
-
-    classifier_head_infos = config["data"]["classifier_head_infos"]
-    if config["data"].get("how_to_deal_with_surgery")  == "keep: map over limit to limit plus one":
-        print("Adding one to the output dimension of the classifier heads! (surgery class)")
-        for k in classifier_head_infos.keys():
-            v = classifier_head_infos[k]["out_dim"]
-            classifier_head_infos[k]["out_dim"] = v + 1
-
-    # If pure regression -> output-dim has to be 1
-    classifier_name = config["model"].get("classifier", {}).get("name", "LogReg")
-    print(f"{classifier_name = }")
-    if classifier_name == "Reg":
-        for k in classifier_head_infos.keys():
-            classifier_head_infos[k]["out_dim"] = 1
-        config["task_type_y"] = "regression"
-    elif classifier_name == "LogReg":
-        config["task_type_y"] = "classification"
-
-    elif classifier_name == "MixLogAndReg":  # New default!
-        #raise NotImplementedError("MixLogAndReg is not implemented yet!")
-        config["task_type_y"] = "classification_regression_mix"
-        for k in classifier_head_infos.keys():
-            classifier_head_infos[k]["out_dim"] += 1 # 0 is Regression output; 1...out_dim+1 = class logits                
-
-    # Check that if label is transformed to float (in training) the 
-    if config["data"].get("enable_tSLR", False):
-        classifier_name = config["model"]["classifier"]["name"]
-        assert classifier_name in ("MixLogAndReg", "Reg"), f"Not allowed combination with {classifier_name = } and data['enable_tSLR'] = True"
-
-
-
+    classifier_head_infos, attention_paths_dct, config = check_config_consistency_and_partially_make_consistent(config)
     model_name = config["model_name"]
     model_AE, model_c = build_models_AE_v1_and2(
                                         model_name, config, 

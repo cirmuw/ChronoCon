@@ -1417,7 +1417,9 @@ def prepare_dataloaders(datasets, config):
     tr_cfg       = config["training"]
     batch_size   = tr_cfg["batch_size"]
     num_workers  = tr_cfg["num_workers"]
-
+    pin_memory = tr_cfg.get("pin_memory", False)
+    multiprocessing_context = tr_cfg.get("multiprocessing_context", None)
+    # persistent_workers = ... 
 
     sampler_name        = tr_cfg.get("sampler_name", None)
     print(" Sampler for training: ", sampler_name)
@@ -1439,14 +1441,18 @@ def prepare_dataloaders(datasets, config):
                                   shuffle=False,
                                   sampler=sampler,
                                   num_workers=num_workers,
-                                  drop_last=False)
+                                  drop_last=False, 
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
 
         train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_size=batch_size,
                                   shuffle=False,
                                   sampler=sampler,
                                   num_workers=num_workers,
-                                  drop_last=False)
+                                  drop_last=False ,
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
 
 
     # ---------- patient-homogeneous batches, no weights ----------
@@ -1458,11 +1464,15 @@ def prepare_dataloaders(datasets, config):
 
         train_loader = DataLoader(datasets["dataset_train"],
                                   batch_sampler=batch_sampler,
-                                  num_workers=num_workers)
+                                  num_workers=num_workers ,
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
         
         train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_sampler=batch_sampler,
-                                  num_workers=num_workers)
+                                  num_workers=num_workers ,
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
 
     # ---------- patient-homogeneous batches, WITH weights ----------
     elif sampler_name == "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
@@ -1480,11 +1490,15 @@ def prepare_dataloaders(datasets, config):
 
         train_loader = DataLoader(datasets["dataset_train"],
                                   batch_sampler=batch_sampler,
-                                  num_workers=num_workers)
+                                  num_workers=num_workers, 
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
         
         train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_sampler=batch_sampler,
-                                  num_workers=num_workers)
+                                  num_workers=num_workers, 
+                                  pin_memory=pin_memory, 
+                                  multiprocessing_context=multiprocessing_context)
 
     # ---------- plain shuffle (baseline) ----------
     elif sampler_name is None: # "PatientLevelWeightedRandomSampler": #"WeightedRandomSampler", "PatientLevelWeightedRandomSampler", "PatientBatchSampler" None
@@ -1492,13 +1506,17 @@ def prepare_dataloaders(datasets, config):
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=num_workers,
-                                  drop_last=False)
+                                  drop_last=False, 
+                                  pin_memory=pin_memory,
+                                  multiprocessing_context=multiprocessing_context)
         
         train_loader_with_val_transforms = DataLoader(datasets["dataset_train_with_val_transforms"],
                                   batch_size=batch_size,
                                   shuffle=True,
                                   num_workers=num_workers,
-                                  drop_last=False)
+                                  drop_last=False, 
+                                  pin_memory=pin_memory,
+                                  multiprocessing_context=multiprocessing_context)
     else: 
         raise ValueError(f"Sampler name is not allowed {sampler_name = }. Use one of the implemented ones (E.g. 'WeightedRandomSampler', 'PatientLevelWeightedRandomSampler', 'PatientBatchSampler', None)")
 
@@ -1506,12 +1524,14 @@ def prepare_dataloaders(datasets, config):
     val_loader = DataLoader(datasets["dataset_validation"],
                             batch_size=batch_size,
                             shuffle=False,
-                            num_workers=num_workers)
+                            num_workers=num_workers, 
+                                  pin_memory=pin_memory)
 
     test_loader = DataLoader(datasets["dataset_test"],
                              batch_size=batch_size,
                              shuffle=False,
-                             num_workers=num_workers)
+                             num_workers=num_workers, 
+                                  pin_memory=pin_memory)
 
     return {
         "train_loader": train_loader,

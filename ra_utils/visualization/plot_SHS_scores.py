@@ -16,6 +16,61 @@ import matplotlib.pyplot as plt
 from matplotlib import gridspec
 
 
+# def metrics_to_text(m):
+#         txt0 = (f"$\\mathrm{{RMSE}}= {m['rmse']:2.2f}\;$"
+#                 "\n"
+#                 f"$\\rho= {m['spearman_corr']:2.2f}\;$")
+#         txt_ICC_psych = (
+#             "\n"
+#             f"$\\mathrm{{ICC}}= {m['ICC_psych']:2.2f}$"
+#             f" $ [{m['ICC_psych_lower']:2.2f}, {m['ICC_psych_upper']:2.2f}]$"
+#             "\n"
+#             f"$\\mathrm{{N}}= {m['ICC_n']}$"
+#         )
+#         txt = txt0 + txt_ICC_psych
+#         return txt 
+
+def metrics_to_text(m):
+    # --- RMSE (+ CI if present)
+    rmse_txt = f"$\\mathrm{{RMSE}}= {m['rmse']:2.2f}$"
+    if "rmse_CI95_lower" in m and "rmse_CI95_upper" in m:
+        rmse_txt += f" $ [{m['rmse_CI95_lower']:2.2f}, {m['rmse_CI95_upper']:2.2f}]$"
+    rmse_txt += ""
+
+    # --- Prefer Pearson r; fallback to Spearman rho
+    corr_key, corr_label = None, None
+    if "pearson_corr" in m:
+        corr_key, corr_label = "pearson_corr", "\\rho   "  # "r"
+    elif "spearman_corr" in m:
+        corr_key, corr_label = "spearman_corr", "\\rho   "
+
+    corr_txt = ""
+    if corr_key is not None:
+        corr_txt = f"${corr_label}= {m[corr_key]:2.2f}$"
+        lo_key, hi_key = f"{corr_key}_CI95_lower", f"{corr_key}_CI95_upper"
+        if lo_key in m and hi_key in m:
+            corr_txt += f" $ [{m[lo_key]:2.2f}, {m[hi_key]:2.2f}]$"
+        corr_txt += ""
+
+    # txt0 = rmse_txt + "\n" + corr_txt
+
+    # --- ICC (psych) + N (if present)
+    txt_ICC_psych = ""
+    if "ICC_psych" in m:
+        txt_ICC_psych = (
+            "\n"
+            f"$\\mathrm{{ICC}} = {m['ICC_psych']:2.2f}$"
+        )
+        if "ICC_psych_lower" in m and "ICC_psych_upper" in m:
+            txt_ICC_psych += f" $ [{m['ICC_psych_lower']:2.2f}, {m['ICC_psych_upper']:2.2f}]$"
+        if "ICC_n" in m:
+            txt_ICC_psych_N = f"$\\mathrm{{N}}= {int(m['ICC_n'])}$"
+
+
+
+    return  rmse_txt +  txt_ICC_psych + "\n" + corr_txt + "\n" + txt_ICC_psych_N
+
+
 def joint_hist_scatter(
         df: pd.DataFrame,
         true_col: str,
@@ -58,22 +113,14 @@ def joint_hist_scatter(
             all_preds=y.values.astype(float),
             calc_ICC3=2,
             add_classification_metrics=False,
-            add_spearman=True,
+            add_spearman=False,
+            add_pearson=True,
             add_kappa=True,
             calc_psych_ICC=2,
-            icc=icc
+            icc=icc, 
+            calculate_CI=True # 95% CI
         )
-        txt0 = (f"$\\mathrm{{RMSE}}= {m['rmse']:2.2f}\;$"
-                "\n"
-                f"$\\rho= {m['spearman_corr']:2.2f}\;$")
-        txt_ICC_psych = (
-            "\n"
-            f"$\\mathrm{{ICC}}= {m['ICC_psych']:2.2f}$"
-            f" $ [{m['ICC_psych_lower']:2.2f}, {m['ICC_psych_upper']:2.2f}]$"
-            "\n"
-            f"$\\mathrm{{N}}= {m['ICC_n']}$"
-        )
-        txt = txt0 + txt_ICC_psych
+        txt = metrics_to_text(m)
 
     # If user provided an external scatter axis, draw only scatter there
     if ax_scatter is not None:
@@ -164,12 +211,20 @@ def joint_hist_scatter(
     ax_sc.set_ylabel(f"Predicted scores ({name})")
     ax_sc.grid()
     if calculate_and_add_metrics:
-        ax_sc.text(
-            *metrics_loc, txt,
-            transform=ax_sc.transAxes,
-            ha='left', va='top', fontsize=12,
-            bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
-        )
+        # ax_sc.text(
+        #     *metrics_loc, txt,
+        #     transform=ax_sc.transAxes,
+        #     ha='left', va='top', fontsize=12,
+        #     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
+        # )
+        with plt.rc_context({'font.family': 'monospace', 'mathtext.default': 'tt'}):
+            ax_sc.text(
+                *metrics_loc, txt.replace(r'\mathrm', r'\mathtt'),  # optional: steer math to tt
+                transform=ax_sc.transAxes,
+                ha='left', va='top', fontsize=12,
+                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
+            )
+
     return fig, (ax_histx, ax_sc, ax_histy)
 
 

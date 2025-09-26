@@ -232,18 +232,22 @@ def main():
 
     parser = argparse.ArgumentParser(description='Plot and save true vs predicted summed scores')
     parser.add_argument(
-        '--run_path', type=str, required=True,
+        '--run_path', type=str, 
+        required=True,
+        default="/msc/home/cwatze93/data/mlflow/mlflow_RA/844424495910332051/07e62b6853554a9a911d916113bcd168",
         help='Path to the MLflow run directory'
     )
     # soft_prediction becomes a simple flag: absent=False, present=True
     parser.add_argument(
         '--soft-prediction', dest='soft_prediction',
-        action='store_true', default=False,
+        action='store_true', 
+        default=False,
         help='Use the soft sum Σ_c p̂_c * c label (default: False)'
     )
     # strict supports --strict / --no-strict
     parser.add_argument(
-        '--strict', action=argparse.BooleanOptionalAction, default=True,
+        '--strict', action=argparse.BooleanOptionalAction, 
+        default=True,
         help='Assert output folder does not exist (default: True). Use --no-strict to allow overwrite.'
     )
     parser.add_argument(

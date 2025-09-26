@@ -387,8 +387,8 @@ class MultiModalImageScoreTypeNetworkAE(nn.Module):
         
 
         
-
-
+from importlib import resources
+import pandas as pd
 
 def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
                                                                 config: dict):
@@ -417,10 +417,14 @@ def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
         raise NotImplementedError(f"{name =}")    
 
     # score_type_encoder
-    score_groups_list = []
-    for k, v in config["data"]["score_groups"].items():
-        for s in v: 
-            score_groups_list.extend(v)
+
+    with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv") as f:
+        df_scores_meta = pd.read_csv(f)
+    score_groups_list = sorted(set(list(df_scores_meta["score_name"])))
+    #score_groups_list = []
+    #for k, v in config["data"]["score_groups"].items():
+    #    for s in v: 
+    #        score_groups_list.extend(v)
     name = config["model"].get("score_type_encoder", {}).get("name", None)
     params = config["model"].get("score_type_encoder", {}).get("params", {})
     if name == None: 

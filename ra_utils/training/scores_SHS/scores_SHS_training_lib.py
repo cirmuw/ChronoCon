@@ -57,16 +57,23 @@ def train_epoch(model,
         running_loss += loss.item()
     return running_loss / len(dataloader)
 
-
+# add to imports
+from scipy.stats import spearmanr, pearsonr  # NEW: pearsonr
 
 def calculate_some_classification_metrics(all_preds, all_labels, 
                                           calc_ICC3: int = 0, 
                                           add_support: int = 0,
                                           add_classification_metrics = True, 
                                           add_spearman=True, 
-                                          add_kappa: bool = False,                                          
+                                          add_kappa: bool = False,
+                                          add_pearson: bool = True,  # NEW: also report Pearson r
                                           icc="ICC3",
-                                          calc_psych_ICC: int = 0
+                                          calc_psych_ICC: int = 0,
+                                              # --- NEW: CI controls ---
+                                            calculate_CI: bool = False,
+                                            n_boot: int = 2000,
+                                            ci_level: float = 0.95,
+                                            random_state: int | None = 1234
                                           ):
     """
     Parameters
@@ -74,49 +81,59 @@ def calculate_some_classification_metrics(all_preds, all_labels,
     all_preds, all_labels : 1-D array-like (same length, no NaNs)
     calc_ICC3 : int
         0 → no ICC, 1 → add ICC3 only, 2+ → add ICC3 plus CI, F, df, p, n.
+    calculate_CI : bool
+        If True, add *_CI95_lower and *_CI95_upper (percentile bootstrap) for
+        all computed non-count metrics (RMSE, MSE, MAE, Spearman, accuracy, etc.).
+    n_boot : int
+        Number of bootstrap resamples.
+    ci_level : float
+        Confidence level (e.g., 0.95).
+    random_state : int | None
+        Seed for reproducibility.
     """
     # ---------- core scores --------------------------------------------------
     all_preds  = np.asarray(all_preds).flatten()
     all_labels = np.asarray(all_labels).flatten()
+    assert all_preds.shape == all_labels.shape, "preds and labels must align"
 
+    # Base metrics
     metrics = {
-        "rmse":  float(np.sqrt(np.mean((all_preds - all_labels) ** 2))),
-        "mse":   float(np.mean((all_preds - all_labels) ** 2)),
-        "mae":   float(np.mean(np.abs(all_preds - all_labels)))
+        "rmse": float(np.sqrt(np.mean((all_preds - all_labels) ** 2))),
+        "mse":  float(np.mean((all_preds - all_labels) ** 2)),
+        "mae":  float(np.mean(np.abs(all_preds - all_labels)))
     }
     
     if add_spearman:
         spearman_corr, _ = spearmanr(all_preds, all_labels)
         metrics["spearman_corr"] = float(spearman_corr)
 
-
+    if add_pearson:
+        try:
+            r, _ = pearsonr(all_preds, all_labels)
+        except Exception:
+            r = np.nan
+        metrics["pearson_corr"] = float(r)
 
     if add_classification_metrics: 
         metrics_extras = {
-        "accuracy":                float(np.mean(all_preds == all_labels)),
-        "accuracy (error < 2)":    float(np.mean(np.abs(all_preds - all_labels) < 2)),
-        "error > 1 (percent)":    float(np.mean(np.abs(all_preds - all_labels) > 1))*100,
-        "balanced acc.":           float(balanced_accuracy_score(all_labels, all_preds)),
-        # TODO calculate also balanced recall and balanced f1 score 
+            "accuracy":                 float(np.mean(all_preds == all_labels)),
+            "accuracy (error < 2)":     float(np.mean(np.abs(all_preds - all_labels) < 2)),
+            "error > 1 (percent)":      float(np.mean(np.abs(all_preds - all_labels) > 1) * 100.0),
+            "balanced acc.":            float(balanced_accuracy_score(all_labels, all_preds)),
+            # TODO calculate also balanced recall and balanced f1 score 
         }
         metrics = {**metrics, **metrics_extras}
 
-        # balanced acc. with error < 2
+        # balanced acc. with error < 2  (your original definition)
         unique = np.unique(all_labels)
         bal_err_lt2 = np.mean([
             np.mean(np.abs(all_preds[all_labels == u] - u) < 2) for u in unique
         ])
         metrics["balanced acc. (error < 2)"] = float(bal_err_lt2)
 
-
-        if add_support>1:
-            # # add support (number of samples per class)
-            support = {}
+        if add_support > 1:
             for u in np.unique(all_labels):
-                support[u] = int(np.sum(all_labels == u))
-                metrics[f"support_{u}"] = support[u]
-            #metrics["support"] = support
-
+                metrics[f"support_{u}"] = int(np.sum(all_labels == u))
 
     # ---------- Cohen's kappa ------------------------------------------------
     if add_kappa:
@@ -130,7 +147,7 @@ def calculate_some_classification_metrics(all_preds, all_labels,
     if add_support > 0:
         metrics["n_samples eval"] = int(len(all_labels))
 
-    # ---------- ICC(3,1) -----------------------------------------------------
+    # ---------- ICC(3,1) via pingouin ---------------------------------------
     if calc_ICC3:
         n = len(all_preds)
         df_long = pd.DataFrame({
@@ -158,17 +175,15 @@ def calculate_some_classification_metrics(all_preds, all_labels,
                 "ICC_n":          int(n),
             })
 
-
     # ---------- ICC via psych::ICC in R --------------------------------------
     if calc_psych_ICC:
         df_nt = DataFrame({"preds": FloatVector(all_preds),
-                           "true": FloatVector(all_labels)})
+                           "true":  FloatVector(all_labels)})
         res = r_iccp.ICC(df_nt)
-        # Extract labels and values
         labels = list(res[0][0])
         icc_type_idx = labels.index(icc)
         col_names = ["type", "ICC", "F", "df1", "df2", "p", "lower bound", "upper bound"]
-        psych_dict = {l : res[0][i][icc_type_idx] for i,l in enumerate(col_names) }
+        psych_dict = {l: res[0][i][icc_type_idx] for i, l in enumerate(col_names)}
         # Basic
         metrics["ICC_psych"] = float(psych_dict.get("ICC", np.nan))
         if calc_psych_ICC >= 2:
@@ -180,6 +195,95 @@ def calculate_some_classification_metrics(all_preds, all_labels,
                 "ICC_psych_df2":   float(psych_dict.get("df2", np.nan)),
                 "ICC_psych_p":     float(psych_dict.get("p", np.nan))
             })
+
+    # ---------- Add bootstrap CIs for the other metrics ----------------------
+    if calculate_CI and len(all_labels) >= 2:
+        rng = np.random.default_rng(random_state)
+        n = len(all_labels)
+        alpha = 1.0 - ci_level
+        lo_q, hi_q = 100.0 * (alpha / 2.0), 100.0 * (1.0 - alpha / 2.0)
+
+        # metric functions (mirroring definitions)
+        def _rmse(p, y): return float(np.sqrt(np.mean((p - y) ** 2)))
+        def _mse(p, y):  return float(np.mean((p - y) ** 2))
+        def _mae(p, y):  return float(np.mean(np.abs(p - y)))
+        def _spearman(p, y):
+            v, _ = spearmanr(p, y)
+            return float(v)
+        def _pearson(p, y):
+            try:
+                v, _ = pearsonr(p, y)
+                return float(v)
+            except Exception:
+                return np.nan
+        def _acc(p, y):       return float(np.mean(p == y))
+        def _acc_err_lt2(p, y): return float(np.mean(np.abs(p - y) < 2))
+        def _err_gt1_pct(p, y): return float(np.mean(np.abs(p - y) > 1) * 100.0)
+        def _bal_acc(p, y):     return float(balanced_accuracy_score(y, p))
+        def _bal_acc_err_lt2(p, y):
+            uniq = np.unique(y)
+            return float(np.mean([np.mean(np.abs(p[y == u] - u) < 2) for u in uniq])) if len(uniq) else np.nan
+        def _kappa(p, y):
+            try:
+                return float(cohen_kappa_score(y, p))
+            except Exception:
+                return np.nan
+
+        metric_funcs = {
+            "rmse": _rmse, "mse": _mse, "mae": _mae
+        }
+        if add_spearman and "spearman_corr" in metrics:
+            metric_funcs["spearman_corr"] = _spearman
+        if add_pearson and "pearson_corr" in metrics:
+            metric_funcs["pearson_corr"] = _pearson
+        # (rest same as before)
+        if add_classification_metrics:
+            metric_funcs.update({
+                "accuracy": _acc,
+                "accuracy (error < 2)": _acc_err_lt2,
+                "error > 1 (percent)": _err_gt1_pct,
+                "balanced acc.": _bal_acc,
+                "balanced acc. (error < 2)": _bal_acc_err_lt2,
+            })
+        if add_kappa and "cohen_kappa" in metrics:
+            metric_funcs["cohen_kappa"] = _kappa
+
+        idx = np.arange(n)
+        boot_store = {k: [] for k in metric_funcs}
+        for _ in range(n_boot):
+            bidx = rng.integers(0, n, size=n)
+            p = all_preds[bidx]
+            y = all_labels[bidx]
+            for name, fn in metric_funcs.items():
+                boot_store[name].append(fn(p, y))
+
+        for name, vals in boot_store.items():
+            arr = np.asarray(vals, dtype=float)
+            arr = arr[~np.isnan(arr)]
+            if arr.size == 0:
+                lo = hi = np.nan
+            else:
+                lo, hi = np.percentile(arr, [lo_q, hi_q], method="linear")
+            metrics[f"{name}_CI95_lower"] = float(lo)
+            metrics[f"{name}_CI95_upper"] = float(hi)
+
+        # Percentile CI for each metric (drop NaNs if present)
+        for name, vals in boot_store.items():
+            arr = np.asarray(vals, dtype=float)
+            arr = arr[~np.isnan(arr)]
+            if arr.size == 0:
+                lo = hi = np.nan
+            else:
+                lo, hi = np.percentile(arr, [lo_q, hi_q], method="linear")
+            metrics[f"{name}_CI95_lower"] = float(lo)
+            metrics[f"{name}_CI95_upper"] = float(hi)
+    elif calculate_CI and len(all_labels) < 2:
+        # Not enough data to bootstrap; fill with NaNs for consistency
+        for k in list(metrics.keys()):
+            if k.startswith("support_") or k == "n_samples eval" or k.startswith("ICC"):
+                continue
+            metrics[f"{k}_CI95_lower"] = float("nan")
+            metrics[f"{k}_CI95_upper"] = float("nan")
 
     return metrics
 
