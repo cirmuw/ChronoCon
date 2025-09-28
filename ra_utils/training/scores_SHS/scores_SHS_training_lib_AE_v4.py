@@ -40,6 +40,45 @@ import ra_utils.networks.score_estimator
 import random
 import datetime
 
+import os, tempfile, time, uuid, datetime
+import mlflow
+import torch
+
+def _retry(fun, tries=3, delay=0.5, backoff=2.0):
+    last = None
+    for i in range(tries):
+        try:
+            return fun()
+        except Exception as e:
+            last = e
+            if i == tries - 1:
+                raise
+            time.sleep(delay)
+            delay *= backoff
+
+def _log_single_state_dict_atomic(model, nice_basename, artifact_subdir="checkpoints"):
+    """
+    Saves `model.state_dict()` to a unique temp dir using `nice_basename`
+    and logs it to MLflow, then cleans up the temp dir automatically.
+    """
+    with tempfile.TemporaryDirectory(prefix=f"ckpt_{os.getpid()}_") as tmpdir:
+        tmp_path = os.path.join(tmpdir, nice_basename)
+        # Save
+        torch.save(model.state_dict(), tmp_path)
+        os.sync() if hasattr(os, "sync") else None  # best-effort flush on Linux
+        # Log with retry (helps with flaky filesystems)
+        _retry(lambda: mlflow.log_artifact(tmp_path, artifact_path=artifact_subdir))
+
+def _log_text_atomic(text, nice_basename="checkpoint_info.yaml", artifact_subdir="checkpoints"):
+    with tempfile.TemporaryDirectory(prefix=f"ckptmeta_{os.getpid()}_") as tmpdir:
+        tmp_path = os.path.join(tmpdir, nice_basename)
+        with open(tmp_path, "w") as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        _retry(lambda: mlflow.log_artifact(tmp_path, artifact_path=artifact_subdir))
+
+
 
 def train_loop_AE_v4(
     model_AE: torch.nn.Module,
@@ -60,7 +99,7 @@ def train_loop_AE_v4(
     log_model_state_dct: bool = False,
     verbose: bool = True,
     ES_metric_key = "L",  # which metric to use for early stopping
-    append_BEST_VAL_as_last = False,
+    append_BEST_VAL_as_last: bool = False,
     task_type_y: Literal["classification","regression"]="classification"
 ):
     """
@@ -94,7 +133,6 @@ def train_loop_AE_v4(
         metrics_Tr.append(train_metrics_dct)
 
         # log training scalar losses
-        
         log_scalar_dict("train_", train_metrics_dct, step=epoch)
 
         # ------------------------------------------------------------------
@@ -104,11 +142,11 @@ def train_loop_AE_v4(
             val_loaders,
             model_classifier=model_classifier,
             loss_fn_dict=loss_fn_dict,
-            transform=lambda x: x,  # No denoising in val. loop  #transform,
+            transform=lambda x: x,  # No denoising in val. loop
             device=device,
             classes=classes,
             return_all_predictions=False,
-            calc_ICC3=1,  # maybe add for HPS...
+            calc_ICC3=1,
             task_type_y=task_type_y
         )
         val_loss = val_metrics_dct["L"]
@@ -125,12 +163,12 @@ def train_loop_AE_v4(
             )
         if verbose > 1:
             train_losses = "  Train:      " + " | ".join(
-            f"{key}: {value:.3f}" for key, value in train_metrics_dct.items() if ((key != "L") and (value != 0.0))
+                f"{key}: {value:.3f}" for key, value in train_metrics_dct.items()
+                if ((key != "L") and (value != 0.0))
             )
             val_losses = "  Validation: " + " | ".join(
-            f"{key}: {value:.3f}" for key, value in val_metrics_dct.items() if (
-                key.startswith("L") and (value != 0.0) and 
-                key != "L")
+                f"{key}: {value:.3f}" for key, value in val_metrics_dct.items()
+                if (key.startswith("L") and (value != 0.0) and key != "L")
             )
             print(train_losses)
             print(val_losses)
@@ -165,10 +203,8 @@ def train_loop_AE_v4(
             log_report_and_confusion_matrix_as_artifact=False,
         )
 
-        # also log reconstruction / latent / per‑head losses
-        extra_loss_keys = {
-            k: v for k, v in val_metrics_dct.items() if k.startswith("L")
-        }
+        # also log reconstruction / latent / per-head losses
+        extra_loss_keys = {k: v for k, v in val_metrics_dct.items() if k.startswith("L")}
         log_scalar_dict("val_", extra_loss_keys, step=epoch)
 
         # ------------------------------------------------------------------
@@ -196,7 +232,7 @@ def train_loop_AE_v4(
                     best_clf_state = copy.deepcopy(model_classifier.state_dict())
                 epochs_no_improve = 0
 
-                # optional MLflow model snapshot
+                # optional MLflow model snapshot (full models)
                 if log_model_full:
                     mlflow.pytorch.log_model(model_AE, "best_model_AE")
                     if model_classifier is not None:
@@ -204,30 +240,20 @@ def train_loop_AE_v4(
                             model_classifier, "best_model_classifier"
                         )
 
-
+                # ------- race-safe, non-accumulating state_dict logging -------
                 if log_model_state_dct:
-                    # Save model checkpoints with meaningful names
-                    ae_checkpoint_path = "model_AE_state_dict.pt"
-                    torch.save(model_AE.state_dict(), ae_checkpoint_path)
-                    mlflow.log_artifact(ae_checkpoint_path, artifact_path="checkpoints")
-                    os.remove(ae_checkpoint_path)  # Remove the local file after logging
-                    
+                    # Use fixed basenames so each improvement overwrites previous artifact
+                    _log_single_state_dict_atomic(model_AE, "model_AE_state_dict.pt")
                     if model_classifier is not None:
-                        clf_checkpoint_path = "model_classifier_state_dict.pt"
-                        torch.save(model_classifier.state_dict(), clf_checkpoint_path)
-                        mlflow.log_artifact(clf_checkpoint_path, artifact_path="checkpoints")
-                        os.remove(clf_checkpoint_path)  # Remove the local file after logging
-                    
-                    # Log a YAML file with epoch info
-                    checkpoint_info_path = "checkpoint_info.yaml"
-                    with open(checkpoint_info_path, "w") as f:
-                        f.write(f"best_epoch: {epoch}\n")
-                        f.write(f"val_loss: {val_loss_ES:.6f}\n")
-                        f.write(f"saved_at: {datetime.datetime.now().isoformat()}\n")
-                    mlflow.log_artifact(checkpoint_info_path, artifact_path="checkpoints")
-                    os.remove(checkpoint_info_path)  # Remove the local file after logging
+                        _log_single_state_dict_atomic(model_classifier, "model_classifier_state_dict.pt")
 
-
+                    # Sidecar metadata (also overwrite same name)
+                    info_txt = (
+                        f"best_epoch: {epoch}\n"
+                        f"val_loss: {val_loss_ES:.6f}\n"
+                        f"saved_at: {datetime.datetime.now().isoformat()}\n"
+                    )
+                    _log_text_atomic(info_txt, nice_basename="checkpoint_info.yaml")
 
                 # artifacts: save best classification report & CM
                 mlflow.log_dict(
@@ -241,20 +267,15 @@ def train_loop_AE_v4(
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
-                    print(
-                        f"Early stopping – no improvement for {patience} epochs."
-                    )
+                    print(f"Early stopping – no improvement for {patience} epochs.")
                     break
-
 
     if append_BEST_VAL_as_last: 
         metrics_Tr.append(train_metrics_dct_BEST)
         metrics_Val.append(val_metrics_dct_BEST)
 
-
-
     # ----------------------------------------------------------------------
-    # 5) Wrap‑up: restore best weights -------------------------------------
+    # 5) Wrap-up: restore best weights -------------------------------------
     if not run_full_epochs:
         model_AE.load_state_dict(best_AE_state)
         if model_classifier is not None and best_clf_state is not None:
