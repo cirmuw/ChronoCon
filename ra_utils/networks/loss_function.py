@@ -309,26 +309,112 @@ class MSEandCELoss(nn.Module):
 
         # ----- weighted sum -----
         return self.mse_weight * mse + self.class_weight * ce
+
     
- 
- 
+import torch
+import torch.nn as nn
+
+def label_smoothing_matrix(
+    num_classes: int,
+    nearest_neighbour_hopping: float = 0.0,
+    next_nearest_neighbour_hopping: float = 0.0,
+    *,
+    device=None,
+    dtype=None,
+):
+    """
+    Returns M (C,C), row-stochastic, that redistributes probability mass
+    from class i to i±1 (weight=nn) and i±2 (weight=nnn) if those neighbors exist
+    (no wrap-around).
+
+    For interior rows: diag = 1 - 2*nn - 2*nnn.
+    For edges, the subtraction matches the number of actually present neighbors.
+    """
+    C = int(num_classes)
+    assert C >= 1
+    nn_h = float(nearest_neighbour_hopping)
+    nnn_h = float(next_nearest_neighbour_hopping)
+
+    # Basic feasibility: keep diagonal non-negative for interior rows
+    if C >= 5:
+        assert 2*nn_h + 2*nnn_h <= 1.0 + 1e-12, \
+            "Choose nn and nnn such that 2*nn + 2*nnn <= 1 to avoid negative probs."
+
+    M = torch.eye(C, device=device, dtype=dtype)
+
+    if C >= 2 and nn_h != 0.0:
+        # ±1 bands
+        off = torch.ones(C-1, device=device, dtype=dtype)
+        M = M + nn_h * torch.diag(off, 1) + nn_h * torch.diag(off, -1)
+
+    if C >= 3 and nnn_h != 0.0:
+        # ±2 bands
+        off2 = torch.ones(C-2, device=device, dtype=dtype)
+        M = M + nnn_h * torch.diag(off2, 2) + nnn_h * torch.diag(off2, -2)
+
+    # Subtract what we added from each row's diagonal (edge-aware)
+    diag_sub = torch.zeros(C, device=device, dtype=dtype)
+    if C >= 2 and nn_h != 0.0:
+        # counts of ±1 neighbors per row: [1, 2, 2, ..., 2, 1] for C>=2
+        nn_counts = torch.tensor(
+            [1] + [2]*(C-2) + [1] if C >= 2 else [0],
+            device=device, dtype=dtype
+        )
+        diag_sub = diag_sub + nn_h * nn_counts
+    if C >= 3 and nnn_h != 0.0:
+        # counts of ±2 neighbors per row: [1,1,2,...,2,1,1] for C>=4; for C=3 -> [1,1,1]
+        if C == 3:
+            nnn_counts = torch.tensor([1,1,1], device=device, dtype=dtype)
+        elif C >= 4:
+            nnn_counts = torch.tensor([1,1] + [2]*(C-4) + [1,1],
+                                      device=device, dtype=dtype)
+        else:
+            nnn_counts = torch.zeros(C, device=device, dtype=dtype)
+        diag_sub = diag_sub + nnn_h * nnn_counts
+
+    M[range(C), range(C)] -= diag_sub
+
+    # (Optional) tiny clamp for numerical safety
+    M = torch.clamp(M, min=0.0)
+    # Re-normalize rows to sum to 1.0 (robust to tiny FP drift or clamping)
+    M = M / (M.sum(dim=1, keepdim=True) + 1e-12)
+
+    return M
+
+
+def neighbour_label_smoothing(target_probs: torch.Tensor,
+                              nearest_neighbour: float = 0.0,
+                              next_nearest_neighbour: float = 0.0):
+    C = target_probs.size(-1)
+    M = label_smoothing_matrix(C,
+                               nearest_neighbour_hopping=nearest_neighbour,
+                               next_nearest_neighbour_hopping=next_nearest_neighbour,
+                               device=target_probs.device,
+                               dtype=target_probs.dtype)
+    return target_probs @ M
+
+
 class MSEandCELossSoft(nn.Module):
     """
-    outputs: (N, 1 + C)  -> [regression_scalar, class_logits...]
-    targets: (N,) or (N,1) real-valued scalar in [0, C-1]
+    outputs: (N, 1 + C) -> [regression_scalar, class_logits...]
+    targets: (N,) real-valued scalar in [0, C-1] (can be fractional)
     """
-    def __init__(self, mse_weight=0.5, class_weight=0.5, label_smoothing=0.0):
+    def __init__(self, mse_weight=0.5, class_weight=0.5,
+                 uniform_label_smoothing=0.0,
+                 nearest_neighbour_label_smoothing=0.0,
+                 next_nearest_neighbour_label_smoothing=0.0):
         super().__init__()
         assert 0.0 <= mse_weight <= 1.0
         assert 0.0 <= class_weight <= 1.0
         assert abs(mse_weight + class_weight - 1.0) < 1e-6
         self.mse_weight = mse_weight
         self.class_weight = class_weight
-        self.label_smoothing = label_smoothing
+        self.uniform_label_smoothing = uniform_label_smoothing
+        self.nearest_neighbour_label_smoothing = nearest_neighbour_label_smoothing
+        self.next_nearest_neighbour_label_smoothing = next_nearest_neighbour_label_smoothing
 
         self.mse_loss = nn.MSELoss()
-        # CrossEntropyLoss now supports soft targets (float, same shape as logits)
-        # If you already pass soft targets, built-in label_smoothing is typically unnecessary.
+        # CrossEntropyLoss supports soft labels (float) when same shape as logits
         self.class_loss = nn.CrossEntropyLoss(label_smoothing=0.0)
 
     @staticmethod
@@ -351,21 +437,30 @@ class MSEandCELossSoft(nn.Module):
         return probs
 
     def forward(self, outputs, targets):
-        pred_scalar = outputs[:, 0]      # (N,)
-        pred_logits = outputs[:, 1:]     # (N, C)
+        pred_scalar = outputs[:, 0]   # (N,)
+        pred_logits = outputs[:, 1:]  # (N, C)
         N, C = pred_logits.shape
 
         targets = targets.view(-1).to(pred_scalar.dtype)  # (N,)
         target_probs = self._to_soft_probs(targets, C)    # (N, C)
 
-        # optional extra smoothing on top of soft targets (usually not needed)
-        if self.label_smoothing > 0.0:
-            target_probs = (1 - self.label_smoothing) * target_probs + self.label_smoothing / C
+        # neighbor smoothing
+        if (self.nearest_neighbour_label_smoothing != 0.0 or
+            self.next_nearest_neighbour_label_smoothing != 0.0):
+            target_probs = neighbour_label_smoothing(
+                target_probs,
+                self.nearest_neighbour_label_smoothing,
+                self.next_nearest_neighbour_label_smoothing
+            )
+
+        # optional uniform smoothing on top (usually leave at 0.0 if using neighbor smoothing)
+        if self.uniform_label_smoothing > 0.0:
+            target_probs = (1 - self.uniform_label_smoothing) * target_probs \
+                           + self.uniform_label_smoothing / C
 
         mse = self.mse_loss(pred_scalar, targets)
         ce  = self.class_loss(pred_logits, target_probs)
         return self.mse_weight * mse + self.class_weight * ce
-
 
 
 class MSEandFocalLoss(MSEandCELoss):
