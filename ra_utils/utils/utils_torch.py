@@ -190,11 +190,18 @@ def plan_optimization_v3(models,  # Now takes a list of models
                          scheduler_class = None, # e.g., PolyLRSchedulerMultiLR
                          scheduler_params = {"max_steps": 10},
                          verbose=False, 
-                         catch_rest = False
+                         catch_rest = False, 
+                         batch_size_for_lr_rescaling = None,
+                         batch_size_for_lr_rescaling_base = 256, 
                         ) -> Tuple[Optimizer, Optional[LRScheduler]]: 
     
     # Extract from optimizer_params
     learning_rates = optimizer_params["learning_rates"]
+    if batch_size_for_lr_rescaling != None: 
+        factor = batch_size_for_lr_rescaling / batch_size_for_lr_rescaling_base
+        print(f"Rescaling learning rates (batch_size dependent)  {factor = }")
+        learning_rates = {k: v*factor for k,v in learning_rates.items()}
+    
     other_optimizer_kwargs = optimizer_params["other_optimizer_kwargs"]
 
     # Create filters based on the keys in the learning_rates dictionary

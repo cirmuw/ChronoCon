@@ -54,7 +54,8 @@ def _load_submodule(submodule, src_sd, prefix, strict=False, msg="", verbose=0):
 def maybe_partially_init_model_from_state_dict(config: dict, 
                                                 model_AE: nn.Module, 
                                                 model_c: nn.Module, 
-                                                verbose=2):
+                                                verbose=2, 
+                                                strict=False):
 
 
     # ------------------------------------------------------------------
@@ -68,7 +69,7 @@ def maybe_partially_init_model_from_state_dict(config: dict,
         target = model_AE.auto_encoder.decoders["recon"]
         _load_submodule(target, ckpt_sd,
                         prefix="auto_encoder.decoders.recon.",
-                        strict=False,
+                        strict=strict,
                         msg="decoder", 
                         verbose=verbose)
 
@@ -84,7 +85,7 @@ def maybe_partially_init_model_from_state_dict(config: dict,
         target = model_AE.auto_encoder                     
         _load_submodule(target, ckpt_sd,
                         prefix="auto_encoder.",
-                        strict=False,                     
+                        strict=strict,                     
                         msg="auto_encoder", 
                         verbose=verbose)
 
@@ -99,7 +100,7 @@ def maybe_partially_init_model_from_state_dict(config: dict,
 
         _load_submodule(model_c, ckpt_sd,
                         prefix="",                         # whole ckpt *is* the classifier
-                        strict=False,
+                        strict=strict,
                         msg="classifier", 
                         verbose=verbose)
     return None
@@ -431,9 +432,16 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
                                         classifier_head_infos = classifier_head_infos, 
                                         attention_paths_dct = attention_paths_dct
                                         )
-
+    
+    # Load model weights. Be strict if the training is skipped!. 
+    if config.get("SKIP_TRAINING", False) or config.get("STRICT_MODEL_LOAD", False): 
+        strict_model_load = True
+    else: 
+        strict_model_load = False
     maybe_partially_init_model_from_state_dict(config, model_AE, model_c, 
-                                               verbose=config.get("model_initialization", {}).get("verbosity_level", 3))
+                                               verbose=config.get("model_initialization", {}).get("verbosity_level", 3), 
+                                               strict = strict_model_load
+                                               )
     model_AE.to(device)
     model_c.to(device)
 
@@ -454,7 +462,9 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         [model_AE, model_c], # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
         scheduler_class=scheduler_class, scheduler_params=scheduler_params,
-        verbose = (verbose >= VerboseLevel.VERYCHATTY)
+        verbose = (verbose >= VerboseLevel.VERYCHATTY), 
+        batch_size_for_lr_rescaling = (config["training"]["batch_size"] if config["training"].get("batch_size_dependent_lr", False) else None),
+        batch_size_for_lr_rescaling_base = 256, 
     )
 
 
@@ -471,50 +481,68 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
         raise NotImplementedError(f"{AE_transform_name = }")
 
     train_dataloaders = {k: data[k]["train_loader"] for k in data.keys()}
+    train_dataloaders_with_val_transforms = {k: data[k]["train_loader_with_val_transforms"] for k in data.keys()}
     val_loaders = {k: data[k]["val_loader"] for k in data.keys()}
     test_loaders = {k: data[k]["test_loader"] for k in data.keys()}
     epochs = config["training"]["epochs"]
 
-
-
-    print("Start training for: ", config_name)
-    model_AE, model_c, metrics_Tr, metrics_Val = train_loop_AE_v4(
-        model_AE=model_AE,
-        model_classifier=model_c,
-        train_dataloaders=train_dataloaders,
-        val_loaders=val_loaders,
-        loss_fn_dict=loss_fn_dict,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        device=device,
-        epochs=epochs,
-        patience=config["training"].get("early_stopping_tol", 100),
-        transform=transform_AE,
-        log_model_full=config.get("SAVE_MODEL_FULL", False),
-        log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
-        verbose=3,
-        ES_metric_key=config["training"].get("early_stopping_metric_key", "L"), 
-        append_BEST_VAL_as_last=append_BEST_VAL_as_last,
-        task_type_y = config.get("task_type_y", "classification")
-    )
-
-
-
-    artifact_uri = mlflow.get_artifact_uri()
-    print("ARTIFACTS URI = ", artifact_uri)
-    if config_name != None: 
-        print("Done with training for: ", config_name)
+    SKIP_TRAINING = config.get("SKIP_TRAINING", False)
+    if SKIP_TRAINING: 
+        print(f"{SKIP_TRAINING = }")
+        print(f"Only evaluating! Make sure that the model was loaded fully!!")
+        metrics_Tr, metrics_Val = None, None
+    else: 
+        print("Start training for: ", config_name)
+        model_AE, model_c, metrics_Tr, metrics_Val = train_loop_AE_v4(
+            model_AE=model_AE,
+            model_classifier=model_c,
+            train_dataloaders=train_dataloaders,
+            val_loaders=val_loaders,
+            loss_fn_dict=loss_fn_dict,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+            epochs=epochs,
+            patience=config["training"].get("early_stopping_tol", 100),
+            transform=transform_AE,
+            log_model_full=config.get("SAVE_MODEL_FULL", False),
+            log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
+            verbose=3,
+            ES_metric_key=config["training"].get("early_stopping_metric_key", "L"), 
+            append_BEST_VAL_as_last=append_BEST_VAL_as_last,
+            task_type_y = config.get("task_type_y", "classification")
+        )
+        artifact_uri = mlflow.get_artifact_uri()
+        print("ARTIFACTS URI = ", artifact_uri)
+        if config_name != None: 
+            print("Done with training for: ", config_name)
+    
+            
+    evaluate_and_save_training_set = config.get("evaluate_and_save_training_set", False)
+    if evaluate_and_save_training_set:
+        print(f"evaluate_and_save_training_set")
+        evaluate_and_log_testset_results_AE_v4(
+            model_AE=model_AE,
+            model_classifier=model_c,
+            dataloaders=train_dataloaders_with_val_transforms,
+            loss_fn_dict=loss_fn_dict,
+            device=device,
+            transform=lambda x: x,
+            prefix="trFinal_",
+            task_type_y = config.get("task_type_y", "classification")
+        )
+            
 
     evaluate_on_testset = config.get("evaluate_on_testset", False)
     if evaluate_on_testset:
         print("Evaluating on test set")
-        evaluate_and_log_testset_results_AE_v4( # TODO maybe add triplet loss
+        evaluate_and_log_testset_results_AE_v4(
             model_AE=model_AE,
             model_classifier=model_c,
             dataloaders=test_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
-            transform=transform_AE,
+            transform=lambda x: x,
             prefix="test_",
             task_type_y = config.get("task_type_y", "classification")
         )
@@ -527,7 +555,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
             dataloaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
-            transform=transform_AE,
+            transform=lambda x: x,
             prefix="valFinal_",
             skip_metrics_logging=False, # These are already logged in the training loop
             task_type_y = config.get("task_type_y", "classification")

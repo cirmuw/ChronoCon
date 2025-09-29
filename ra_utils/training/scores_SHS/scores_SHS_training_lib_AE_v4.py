@@ -1365,23 +1365,23 @@ def training_epoch_AE_v4(
             l = loss_z_triplet_classes.item()
             contr_dct["Lz_TriCls"] = contr_dct.get("Lz_TriCls", 0.0) + (l * N_pos)
             contr_dct["Lz_TriCls_numPosTrip"]   = contr_dct.get("Lz_TriCls_numPosTrip", 0.0) + N_pos
-            contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
-            contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+            contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item()
+            contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item()
 
             N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__WST_classes.item()
             l = loss_z_triplet_WST_scores.item()
             contr_dct["Lz_TriClsWST"] = contr_dct.get("Lz_TriClsWST", 0.0) + (l * N_pos)
             contr_dct["Lz_TriClsWST_numPosTrip"]   = contr_dct.get("Lz_TriClsWST_numPosTrip", 0.0) + N_pos            
-            contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
-            contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
+            contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item()
+            contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item()
 
 
             N_pos = number_of_valid_triplets__WST_time.item() * fraction_positive_triplets__WST_time.item()
             l = loss_z_triplet_WST_time.item()
             contr_dct["Lz_TriTimeWST"] = contr_dct.get("Lz_TriTimeWST", 0.0) + (l * N_pos)
             contr_dct["Lz_TriTimeWST_numPosTrip"]   = contr_dct.get("Lz_TriTimeWST_numPosTrip", 0.0) + N_pos
-            contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item() * B
-            contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item() * B                    
+            contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item()
+            contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item()                 
 
             N_pos = number_of_valid_contributions_SCR.item()
             l = loss_z_SCR.item()
