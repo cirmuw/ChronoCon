@@ -16,6 +16,9 @@ from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnetT import (
         resnet50_decoder
     ) 
 
+from importlib import resources
+import pandas as pd
+
 #--------------------------------------------------------------#
 #-------------------------  interfaces-------------------------#
 #--------------------------------------------------------------#
@@ -387,8 +390,7 @@ class MultiModalImageScoreTypeNetworkAE(nn.Module):
         
 
         
-from importlib import resources
-import pandas as pd
+
 
 def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
                                                                 config: dict):

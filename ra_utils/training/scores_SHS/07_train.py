@@ -50,7 +50,8 @@ def main():
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/dev_triplet.yml",
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/MTAN_r01_debugging.yml",
-        default_config = "/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev_PIP_MCPv3.yml",
+        #default_config = "/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev_PIP_MCPv3.yml",
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/ResNet_MSECESoft_MSE0.5_CE0.5_tLSR0.2_timeTriplet0.00_nnLSR0.05_nnnLSR0.01_r01.yml",
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
@@ -112,7 +113,6 @@ def main():
 
 
         metrics = run_training_v2(config = config,  
-                               mlflow_logging=True, 
                                verbose=VerboseLevel.CHATTY,
                                config_name=config_name)
         

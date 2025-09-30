@@ -396,7 +396,7 @@ def check_config_consistency_and_partially_make_consistent(config : dict):
 
 import ra_utils.loss.loss_fn_dict
 
-def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY, 
+def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY, 
                  config_name=None,
                  append_BEST_VAL_as_last=True): 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -434,7 +434,7 @@ def run_training_v2(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHA
                                         )
     
     # Load model weights. Be strict if the training is skipped!. 
-    if config.get("SKIP_TRAINING", False) or config.get("STRICT_MODEL_LOAD", False): 
+    if config.get("SKIP_TRAINING", False) or config["model_initialization"].get("STRICT_MODEL_LOAD", False): 
         strict_model_load = True
     else: 
         strict_model_load = False

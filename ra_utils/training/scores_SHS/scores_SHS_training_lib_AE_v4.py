@@ -386,6 +386,24 @@ def val_epoch_AE_v4(
     all_logits: list[np.ndarray] | None = [] if task_type_y in ("classification", "classification_regression_mix") else None
 
     extra_keys = ["file_name", "score_type", "JSN_or_ERO", "extremity", "patient_id"]
+    extra_keys2 = ['image_path', 'score',
+        'roi_name', #'image_instance_id', 
+        'number of score classes',
+        #'id', 
+        'date_str', #'region', 
+        'left_or_right', 
+        #'x4', 'x5',
+        #'x6', 'x7', 'x8', 'x9', 'x10', 'x11', 'image_series_length',
+        #'score maxdiff', 
+        #'date_dt', 
+        'score_difference_next_visit',
+        'years_to_next_visit', 'score_change_per_year_to_next',
+        'score_difference_prev_visit', 'years_to_prev_visit',
+        'score_change_per_year_to_prev', 'score tSLR', 'patient_cls_lbl',
+        'patient_weight', 'patient_scoretype_key']
+    extra_keys = extra_keys + extra_keys2
+    
+    
     all_extras: Dict[str, list] = {k: [] for k in extra_keys}
 
     # ------------------------------------------------------------------
@@ -1535,11 +1553,11 @@ def evaluate_and_log_testset_results_AE_v4(
         log_scalar_dict(prefix, extra_loss, step=None)  # Lz_triplet_classes now included
 
     # -------------------------------------------------- 4. Save raw predictions
-    with tempfile.NamedTemporaryFile(suffix=".npz", delete=False) as tmp:
-        np.savez_compressed(tmp.name, **outputs_all)
-        mlflow.log_artifact(tmp.name, artifact_path=f"predictions/{prefix}")
-        tmp_path = tmp.name
-    os.remove(tmp_path)
+    with tempfile.TemporaryDirectory(prefix="preds_") as tmpdir:
+        tmp_path = os.path.join(tmpdir, "predictions.npz")
+        np.savez_compressed(tmp_path, **outputs_all)
+        mlflow.log_artifact(tmp_path, artifact_path=f"predictions/{prefix}")
+
 
     # -------------------------------------------------- 5. Plot reconstructions
     plot_reconstructions_by_type(

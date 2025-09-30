@@ -1,217 +1,142 @@
-### My model and datapipeline imports: 
-
-
+# ==================== Standard Library ====================
+import hashlib
 import os
-import sys
-
-from torchvision import transforms
-from torch.utils.data import DataLoader
-import torch
-
-
-import os
-import numpy as np
-from torch.utils.data import Dataset
-
-import matplotlib.pyplot as plt
 import random
-from pathlib import Path 
+import sys
+from collections import Counter
+from datetime import datetime
+from importlib import resources
+from pathlib import Path
+from typing import Dict, List, Literal, Optional, Sequence
 
+import yaml
 
-# from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.io_scoring_method import io_scoring
-# from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.run_utils import (
-#     paths_list_scores_list_from_score_types,
-#     restructure_paths_and_scores,
-#     restructure_paths_and_scores_v2
-# )
-
+# ==================== Third-Party Libraries ====================
+import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
-from typing import List 
+import seaborn as sns
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+from PIL import Image
+from torch import Tensor
+from torch.utils.data import DataLoader as TorchDataLoader, Dataset as TorchDataset, WeightedRandomSampler
+from torchmetrics.functional import structural_similarity_index_measure as ssim
+from torchvision import transforms
+import torchvision.transforms.v2 as v2
 
+import monai
+import monai.networks.nets
+from monai.data import DataLoader as MonaiDataLoader, Dataset as MonaiDataset
+from monai.networks.nets import BasicUNet, UNet
+
+from tqdm.notebook import tqdm
+import umap
+
+# Interactive embeddings (FiftyOne)
+import fiftyone as fo
+import fiftyone.core.labels as fol
+from fiftyone import brain as fob
+
+# ==================== Project / Local Imports ====================
 import ra_utils
 import ra_utils.utils.config_parser
-import ra_utils.networks.loss_function
+import ra_utils.utils.utils
 
-
+# Data loaders & helpers
 import ra_utils.data.dataloader_CR_patches
 from ra_utils.data.dataloader_CR_patches import (
-    load_img_SHS_patch_data,
-    df_scores_to_dct_list,
-)
-
-import ra_utils.data.dataloader_CR_patches
-from monai.data import Dataset, DataLoader
-from monai.transforms import (
-    Compose
-)
-import torch
-from torch.utils.data import WeightedRandomSampler, DataLoader
-
-
-from ra_utils.data.dataloader_CR_patches import (
-    load_img_SHS_patch_data,
     dataset_and_loader,
     dataset_and_loader_several,
     df_scores_to_dct_list,
-    make_paths_dataframe,
-    restructure_paths_and_scores,
-    restructure_paths_and_scores_v2,
     exclude_ROIS_according_surgery_status,
-    split_training_val_test__on_patient_level,
+    load_img_SHS_patch_data,
+    make_paths_dataframe,
     process_several_score_groups,
     process_single_score_group,
-    load_img_SHS_patch_data
+    restructure_paths_and_scores,
+    restructure_paths_and_scores_v2,
+    split_training_val_test__on_patient_level,
 )
 
-import yaml
-from importlib import resources
+from ra_utils.data.data_utils import extract_extras_from_filename
 
-
+# Networks / architectures
 import ra_utils.networks.architecture
 from ra_utils.networks.architecture import (
+    EncoderClassifierNetwork,
+    MultiModalImageScoreTypeNetwork,
+    MultiModalImageScoreTypeNetworkAE,
     ResNet18Encoder,
     ResNet34Encoder,
     ResNet50Encoder,
-    make_mlp,
-    EncoderClassifierNetwork,
-    MultiModalImageScoreTypeNetwork,
     ROI_type_encoder,
-    model_interface_forward
+    make_mlp,
+    model_interface_forward,
 )
-import numpy as np
+
 from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.network import Custom_VGG
 from ra_utils.utils.utils_SHS_scoring import get_classes
-import ra_utils.utils.utils
-import torch.nn as nn
 
-
+# MTAN / AE models
+import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_mtan
 import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_recon_mtan
-
 from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_recon_mtan import (
-    #MTANResNetRecon
     MTANReconCls,
-    build_mtan_recon_cls
+    build_mtan_recon_cls,
 )
 
-
-from ra_utils.data.data_utils import (
-    extract_extras_from_filename
-)
-
-
-from ra_utils.training.scores_SHS.model_builders import build_models_AE
-from tqdm.notebook import tqdm
-
-from ra_utils.progressionlearning.models.builder import (
-    build_MTANAE
-)
-from ra_utils.progressionlearning.models.MTANUNet import (
-    MTANRecUnet, 
-    MTANRecUnet_v2,
-    MTANRecUnet_v3
-)
-import monai
-from monai.networks.nets import BasicUNet, UNet
-
-
-from ra_utils.progressionlearning.models.builder import (
-    build_MTANAE, 
-    build_MTANAE_v2
-)
 from ra_utils.progressionlearning.models.MTANUNet import (
     MTANRecUnet,
-    MTANRecUnet_v2
+    MTANRecUnet_v2,
+    MTANRecUnet_v3,
 )
-import monai
-import monai.networks.nets
-from monai.networks.nets import BasicUNet, UNet
-from typing import Dict, List
 
-import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_mtan
-from ra_utils.training.scores_SHS.model_builders import build_models_AE_v2, build_models_AE_v1_and2
+from ra_utils.progressionlearning.models.builder import (
+    build_MTANAE,
+    build_MTANAE_v2,
+)
+
+from ra_utils.training.scores_SHS.model_builders import (
+    build_models_AE,
+    build_models_AE_v1_and2,
+    build_models_AE_v2,
+)
+
 from ra_utils.training.scores_SHS.run_training_main_lib import (
+    check_config_consistency_and_partially_make_consistent,
     maybe_partially_init_model_from_state_dict,
-    check_config_consistency_and_partially_make_consistent
-    )
-
-# wrap model: 
-
-from ra_utils.networks.architecture import (
-    MultiModalImageScoreTypeNetworkAE,
-    ROI_type_encoder
 )
 
-
-
-# get all scores types / roi types
-import ra_utils.utils
-
-import ra_utils.utils.config_parser
-import torchvision.transforms.v2 as v2
-
+# Losses
 import ra_utils.networks.loss_function
 from ra_utils.networks.loss_function import get_score_loss_function, get_triplet_loss_fn
 
-import torch.nn.functional as F
-
-
-from datetime import datetime
-import seaborn as sns
-from torchmetrics.functional import structural_similarity_index_measure as ssim
-from ra_utils.visualization.structural_similarity_index import (
-    ssim_matrix_torchmetrics, 
-    compute_and_plot_ssi
-)
-from ra_utils.visualization.plot_image_series import (
-    plot_patch_series, plot_triplet_dataloader_examples
-)
-
-from ra_utils.loss.online_mining_delta_loss import batch_all_score_differences_loss
-from collections import Counter
-
-
+import ra_utils.loss.consistency_regularizer_loss
 import ra_utils.loss.loss_fn_dict
-
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from typing import Optional, Sequence
-from torch import Tensor
-#  import online_triplet_loss.losses   # now added to ra_utils and modified
+import ra_utils.loss.loss_utils
 import ra_utils.loss.online_mining_triplet_loss
 import ra_utils.loss.online_mining_triplet_loss_with_scores
-import ra_utils.loss.consistency_regularizer_loss
-from typing import Optional
+from ra_utils.loss.online_mining_delta_loss import batch_all_score_differences_loss
+import ra_utils.utils.multiprocessing
 
-import numpy as np
-
-import ra_utils.loss.loss_utils
-
-
+# Viz / analysis
 import ra_utils.features.embeddings
 import ra_utils.visualization.embeddings
-
-
-import umap
-
-
-
-# Interactive embeddings imports
-import fiftyone as fo
-import fiftyone.core.labels as fol
-from fiftyone import brain as fob
-import numpy as np
-
-
-import os, hashlib
-from pathlib import Path
-import numpy as np
-from PIL import Image
-import torch
-import fiftyone as fo
-import fiftyone.core.labels as fol
-from fiftyone import brain as fob
-from typing import Literal
+from ra_utils.visualization.plot_image_series import (
+    plot_patch_series,
+    plot_triplet_dataloader_examples,
+)
+from ra_utils.visualization.structural_similarity_index import (
+    compute_and_plot_ssi,
+    ssim_matrix_torchmetrics,
+)
+from sklearn.decomposition import PCA
+import umap as umap_pkg
+import plotly.graph_objects as go
+from collections import defaultdict
+from sklearn.manifold import TSNE
 
 # import torch.multiprocessing as mp
 # mp.set_sharing_strategy("file_system")  # avoids /dev/shm exhaustion issues on Linux
@@ -283,91 +208,6 @@ def ensure_png_for_sample(tensor_img: torch.Tensor,
 
     return str(out_path)
 
-# ---------- embeddings + pack ----------
-# @torch.no_grad()
-# def extract_embeddings_and_pngs(model_AE, model_c, loader, device, score_estimator, 
-#                                 #is_regression: bool,
-#                                 task_type_y: Literal["classification", "regression", "classification_regression_mix"], 
-                                
-#                                 png_root: str):
-#     model_AE.eval()
-#     model_c.eval()
-
-#     Z, png_paths, y_true_all, y_pred_all, conf_all= [], [], [], [], []
-#     score_types, roi_names, patient_ids, extremities, lr_sides = [], [], [], [], []
-#     score_difference_prev_visit_all, score_difference_next_visit_all  = [], []
-
-#     for batch in loader:
-#         X = batch["img"].to(device)
-#         s_type = batch["score_type"]               # list[str]
-#         y = batch["score"]
-#         if torch.is_tensor(y):
-#             y = y.detach().cpu().numpy()
-
-#         # forward -> embedding + logits
-#         _, z = model_AE(X, s_type)                 # (B, D)
-#         logits = model_c(z, s_type)                # (B, C) or (B, 1)
-
-#         # predictions
-#         if task_type_y == "regression":
-#             score_estimate = score_estimator(logits)
-#             yhat = score_estimate.detach().cpu().numpy()
-#             conf = np.full_like(yhat, np.nan)
-#         elif task_type_y == "classification":
-#             probs = torch.softmax(logits, dim=1)
-#             yhat_idx = probs.argmax(1)
-#             yhat = yhat_idx.detach().cpu().numpy()
-#             conf = probs[torch.arange(len(yhat_idx)), yhat_idx].detach().cpu().numpy()
-#         elif task_type_y == "classification_regression_mix":
-#             probs = torch.softmax(logits[:,1:], dim=1)
-#             yhat_idx = probs.argmax(1)
-#             #yhat = yhat_idx.detach().cpu().numpy()
-#             conf = probs[torch.arange(len(yhat_idx)), yhat_idx].detach().cpu().numpy()
-#             score_estimate = score_estimator(logits).cpu().numpy()
-#             yhat = score_estimate.detach().cpu().numpy()
-
-#         # ensure a PNG for each sample *after* transforms
-#         # we use your new 'image_path' field as the source-id
-#         src_paths = batch.get("image_path", None)
-#         if src_paths is None:
-#             raise KeyError("Batch missing 'image_path'. Please add it in your Dataset dicts.")
-
-#         for i in range(X.shape[0]):
-#             png_p = ensure_png_for_sample(X[i], src_paths[i], png_root)
-#             png_paths.append(png_p)
-
-#         # meta
-#         Z.append(z.detach().cpu().float().numpy())
-#         y_true_all.extend(list(y))
-#         y_pred_all.extend(list(yhat))
-#         conf_all.extend(list(conf))
-#         score_types.extend(list(s_type))
-#         score_difference_prev_visit_all.extend(list(batch["score_difference_prev_visit"]))
-#         score_difference_next_visit_all.extend(list(batch["score_difference_next_visit"]))
-
-
-#         roi_names.extend(batch.get("roi_name", [""] * X.shape[0]))
-#         patient_ids.extend(batch.get("patient_id", [""] * X.shape[0]))
-#         extremities.extend(batch.get("extremity", [""] * X.shape[0]))
-#         lr_sides.extend(batch.get("left_or_right", [""] * X.shape[0]))
-
-
-#     Z = np.concatenate(Z, axis=0)
-
-#     return dict(
-#         Z=Z,
-#         display_paths=np.array(png_paths),
-#         y_true=np.array(y_true_all),
-#         y_pred=np.array(y_pred_all),
-#         conf=np.array(conf_all),
-#         score_type=np.array(score_types),
-#         roi_name=np.array(roi_names),
-#         patient_id=np.array(patient_ids),
-#         extremity=np.array(extremities),
-#         left_or_right=np.array(lr_sides),
-#         score_difference_prev_visit=np.array(score_difference_prev_visit_all),
-#         score_difference_next_visit=np.array(score_difference_next_visit_all),
-#     )
 
 from ra_utils.utils.utils import datestr_to_years_since_2000
 from ra_utils.utils.utils import datestr_to_years_since_2000
@@ -388,7 +228,7 @@ def extract_embeddings_and_pngs(
 
     Z_list, png_paths = [], []
     score_gt, score_pred_all = [], []
-    class_gt_all, class_pred_all, class_conf_all = [], [], []
+    class_gt_all, class_pred_all, class_conf_all, max_score_difference_all = [], [], [], []
     head_name_all = []
 
     score_types, roi_names, patient_ids, extremities, lr_sides = [], [], [], [], []
@@ -458,10 +298,12 @@ def extract_embeddings_and_pngs(
         score_types.extend(s_type)
         d_prev_all.extend(list(batch.get("score_difference_prev_visit", [None] * B)))
         d_next_all.extend(list(batch.get("score_difference_next_visit", [None] * B)))
+        max_score_difference_all.extend(list(batch.get("score maxdiff", [None]*B)))
         roi_names.extend(batch.get("roi_name", [""] * B))
         patient_ids.extend(batch.get("patient_id", [""] * B))
         extremities.extend(batch.get("extremity", [""] * B))
         lr_sides.extend(batch.get("left_or_right", [""] * B))
+
 
     Z = np.concatenate(Z_list, axis=0)
 
@@ -489,59 +331,13 @@ def extract_embeddings_and_pngs(
         left_or_right=np.array(lr_sides),
         score_difference_prev_visit=np.array(d_prev_all, dtype=object),
         score_difference_next_visit=np.array(d_next_all, dtype=object),
-
+        max_score_difference=np.array(max_score_difference_all),
         # time + identity
         patient_scoretype_key=np.array(ps_key_all),
         years_since_2000=np.array(years_all, dtype=float),
         date_str=np.array(date_str_all),
     )
 
-
-# ---------- FiftyOne dataset ----------
-# def build_fiftyone_dataset(name, pack, task_type_y: Literal["classification", "regression", "classification_regression_mix"], 
-#                            class_names=None):
-#     if  class_names is None: # not is_regression and
-#         uniq = sorted(set(pack["y_true"].tolist()))
-#         #uniq = sorted(set(pack["y_true"].tolist()) | set(pack["y_pred"].tolist()))
-#         class_names = {int(i): str(i) for i in uniq}
-
-#     ds = fo.Dataset(name)
-#     samples = []
-#     for i in range(len(pack["display_paths"])):
-#         s = fo.Sample(filepath=str(pack["display_paths"][i]))
-
-#         if (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
-#             s["ground_truth"] = float(pack["y_true"][i])
-#             s["prediction"]   = float(pack["y_pred"][i])
-#             s["wrong"] = None
-#             s["confidence"] = None
-#         else:
-#             gt = class_names.get(int(pack["y_true"][i]), str(pack["y_true"][i]))
-#             pr = class_names.get(int(pack["y_pred"][i]), str(pack["y_pred"][i]))
-#             s["ground_truth"] = fol.Classification(label=gt)
-#             s["prediction"]   = fol.Classification(
-#                 label=pr,
-#                 confidence=None if np.isnan(pack["conf"][i]) else float(pack["conf"][i])
-#             )
-#             s["wrong"] = (str(pr) != str(gt))
-#             s["confidence"] = None if np.isnan(pack["conf"][i]) else float(pack["conf"][i])
-
-#         s["score_type"]    = str(pack["score_type"][i])
-#         s["roi_name"]      = str(pack["roi_name"][i]) if len(pack["roi_name"]) else ""
-#         s["patient_id"]    = str(pack["patient_id"][i]) if len(pack["patient_id"]) else ""
-#         s["extremity"]     = str(pack["extremity"][i]) if len(pack["extremity"]) else ""
-#         s["left_or_right"] = str(pack["left_or_right"][i]) if len(pack["left_or_right"]) else ""
-#         # But score_difference_prev_visit, score_difference_next_visit this might contain None entries. Not sure if this will be an issue... 
-#         s["score_difference_prev_visit"] = str(pack["score_difference_prev_visit"][i]) if len(pack["score_difference_prev_visit"]) else ""
-#         s["score_difference_next_visit"] = str(pack["score_difference_next_visit"][i]) if len(pack["score_difference_next_visit"]) else ""
-
-
-#         s["embedding"]     = np.asarray(pack["Z"][i], dtype=np.float32)
-
-#         samples.append(s)
-
-#     ds.add_samples(samples)
-#     return ds
 
 def build_fiftyone_dataset(
     name: str,
@@ -567,13 +363,15 @@ def build_fiftyone_dataset(
         gt_label = class_names.get(int(pack["class_gt"][i]), str(int(pack["class_gt"][i])))
         pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
         conf_val = pack["class_conf"][i]
-        conf_val = None if (np.isnan(conf_val) or np.isinf(conf_val)) else float(conf_val)
+        conf_val = None if (np.isnan(conf_val) or np.isinf(conf_val)) else np.round(float(conf_val), 2)
 
         s["class_gt"] = fol.Classification(label=gt_label)
         s["class_pred"] = fol.Classification(label=pr_label, confidence=conf_val)
+        if conf_val != None: 
+            s["pred_confidence"] = str(conf_val)
 
         # convenience flags
-        s["wrong_cls"] = (gt_label != pr_label)
+        s["correct_cls"] = (gt_label == pr_label)
         # absolute error on scalar scores
         s["abs_err_score"] = float(abs(pack["score_pred"][i] - pack["score_gt"][i]))
 
@@ -591,9 +389,12 @@ def build_fiftyone_dataset(
         # store None as None (not strings) for numeric filters
         prev_v = pack["score_difference_prev_visit"][i]
         next_v = pack["score_difference_next_visit"][i]
+        diff_v = pack["max_score_difference"][i]
         s["score_difference_prev_visit"] = None if prev_v is None else float(prev_v)
         s["score_difference_next_visit"] = None if next_v is None else float(next_v)
-
+        #s["score_will_increase"] = None if next_v is None else int(next_v>0)
+        #s["score_did_increase"] = None if next_v is None else int(next_v>0)
+        s["max_score_difference"] = None if diff_v is None else float(diff_v)
         # embedding
         s["embedding"] = np.asarray(pack["Z"][i], dtype=np.float32)
 
@@ -602,23 +403,23 @@ def build_fiftyone_dataset(
     ds.add_samples(samples)
     return ds
 
-from sklearn.decomposition import PCA
-import umap as umap_pkg
+
 
 def compute_projection(Z: np.ndarray, method: str = "umap", seed: int = 42) -> np.ndarray:
     """
-    Returns (N,2) projection for 'umap' or 'pca'.
+    Returns (N,2) projection for 'umap', 'pca', or 'tsne'.
     """
     if method == "pca":
         return PCA(n_components=2, random_state=seed).fit_transform(Z)
     elif method == "umap":
         reducer = umap_pkg.UMAP(n_components=2, random_state=seed)
         return reducer.fit_transform(Z)
+    elif method == "tsne":
+        return TSNE(n_components=2, random_state=seed, perplexity=min(30, max(5, Z.shape[0] // 10))).fit_transform(Z)
     else:
         raise ValueError(f"Unknown method: {method}")
 
-import plotly.graph_objects as go
-from collections import defaultdict
+
 
 def plot_trajectories_html(
     coords_2d: np.ndarray,           # (N,2)
@@ -699,12 +500,14 @@ def fo_visualize_multi(ds, methods=("umap", "pca"), seed=42):
     if "sim_index" not in ds.list_brain_runs():
         fob.compute_similarity(ds, embeddings="embedding", brain_key="sim_index", metric="cosine")
 
-    session = fo.launch_app(ds)
+    session = fo.launch_app(ds)   # returns a Session
+    #session.open_tab()            # optional: pop a browser tab
     print("Opened FiftyOne. In the Embeddings panel, pick 'umap2d' or 'pca2d'.")
+    session.wait()                # <-- block so the session stays alive
     return session
 
 
-from typing import Literal
+
 
 
 def make_score_estimator(config, device="cuda"):
@@ -816,124 +619,262 @@ def round_to_class(x: float, min_c: int = 0, max_c: Optional[int] = None) -> int
         xi = max(min_c, xi)
     return xi
 
+######################################################################
+### Functions for reloading embedding
+
+def save_pack(pack: dict, out_dir: str, png_root: str | None = None, save_projections: bool = True):
+    """
+    Saves:
+      - pack_arrays.npz  (all np arrays from `pack`)
+      - summary.parquet  (handy for quick peeks)
+      - png_root.txt     (where your PNGs were written)
+      - umap2d.npy / pca2d.npy (optional, precomputed 2D coords)
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+
+    # 1) Save all arrays as .npz (keeps types, compact)
+    np.savez_compressed(out / "pack_arrays.npz", **{
+        k: v for k, v in pack.items()
+        if isinstance(v, np.ndarray)
+    })
+
+    # 2) Save a small tabular summary (great for filtering in pandas)
+    df = pd.DataFrame({
+        "display_paths": pack["display_paths"],
+        "score_type": pack["score_type"],
+        "roi_name": pack["roi_name"],
+        "patient_id": pack["patient_id"],
+        "extremity": pack["extremity"],
+        "left_or_right": pack["left_or_right"],
+        "score_gt": pack["score_gt"],
+        "score_pred": pack["score_pred"],
+        "class_gt": pack["class_gt"],
+        "class_pred": pack["class_pred"],
+        "class_conf": pack["class_conf"],
+        "patient_scoretype_key": pack["patient_scoretype_key"],
+        "years_since_2000": pack["years_since_2000"],
+        "date_str": pack["date_str"],
+    })
+    df.to_parquet(out / "summary.parquet", index=False)
+
+    # 3) Remember PNG root (helps when moving between machines)
+    if png_root is not None:
+        (out / "png_root.txt").write_text(str(png_root))
+
+    # 4) (Optional) precompute & store 2D projections so you can skip UMAP/PCA later
+    if save_projections and "Z" in pack:
+        try:
+            coords_umap = compute_projection(pack["Z"], method="umap", seed=42)
+            coords_pca  = compute_projection(pack["Z"], method="pca",  seed=42)
+            np.save(out / "umap2d.npy", coords_umap)
+            np.save(out / "pca2d.npy",  coords_pca)
+        except Exception as e:
+            print(f"[save_pack] Skipping projections: {e}")
+
+    print(f"[save_pack] Wrote cache to: {out.resolve()}")
+
+
+def load_pack(in_dir: str) -> dict:
+    """
+    Loads arrays from pack_arrays.npz and returns a `pack` dict
+    with the same keys you used downstream.
+    """
+    p = Path(in_dir) / "pack_arrays.npz"
+    data = np.load(p, allow_pickle=True)
+
+    # Rebuild dict with explicit dtypes where needed
+    pack = {k: data[k] for k in data.files}
+    # Ensure a few expected dtypes
+    for k in ("score_gt", "score_pred", "class_conf", "years_since_2000"):
+        if k in pack: pack[k] = pack[k].astype(float)
+    for k in ("class_gt", "class_pred"):
+        if k in pack: pack[k] = pack[k].astype(int)
+    # Strings stay strings; embeddings Z remains float
+    return pack
+
+def rebuild_fo_dataset_from_pack(
+    name: str,
+    pack: dict,
+    task_type_y: Literal["classification", "regression", "classification_regression_mix"] = "classification",
+    class_names: dict[int, str] | None = None,
+    persistent: bool = True,
+):
+    if class_names is None:
+        uniq = sorted(set(pack["class_gt"].tolist()) | set(pack["class_pred"].tolist()))
+        class_names = {int(i): str(i) for i in uniq}
+
+    # If dataset exists, delete or load fresh
+    if name in fo.list_datasets():
+        fo.delete_dataset(name)
+
+    ds = fo.Dataset(name, persistent=persistent)
+
+    samples = []
+    N = len(pack["display_paths"])
+    for i in range(N):
+        s = fo.Sample(filepath=str(pack["display_paths"][i]))
+
+        # scalar view
+        s["score_gt"]   = float(pack["score_gt"][i])
+        s["score_pred"] = float(pack["score_pred"][i])
+
+        # class view
+        gt_label = class_names.get(int(pack["class_gt"][i]), str(int(pack["class_gt"][i])))
+        pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
+
+        conf = pack["class_conf"][i]
+        conf = None if (np.isnan(conf) or np.isinf(conf)) else float(conf)
+
+        s["class_gt"]  = fol.Classification(label=gt_label)
+        s["class_pred"] = fol.Classification(label=pr_label, confidence=conf)
+        if conf is not None:
+            s["pred_confidence"] = conf
+
+        # meta
+        for fld in ("score_type","roi_name","patient_id","extremity","left_or_right"):
+            s[fld] = str(pack[fld][i]) if len(pack[fld]) else ""
+
+        s["patient_scoretype_key"] = str(pack["patient_scoretype_key"][i])
+        s["years_since_2000"]      = float(pack["years_since_2000"][i])
+        s["date_str"]              = str(pack["date_str"][i])
+
+        # numeric deltas (may be None)
+        pv = pack["score_difference_prev_visit"][i] if "score_difference_prev_visit" in pack else None
+        nv = pack["score_difference_next_visit"][i] if "score_difference_next_visit" in pack else None
+        dv = pack["max_score_difference"][i] if "max_score_difference" in pack else None
+        s["score_difference_prev_visit"] = None if pv is None else float(pv)
+        s["score_difference_next_visit"] = None if nv is None else float(nv)
+        s["max_score_difference"] = None if dv is None else float(dv)
+
+        # store the embedding
+        s["embedding"] = np.asarray(pack["Z"][i], dtype=np.float32)
+
+        samples.append(s)
+
+    ds.add_samples(samples)
+    return ds
+
+
+
+
+
 def main():
+    from pathlib import Path
+    import numpy as np
+    from fiftyone import brain as fob
+    import fiftyone as fo
+    ra_utils.utils.multiprocessing.set_multiprocessing_strategy()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
+    # -------------------- 0) Load config
     config = ra_utils.utils.config_parser.load_config(
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/34_AHM/WRS_v02p00.yml", 
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/ResNet_MSECESoft_MSE0.0_CE1.0_tLSR0.0_r01_DEBUGGING.yml", 
-        debugging_in_jupyter_nb=False, silencium=True)
-
-    # Load tables with paths and scores (+ split)
-    data_tables = process_several_score_groups(config["data"])
-
-    # # Make dataset and dataloaders
-    data = dataset_and_loader_several(data_tables, config)
-
-
-
-    # Load/ make model
-    classifier_head_infos, attention_paths_dct, config = check_config_consistency_and_partially_make_consistent(config)
-    model_name = config["model_name"]
-    model_AE, model_c = build_models_AE_v1_and2(
-                                        model_name, config, 
-                                        classifier_head_infos = classifier_head_infos, 
-                                        attention_paths_dct = attention_paths_dct
-                                        )
-    task_type_y = config.get("task_type_y", "classification")
-    score_estimator = make_score_estimator(config, device)
-   
-
-
-
-    maybe_partially_init_model_from_state_dict(config, model_AE, model_c, 
-                                               verbose=config.get("model_initialization", {}).get("verbosity_level", 3))
-    model_AE.to(device)
-    model_c.to(device)
-
-
-    val_loaders = {k: data[k]["val_loader"] for k in data.keys()}
-    train_loaders = {k: data[k]["train_loader"] for k in data.keys()}
-
-    dl_key = config.get("plot_settings", {}).get("val_key", "ALL_wo_wrist")
-    dl = val_loaders[dl_key]
-
-
-    # Decide task type
-    task_type_y = config.get("task_type_y", "classification")
-    #classifier_name = config["model"].get("classifier", {}).get("name", "LogReg")
-    #is_regression = (classifier_name == "Reg")
-
-    # Where to store the post-transform PNGs
-    png_root = config.get("plot_settings", {}).get("png_root", "/home/cwatzenboeck/data/fo_png_cache/val")
-
-    # Extract embeddings + write PNGs
-    max_class_per_type = None
-
-    pack = extract_embeddings_and_pngs(
-        model_AE=model_AE,
-        model_c=model_c,
-        loader=dl,
-        device=device,
-        score_estimator=score_estimator,
-        task_type_y=task_type_y,
-        png_root=png_root,
-        max_class_per_type=max_class_per_type,
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/ResNet_MSECESoft_MSE0.5_CE0.5_tLSR0.2_timeTriplet0.00_nnLSR0.05_nnnLSR0.01_DEBUGGING.yml",
+        debugging_in_jupyter_nb=False,
+        silencium=True
     )
 
+    ps = config.get("plot_settings", {}) or {}
 
-    if False:  # Deactivate for now .... There are bigger issues... 
-        # after you built `pack`:
-        # 2D coords for BOTH UMAP + PCA (optional)
-        coords_umap = compute_projection(pack["Z"], method="umap", seed=42)
-        coords_pca  = compute_projection(pack["Z"], method="pca",  seed=42)
+    loader_type  = ps.get("loader_type", "val").lower()  # "val" or "train"
+    split_key    = ps.get("val_key", "ALL_wo_wrist")     # used for train/val
+    png_root     = ps.get("png_root", "/home/cwatzenboeck/data/fo_png_cache/val")
 
-        # Make nice hover text
-        hover = [
-            f"key={k}<br>year={yr:.2f}<br>date={ds}<br>"
-            f"score_pred={sp:.2f}<br>score_gt={sg:.2f}<br>type={st}"
-            for k, yr, ds, sp, sg, st in zip(
-                pack["patient_scoretype_key"],
-                pack["years_since_2000"],
-                pack["date_str"],
-                pack["score_pred"],
-                pack["score_gt"],
-                pack["score_type"],
-            )
-        ]
+    cache_dir_save   = ps.get("cache_dir_save", None)
+    cache_dir_reload = ps.get("cache_dir_reload", None)
+    SAVE             = bool(ps.get("SAVE_EMBEDDINGS", False))
+    RELOAD           = bool(ps.get("RELOAD_EMBEDDINGS", False))
 
-        # Color points by score error or by year, up to you:
-        color_by = np.abs(pack["score_pred"] - pack["score_gt"])
+    methods = tuple(ps.get("dimension_reduction_techniques", ["umap", "pca"]))
 
-        ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        plot_trajectories_html(
-            coords_umap,
-            years=pack["years_since_2000"],
-            keys=pack["patient_scoretype_key"],
-            hover_text=hover,
-            color_by=color_by,
-            title="UMAP trajectories (color: |pred-gt|)",
-            out_html=f"/home/cwatzenboeck/data/fo_png_cache/plots/umap_trajs_{ts}.html",
+    # -------------------- 1) Either reload pack or compute it
+    pack = None
+    used_cache_dir = None
+
+    if RELOAD:
+        if not cache_dir_reload:
+            raise ValueError("RELOAD_EMBEDDINGS=True but 'plot_settings.cache_dir_reload' is not set")
+        used_cache_dir = Path(str(cache_dir_reload))
+        print(f"[main] Reloading pack from: {used_cache_dir}")
+        pack = load_pack(str(used_cache_dir))
+
+    else:
+        # --- Compute fresh embeddings (uses model + dataloader)
+        # 1. Data tables + loaders
+        data_tables = process_several_score_groups(config["data"])
+        data = dataset_and_loader_several(data_tables, config)
+
+        # 2. Choose split/loader according to config
+        val_loaders   = {k: data[k]["val_loader"]   for k in data.keys() if "val_loader"   in data[k]}
+        train_loaders = {k: data[k]["train_loader"] for k in data.keys() if "train_loader" in data[k]}
+
+        if loader_type == "train":
+            if split_key not in train_loaders:
+                # fallback to any available train loader
+                if len(train_loaders) == 0:
+                    raise KeyError("No train loaders available")
+                print(f"[main] split_key '{split_key}' not in train_loaders, using first available")
+                dl = next(iter(train_loaders.values()))
+            else:
+                dl = train_loaders[split_key]
+        else:  # "val"
+            if split_key not in val_loaders:
+                if len(val_loaders) == 0:
+                    raise KeyError("No val loaders available")
+                print(f"[main] split_key '{split_key}' not in val_loaders, using first available")
+                dl = next(iter(val_loaders.values()))
+            else:
+                dl = val_loaders[split_key]
+
+        # 3. Build models
+        classifier_head_infos, attention_paths_dct, config = check_config_consistency_and_partially_make_consistent(config)
+        model_name = config["model_name"]
+        model_AE, model_c = build_models_AE_v1_and2(
+            model_name, config,
+            classifier_head_infos=classifier_head_infos,
+            attention_paths_dct=attention_paths_dct
         )
-        plot_trajectories_html(
-            coords_pca,
-            years=pack["years_since_2000"],
-            keys=pack["patient_scoretype_key"],
-            hover_text=hover,
-            color_by=pack["years_since_2000"],
-            title="PCA trajectories (color: years since 2000)",
-            out_html=f"/home/cwatzenboeck/data/fo_png_cache/plots/pca_trajs_{ts}.html",
+        task_type_y = config.get("task_type_y", "classification")
+        score_estimator = make_score_estimator(config, device)
+
+        maybe_partially_init_model_from_state_dict(
+            config, model_AE, model_c,
+            verbose=config.get("model_initialization", {}).get("verbosity_level", 3)
+        )
+        model_AE.to(device).eval()
+        model_c.to(device).eval()
+
+        # 4. Extract embeddings (+ write PNGs)
+        pack = extract_embeddings_and_pngs(
+            model_AE=model_AE,
+            model_c=model_c,
+            loader=dl,
+            device=device,
+            score_estimator=score_estimator,
+            task_type_y=task_type_y,
+            png_root=png_root,
+            max_class_per_type=None,
         )
 
-    # Build FO dataset + visualize
-    ds_name = f"ra_val_embeddings_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        # 5. Save pack if requested
+        if SAVE:
+            if not cache_dir_save:
+                print("[main] SAVE_EMBEDDINGS=True but 'plot_settings.cache_dir_save' is not set → skipping save")
+            else:
+                used_cache_dir = Path(str(cache_dir_save))
+                print(f"[main] Saving pack to: {used_cache_dir}")
+                save_pack(pack, str(used_cache_dir), png_root=png_root, save_projections=True)
+
+    # -------------------- 2) Build FiftyOne dataset
+    task_type_y = config.get("task_type_y", "classification")
+    ds_suffix = f"{loader_type}_{split_key}"
+    ds_name = f"ra_embeddings_{ds_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     ds = build_fiftyone_dataset(ds_name, pack, task_type_y)
 
     methods = tuple(config.get("plot_settings", {}).get("dimension_reduction_techniques", ["umap", "pca"]))
     fo_visualize_multi(ds, methods=methods)
-
 
 
 if __name__ == "__main__":
