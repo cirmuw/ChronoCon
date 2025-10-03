@@ -1027,7 +1027,9 @@ class MTANReconv5(nn.Module):
                  skip_recon=True,
                  recon_out_ch = 3, 
                  return_also_recon_latent=False, 
-                 latent_dim=None):
+                 latent_dim=None, 
+                 latentspace_rotation = True, 
+                 latentspace_batch_norm = True):
         super(MTANReconv5, self).__init__()
         encoder_name = resnet_infos[backbone_name]["encoder_name"]
 
@@ -1078,10 +1080,15 @@ class MTANReconv5(nn.Module):
 
 
         ###  Normalize the latent space
-        self.latent_head = nn.Sequential(
-            nn.Linear(self.latent_dim_before_projector, self.latent_dim, bias=False),
-            nn.BatchNorm1d(self.latent_dim, affine=False)  # or LayerNorm if small batches
-        )
+        latent_space_operations = []
+        if latentspace_rotation: 
+            latent_space_operations.append(nn.Linear(self.latent_dim_before_projector, self.latent_dim, bias=False))
+        if latentspace_batch_norm: 
+            latent_space_operations.append(nn.BatchNorm1d(self.latent_dim, affine=False))
+        if not (latentspace_batch_norm or latentspace_rotation):
+            self.latent_head = nn.Identity()
+        else: 
+            self.latent_head = nn.Sequential(*latent_space_operations)
 
         # Define task specific attention modules using a similar bottleneck design in residual block
         # (to avoid large computations)
@@ -1172,7 +1179,16 @@ class MTANReconv5(nn.Module):
         # ----- select the correct task-latent per sample -----
         B = x.shape[0]
         device = u_4_t.device
-        latent_raw = torch.empty(B, self.latent_dim_before_projector, device=device)
+
+        # latent_raw = torch.empty(B, self.latent_dim_before_projector, device=device)
+        # This breaks the computation graph
+
+        latents_stack = torch.stack([out_by_task[t] for t in unique_tasks], dim=0)  # (T, B, D)
+        task_idx = torch.tensor([task2idx[t] for t in sample_tasks], device=device)  # (B,)
+        batch_idx = torch.arange(B, device=device)                                   # (B,)
+        latent_raw = latents_stack[task_idx, batch_idx, :]  # (B, D), fully differentiable
+
+
         for i, t_i in enumerate(sample_tasks):
             # take row i from the (B, D) latent corresponding to task t_i
             latent_raw[i] = out_by_task[t_i][i]
