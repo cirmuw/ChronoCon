@@ -34,6 +34,8 @@ from ra_utils.training.scores_SHS.scores_SHS_training_lib_AE_v1 import (
     plot_reconstructions_by_type,
     log_scalar_dict
 )
+from ra_utils.utils.utils import datestr_to_years_since_2000
+
 
 import ra_utils.loss.online_mining_delta_loss
 import ra_utils.networks.score_estimator
@@ -87,6 +89,7 @@ def train_loop_AE_v4(
     val_loaders: Dict[str, torch.utils.data.DataLoader],
     loss_fn_dict: dict, 
     optimizer: torch.optim.Optimizer,
+    model_score_estimator : Optional[torch.nn.Module] = None, 
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
     device: str = "cuda",
     # training config
@@ -100,7 +103,7 @@ def train_loop_AE_v4(
     verbose: bool = True,
     ES_metric_key = "L",  # which metric to use for early stopping
     append_BEST_VAL_as_last: bool = False,
-    task_type_y: Literal["classification","regression"]="classification"
+    task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification"
 ):
     """
     Similar to v2 but added triplet loss. 
@@ -125,6 +128,7 @@ def train_loop_AE_v4(
             optimizer,
             train_dataloaders,
             model_classifier=model_classifier,
+            model_score_estimator=model_score_estimator,
             loss_fn_dict=loss_fn_dict,
             transform=transform,
             device=device,
@@ -141,6 +145,7 @@ def train_loop_AE_v4(
             model_AE,
             val_loaders,
             model_classifier=model_classifier,
+            model_score_estimator=model_score_estimator,
             loss_fn_dict=loss_fn_dict,
             transform=lambda x: x,  # No denoising in val. loop
             device=device,
@@ -230,6 +235,9 @@ def train_loop_AE_v4(
                 best_AE_state = copy.deepcopy(model_AE.state_dict())
                 if model_classifier is not None:
                     best_clf_state = copy.deepcopy(model_classifier.state_dict())
+                if model_score_estimator is not None: 
+                    best_se_state = copy.deepcopy(model_score_estimator.state_dict())
+
                 epochs_no_improve = 0
 
                 # optional MLflow model snapshot (full models)
@@ -239,6 +247,11 @@ def train_loop_AE_v4(
                         mlflow.pytorch.log_model(
                             model_classifier, "best_model_classifier"
                         )
+                    if model_score_estimator is not None:
+                        mlflow.pytorch.log_model(
+                            model_score_estimator, "best_model_score_estimator"
+                        )
+                                        
 
                 # ------- race-safe, non-accumulating state_dict logging -------
                 if log_model_state_dct:
@@ -246,6 +259,9 @@ def train_loop_AE_v4(
                     _log_single_state_dict_atomic(model_AE, "model_AE_state_dict.pt")
                     if model_classifier is not None:
                         _log_single_state_dict_atomic(model_classifier, "model_classifier_state_dict.pt")
+                    if model_score_estimator is not None:
+                        _log_single_state_dict_atomic(model_score_estimator, "model_score_estimator_state_dict.pt")
+
 
                     # Sidecar metadata (also overwrite same name)
                     info_txt = (
@@ -280,8 +296,11 @@ def train_loop_AE_v4(
         model_AE.load_state_dict(best_AE_state)
         if model_classifier is not None and best_clf_state is not None:
             model_classifier.load_state_dict(best_clf_state)
+        if model_score_estimator is not None and best_se_state is not None:
+            model_score_estimator.load_state_dict(best_se_state)
+                
 
-    return model_AE, model_classifier, metrics_Tr, metrics_Val
+    return metrics_Tr, metrics_Val
 
 
 
@@ -293,6 +312,7 @@ def val_epoch_AE_v4(
     dataloaders: Dict[str, torch.utils.data.DataLoader],
     loss_fn_dict: dict,
     model_classifier: Optional[torch.nn.Module] = None,
+    model_score_estimator:  Optional[torch.nn.Module]= None,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -353,6 +373,9 @@ def val_epoch_AE_v4(
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
 
     model_AE.eval().to(device)
+    if model_score_estimator is not None:
+        model_score_estimator.eval().to(device)
+
     if model_classifier is not None:
         model_classifier.eval().to(device)
         running_head_loss: defaultdict[str, float] = defaultdict(float)
@@ -366,6 +389,8 @@ def val_epoch_AE_v4(
         running_head_loss = defaultdict(float)
         head_counts = defaultdict(int)
         max_out_dim = 1  # trivial – no classifier
+
+
 
 
     # running sums for global losses
@@ -418,6 +443,7 @@ def val_epoch_AE_v4(
                     X_pos = X_pos.to(device)  # positive part for triplet loss
                 y = batch["score"].to(device)
                 s_type = batch["score_type"]  # list[str] – one per sample
+                s_type_np = np.array(s_type)
                 instance_label = np.array(batch["patient_scoretype_key"])
                 B = X.size(0)
 
@@ -494,6 +520,7 @@ def val_epoch_AE_v4(
                         cnt = idx.numel()
                         if cnt == 0:
                             continue
+                        s_type_head = s_type_np[idx.numpy(force=True)]
 
                         # ---- loss ------------------------------------------------
                         head_target = y[idx]
@@ -516,7 +543,11 @@ def val_epoch_AE_v4(
                             score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
                                 logits[..., 1:], mode="expectation_value"
                             )
-                            score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                            if model_score_estimator is None: 
+                                score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                            else:
+                                score_estimation = model_score_estimator(logits, s_type_head)
+                            
 
                         head_loss = loss_fn_y(loss_fn_y_input, head_target)
                         head_loss_y_extra = loss_fn_y_reg_extra(score_estimation, head_target.float().to(device))
@@ -1155,7 +1186,6 @@ def val_epoch_AE_v4(
 ######################################################################################
 
 
-from ra_utils.utils.utils import datestr_to_years_since_2000
 
 
 def training_epoch_AE_v4(
@@ -1164,6 +1194,7 @@ def training_epoch_AE_v4(
     dataloaders: dict,
     loss_fn_dict: dict,
     model_classifier=None,
+    model_score_estimator=None,
     transform=lambda x: x,
     device="cuda",
     debugging: bool = False, 
@@ -1216,6 +1247,9 @@ def training_epoch_AE_v4(
         running_head_loss = defaultdict(float)  # Σ loss*count
         head_counts = defaultdict(int)          # Σ count
 
+    if model_score_estimator is not None:
+        model_score_estimator.train().to(device)
+
     # running sums for global losses
     running_loss = dict(L=0.0)
     for k in loss_terms_:
@@ -1238,6 +1272,7 @@ def training_epoch_AE_v4(
                 X_pos  = X_pos.to(device) # positive part for triplet loss
             y      = batch["score"].to(device)
             s_type = batch["score_type"]             # list[str]
+            s_type_np = np.array(s_type)
             instance_label = np.array(batch["patient_scoretype_key"])
 
 
@@ -1305,6 +1340,7 @@ def training_epoch_AE_v4(
                     cnt = idx.numel()                # how many samples for this head
                     if cnt == 0:
                         continue                     # no contribution this batch
+                    s_type_head = s_type_np[idx.numpy(force=True)]
 
                     head_target = y[idx]
                     head_instance_label = instance_label[idx.cpu().numpy()]
@@ -1320,7 +1356,10 @@ def training_epoch_AE_v4(
                         loss_fn_y_input = logits
                         score_estimation_1 = loss_fn_y_input[..., 0]  #  These are not logits! First element is assumed to be the reg. value
                         score_estimation_2 = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(logits[..., 1:], mode="expectation_value")
-                        score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                        if model_score_estimator is None: 
+                            score_estimation = loss_fn_y.mse_weight * score_estimation_1 + (1 - loss_fn_y.mse_weight) * score_estimation_2
+                        else:
+                            score_estimation = model_score_estimator(logits, s_type_head)
                         # head_target_float = head_target.float().to(device)
 
 
@@ -1445,6 +1484,7 @@ def evaluate_and_log_testset_results_AE_v4(
     model_classifier:       Optional[torch.nn.Module],
     dataloaders:            Dict[str, torch.utils.data.DataLoader],
     loss_fn_dict: dict, 
+    model_score_estimator:  Optional[torch.nn.Module]= None,
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -1459,6 +1499,7 @@ def evaluate_and_log_testset_results_AE_v4(
         model_AE,
         dataloaders,
         model_classifier=model_classifier,
+        model_score_estimator = model_score_estimator, 
         loss_fn_dict = loss_fn_dict,
         transform=transform,
         device=device,

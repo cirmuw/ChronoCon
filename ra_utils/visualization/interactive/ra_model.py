@@ -510,7 +510,7 @@ def fo_visualize_multi(ds, methods=("umap", "pca"), seed=42):
 
 
 
-def make_score_estimator(config, device="cuda"):
+def make_score_estimator(config, model_score_estimator=None, device="cuda"):
     """
     Returns a function that maps a per-head 'logits' tensor to a scalar score estimate.
     For 'classification_regression_mix', it uses the same mse_weight as in training.
@@ -538,17 +538,23 @@ def make_score_estimator(config, device="cuda"):
             )
 
     elif task_type_y == "classification_regression_mix":
-        def score_estimator(logits: torch.Tensor) -> torch.Tensor:
-            # logits: (N, 1 + C)  -> weighted combination (reg + class expectation)
-            score_reg = logits[..., 0]
-            score_cls = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
-                logits[..., 1:], mode="expectation_value"
-            )
-            return w_mse * score_reg + (1.0 - w_mse) * score_cls
+        if model_score_estimator is not None:
+            model_score_estimator.eval().to(device)
+            score_estimator = model_score_estimator 
+        else: 
+            def score_estimator(logits: torch.Tensor) -> torch.Tensor:
+                # logits: (N, 1 + C)  -> weighted combination (reg + class expectation)
+                score_reg = logits[..., 0]
+                score_cls = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
+                    logits[..., 1:], mode="expectation_value"
+                )
+                return w_mse * score_reg + (1.0 - w_mse) * score_cls
     else:
         raise ValueError(f"Unknown task_type_y: {task_type_y}")
 
     return score_estimator
+
+
 
 def _merge_multihead_outputs(
     head_out_dict: dict,                # {head_name: (idx, logits)}
@@ -757,7 +763,7 @@ def rebuild_fo_dataset_from_pack(
 
 
 
-
+import ra_utils.training.scores_SHS.run_training_main_lib 
 
 def main():
     from pathlib import Path
@@ -771,7 +777,7 @@ def main():
 
     # -------------------- 0) Load config
     config = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/ResNet_MSECESoft_MSE0.5_CE0.5_tLSR0.2_timeTriplet0.00_nnLSR0.05_nnnLSR0.01_DEBUGGING.yml",
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
         debugging_in_jupyter_nb=False,
         silencium=True
     )
@@ -829,15 +835,11 @@ def main():
                 dl = val_loaders[split_key]
 
         # 3. Build models
-        classifier_head_infos, attention_paths_dct, config = check_config_consistency_and_partially_make_consistent(config)
-        model_name = config["model_name"]
-        model_AE, model_c = build_models_AE_v1_and2(
-            model_name, config,
-            classifier_head_infos=classifier_head_infos,
-            attention_paths_dct=attention_paths_dct
-        )
+        models, config = ra_utils.training.scores_SHS.run_training_main_lib.build_models_v3(config)
+        model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
+
         task_type_y = config.get("task_type_y", "classification")
-        score_estimator = make_score_estimator(config, device)
+        score_estimator = make_score_estimator(config, device, model_score_estimator=model_score_estimator)
 
         maybe_partially_init_model_from_state_dict(
             config, model_AE, model_c,
@@ -873,7 +875,6 @@ def main():
     ds_name = f"ra_embeddings_{ds_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     ds = build_fiftyone_dataset(ds_name, pack, task_type_y)
 
-    methods = tuple(config.get("plot_settings", {}).get("dimension_reduction_techniques", ["umap", "pca"]))
     fo_visualize_multi(ds, methods=methods)
 
 

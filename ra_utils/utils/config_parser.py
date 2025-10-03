@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import yaml
 from typing import List, Dict, Union, Optional
-
+from copy import deepcopy
 
 from pathlib import Path
 from typing import Any, Dict
@@ -54,9 +54,100 @@ def substitute_paths(obj: Any,
         return obj
 
 
+import re
+from pathlib import Path
+from copy import deepcopy
+from typing import Any, Dict
+
+def auto_replace_strings(
+    obj: Any,
+    auto_replace: Dict[str, Any],
+    token_prefix: str = "$$__",
+    token_suffix: str = "__$$",
+    verbose: bool = False,
+    _preserve_type: bool = True,
+) -> Any:
+    """
+    Recursively replace tokens $$__KEY__$$ in strings/Paths within *obj* using values
+    from *auto_replace*[KEY]. If KEY is not present, the token is left as-is.
+
+    Parameters
+    ----------
+    obj : Any
+        Config structure (dict/list/str/Path/scalars).
+    auto_replace : Dict[str, Any]
+        Mapping of keys to replacement values. Values are cast to str.
+    token_prefix, token_suffix : str
+        Delimiters around the KEY token.
+    verbose : bool
+        If True, print every replacement performed.
+    _preserve_type : bool
+        Internal flag to keep Path vs str types on return.
+
+    Returns
+    -------
+    Any
+        A deep-copied structure with replacements applied.
+    """
+    # Compile regex like r"\$\$__([A-Za-z0-9_]+)__\$\$"
+    # Escape the delimiters to be safe
+    patt = re.compile(
+        re.escape(token_prefix) + r"([A-Za-z0-9_]+)" + re.escape(token_suffix)
+    )
+
+    # Normalize replacement values to strings (once)
+    replace_str = {k: str(v) for k, v in (auto_replace or {}).items()}
+
+    def _replace_in_text(text: str) -> str:
+        def _sub_fn(m: re.Match) -> str:
+            key = m.group(1)
+            if key in replace_str:
+                new = replace_str[key]
+                if verbose:
+                    print(f"Replacing token {m.group(0)!r} → {new!r} in {text!r}")
+                return new
+            else:
+                # leave unknown token unchanged
+                if verbose:
+                    print(f"Leaving unknown token {m.group(0)!r} unchanged in {text!r}")
+                return m.group(0)
+
+        # Repeat until stable in case replacements themselves contain further tokens
+        # (bounded by a small iteration cap to avoid accidental loops)
+        max_iters = 5
+        prev = text
+        for _ in range(max_iters):
+            new = patt.sub(_sub_fn, prev)
+            if new == prev:
+                break
+            prev = new
+        return prev
+
+    def _walk(x: Any) -> Any:
+        if isinstance(x, dict):
+            # Only replace in values (not keys)
+            return {k: _walk(v) for k, v in x.items()}
+        elif isinstance(x, list):
+            return [_walk(i) for i in x]
+        elif isinstance(x, tuple):
+            return tuple(_walk(i) for i in x)
+        elif isinstance(x, Path):
+            new_text = _replace_in_text(str(x))
+            return Path(new_text) if _preserve_type else new_text
+        elif isinstance(x, str):
+            return _replace_in_text(x)
+        else:
+            # numbers, bools, None, etc.
+            return x
+
+    return _walk(deepcopy(obj))
+
+
+
 
 def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_01.yaml",
                 debugging_in_jupyter_nb=False, silencium=False, return_config_name=False, 
+                return_originals = False, 
                 default_path_substitution_config=None):
 
     def parse_args():
@@ -80,6 +171,8 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
         )
         return parser.parse_args()
 
+    originals = {}
+
     if debugging_in_jupyter_nb:
         config_file = Path(default_config)
         if not silencium:
@@ -101,10 +194,17 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
             config = yaml.safe_load(f)
     else:
         raise ValueError(f"Unsupported file extension '{config_file.suffix}'. Supported extensions are .json, .yaml, .yml.")
+    originals["original_config"] = deepcopy(config)
 
     if not debugging_in_jupyter_nb and args.debugging:
         config["debugging"] = True
         print("Debugging mode is enabled with --debugging!! Config will be modified accordingly.")
+
+    AUTO_REPLACE_DCT = config.get("AUTO_REPLACE")
+    if AUTO_REPLACE_DCT is not None: 
+        config = auto_replace_strings(config, AUTO_REPLACE_DCT, verbose=True)
+
+
 
     if not debugging_in_jupyter_nb and args.path_substitution_config: 
         path_substitution_file = Path(args.path_substitution_config)
@@ -112,6 +212,7 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
             raise FileNotFoundError(f"The path substitution config file {path_substitution_file} does not exist.")
         with open(path_substitution_file, 'r') as f:
             path_substitution_dct = yaml.safe_load(f)
+            originals["original_path_substitution_dct"] = deepcopy(path_substitution_dct)
         config = substitute_paths(config, path_substitution_dct)
         print(f"Substituted paths in config using {path_substitution_file}")
 
@@ -121,6 +222,13 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
         pprint(config)
 
     if return_config_name:
-        return config, config_file
+        if return_originals: 
+            return config, config_file, originals
+        else: 
+            return config, config_file
     else: 
-        return config
+        if return_originals: 
+            return config, originals
+        else: 
+            return config
+    

@@ -62,7 +62,7 @@ def model_interface_forward(model: nn.Module, batch: dict, device="cuda",
         return {"recon": recon, "latent": z}    
     
     else: 
-        raise ValueError(f"model_interface_forward :: {option = } not supported ")
+        raise ValueError(f"model_interface_forward :: {options = } not supported ")
 
 
 
@@ -566,6 +566,69 @@ class ClassifierHeads(nn.Module):
 
 
 
+
+
+
+class ContinuesScoreEsimator(nn.Module):
+    def __init__(self,
+                 #df_scores_meta,
+                 task_type_y:  Literal['classification', 'regression', 'classification_regression_mix'] = "classification_regression_mix",
+                 bias=True):
+        super(ContinuesScoreEsimator, self).__init__()
+
+
+        with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv") as f:
+            df_scores_meta = pd.read_csv(f)
+
+        module_dct = {}
+        for index, row in df_scores_meta.iterrows():
+            if task_type_y == "classification":
+                N_in = row['limit'] + 1 #  1 is for score 0
+            elif task_type_y == "regression":
+                N_in = 1 # Does not make much sense to use in this case...
+            elif task_type_y == "classification_regression_mix":
+                N_in = row['limit'] + 2 #  1 is for score 0  one is for extra regression part
+            else: 
+                raise ValueError(f"{task_type_y = }")                
+            module_dct[f"{row['score_name']}"] = nn.Linear(N_in, 1, bias=bias)
+
+        self.score_estimators = nn.ModuleDict(module_dct)
+        self.task_type_y = task_type_y
+
+
+    def forward(
+        self,
+        x_input, # [B, Nin_] # N_in can differ 
+        score_types: List[str],     # [B]
+    ):
+
+        assert set(score_types) - set(self.score_estimators.keys()) == set(), f"{set(score_types) - set(self.score_estimators.keys())  = }"
+
+        if x_input.shape[0] != len(score_types):
+            raise ValueError(
+                f" {x_input.shape[0] = }  {len(score_types) = } "
+            )
+
+        x = x_input.clone()
+        if self.task_type_y == "classification":
+            x = nn.functional.softmax(x, dim=1)
+        if self.task_type_y == "classification_regression_mix":
+            x[..., 1:] = nn.functional.softmax(x[..., 1:], dim=1) # First is regression part -> rest is logits. 
+        
+        B, _ = x.shape
+        out = torch.zeros((B), dtype=x_input.dtype, device=x_input.device)
+        # score_types_np = np.array(score_types)
+
+        for head_name, head in self.score_estimators.items():        # ← iterate over *all* heads
+            idx = torch.as_tensor(
+                [i for i, h in enumerate(score_types) if h == head_name],
+                dtype=torch.long,
+                device=x_input.device,
+            )
+
+            if idx.numel():
+                out[idx] = (head(x[idx])).squeeze()
+        return out
 
 
 

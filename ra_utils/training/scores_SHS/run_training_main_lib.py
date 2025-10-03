@@ -27,6 +27,8 @@ import ra_utils.utils.utils
 
 import ra_utils.utils.utils_torch
 from pprint import pprint
+from ra_utils.networks.architecture import ContinuesScoreEsimator
+
 # ------------------------------------------------------------------
 # utility helpers ---------------------------------------------------
 def _state_dict_from_uri(uri: str):
@@ -54,6 +56,7 @@ def _load_submodule(submodule, src_sd, prefix, strict=False, msg="", verbose=0):
 def maybe_partially_init_model_from_state_dict(config: dict, 
                                                 model_AE: nn.Module, 
                                                 model_c: nn.Module, 
+                                                model_score_estimator = None,
                                                 verbose=2, 
                                                 strict=False):
 
@@ -103,6 +106,20 @@ def maybe_partially_init_model_from_state_dict(config: dict,
                         strict=strict,
                         msg="classifier", 
                         verbose=verbose)
+        
+    if config.get("model_initialization", {}).get("load_score_estimator", False):
+        if model_score_estimator != None: 
+            uri = config["model_initialization"]["pth_src_score_estimator"]
+            if verbose: 
+                print(f"→ Loading score_estimator from {uri}")
+            ckpt_sd = _state_dict_from_uri(uri)
+
+            _load_submodule(model_score_estimator, ckpt_sd,
+                            prefix="",                         # whole ckpt *is* the classifier
+                            strict=strict,
+                            msg="score estimator", 
+                            verbose=verbose)
+
     return None
 
 
@@ -358,6 +375,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 ########################################################################
 
 def check_config_consistency_and_partially_make_consistent(config : dict): 
+    config = deepcopy(config)
     attention_paths_dct = config["data"].get("network_score_groups")
     if attention_paths_dct is None:
         print("'network_score_groups' not found in config file. Using default attention paths: 'score_groups'")
@@ -393,6 +411,31 @@ def check_config_consistency_and_partially_make_consistent(config : dict):
         assert classifier_name in ("MixLogAndReg", "Reg"), f"Not allowed combination with {classifier_name = } and data['enable_tSLR'] = True"
     return classifier_head_infos, attention_paths_dct, config
 
+from copy import deepcopy
+
+def build_models_v3(config: dict):
+    classifier_head_infos, attention_paths_dct, config_updated = check_config_consistency_and_partially_make_consistent(config)
+    model_name = config_updated["model_name"]
+    model_AE, model_c,  = build_models_AE_v1_and2(
+                                        model_name, config_updated, 
+                                        classifier_head_infos = classifier_head_infos, 
+                                        attention_paths_dct = attention_paths_dct
+                                        )
+
+    # Maybe make score_estimator    
+    model_score_estimator = None
+    if (config_updated["model"]["classifier"]["name"] == "MixLogAndReg"): 
+        score_estimator_config = config_updated["model"].get("score_estimator")
+        if score_estimator_config is not None: 
+            model_score_estimator = ContinuesScoreEsimator(**score_estimator_config["model_params"])
+
+    models = dict(
+        model_AE = model_AE, 
+        model_c = model_c, 
+        model_score_estimator = model_score_estimator
+    )
+    return models, config_updated
+
 
 import ra_utils.loss.loss_fn_dict
 
@@ -425,25 +468,24 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         print("Done - Checking for duplicates\n ")
 
     # Load/ make model
-    classifier_head_infos, attention_paths_dct, config = check_config_consistency_and_partially_make_consistent(config)
-    model_name = config["model_name"]
-    model_AE, model_c = build_models_AE_v1_and2(
-                                        model_name, config, 
-                                        classifier_head_infos = classifier_head_infos, 
-                                        attention_paths_dct = attention_paths_dct
-                                        )
-    
+    models, config = build_models_v3(config)
+    model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
+
+
     # Load model weights. Be strict if the training is skipped!. 
     if config.get("SKIP_TRAINING", False) or config["model_initialization"].get("STRICT_MODEL_LOAD", False): 
         strict_model_load = True
     else: 
         strict_model_load = False
     maybe_partially_init_model_from_state_dict(config, model_AE, model_c, 
+                                               model_score_estimator=model_score_estimator,
                                                verbose=config.get("model_initialization", {}).get("verbosity_level", 3), 
                                                strict = strict_model_load
                                                )
     model_AE.to(device)
     model_c.to(device)
+    if model_score_estimator is not None: 
+        model_score_estimator.to(device)
 
     loss_fn_dict = ra_utils.loss.loss_fn_dict.get_loss_fn_dict(config, device=device)
     pprint(loss_fn_dict)
@@ -458,10 +500,14 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     scheduler_name = config.get('scheduler_name', None)
     scheduler_class = ra_utils.utils.utils.pydoc_locate_targets([scheduler_name], chill=False)[0] if scheduler_name else None
 
+    models = [model_AE, model_c]
+    if model_score_estimator is not None: 
+        models = models + [model_score_estimator]
     optimizer, scheduler = ra_utils.utils.utils_torch.plan_optimization_v3(
-        [model_AE, model_c], # maybe add loss functions if these are trainable
+        models, # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
         scheduler_class=scheduler_class, scheduler_params=scheduler_params,
+        #verbose = (verbose >= VerboseLevel.CHATTY), 
         verbose = (verbose >= VerboseLevel.VERYCHATTY), 
         batch_size_for_lr_rescaling = (config["training"]["batch_size"] if config["training"].get("batch_size_dependent_lr", False) else None),
         batch_size_for_lr_rescaling_base = 256, 
@@ -493,9 +539,10 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         metrics_Tr, metrics_Val = None, None
     else: 
         print("Start training for: ", config_name)
-        model_AE, model_c, metrics_Tr, metrics_Val = train_loop_AE_v4(
+        metrics_Tr, metrics_Val = train_loop_AE_v4(
             model_AE=model_AE,
             model_classifier=model_c,
+            model_score_estimator=model_score_estimator,
             train_dataloaders=train_dataloaders,
             val_loaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
@@ -512,6 +559,8 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             append_BEST_VAL_as_last=append_BEST_VAL_as_last,
             task_type_y = config.get("task_type_y", "classification")
         )
+
+
         artifact_uri = mlflow.get_artifact_uri()
         print("ARTIFACTS URI = ", artifact_uri)
         if config_name != None: 
@@ -524,6 +573,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         evaluate_and_log_testset_results_AE_v4(
             model_AE=model_AE,
             model_classifier=model_c,
+            model_score_estimator=model_score_estimator,
             dataloaders=train_dataloaders_with_val_transforms,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -539,6 +589,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         evaluate_and_log_testset_results_AE_v4(
             model_AE=model_AE,
             model_classifier=model_c,
+            model_score_estimator=model_score_estimator,
             dataloaders=test_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -552,6 +603,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         evaluate_and_log_testset_results_AE_v4(
             model_AE=model_AE,
             model_classifier=model_c,
+            model_score_estimator=model_score_estimator,
             dataloaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
