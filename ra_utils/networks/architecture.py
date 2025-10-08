@@ -449,15 +449,18 @@ def add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE,
 # ---------------------------------------------------------------------------
 
 
+
 def make_score_type_2_head_name_dct(classifier_head_infos: dict):
     out = {}
-    used_score_types = []
-    for k,v in classifier_head_infos.items():
-        assert set(v["score_types"]) & set(used_score_types) == set(), f"duplicate score type in dct {v} | {used_score_types}"
-        for vv in v["score_types"]:
-            out[vv] = k
+    used_score_types = set()
+    for head_name, v in classifier_head_infos.items():
+        st = set(v["score_types"])
+        dup = st & used_score_types
+        assert not dup, f"duplicate score type(s) {dup} in head '{head_name}'"
+        for s in st:
+            out[s] = head_name
+        used_score_types |= st
     return out
-
 
 # classifier_head_infos = {
 #     "PIP_2-5_EP": {

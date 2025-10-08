@@ -243,6 +243,8 @@ def extract_embeddings_and_pngs(
         y = batch["score"]
         y = y.detach().cpu().float().numpy() if torch.is_tensor(y) else np.asarray(y, dtype=float)
         B = X.size(0)
+        s_type = batch["score_type"]             # list[str]
+        s_type_np = np.array(s_type)
 
         # identity + time
         ps_keys = batch["patient_scoretype_key"]
@@ -264,7 +266,7 @@ def extract_embeddings_and_pngs(
 
         # merge per-head predictions into per-sample arrays
         score_pred, class_pred, class_conf, head_name_per_sample, has_logits = _merge_multihead_outputs(
-            out_dict, task_type_y, score_estimator, B, device=device
+            out_dict, task_type_y, score_estimator, B, device=device, s_type_np=s_type_np
         )
 
         # class ground-truth:
@@ -526,12 +528,12 @@ def make_score_estimator(config, model_score_estimator=None, device="cuda"):
         pass  # fall back to 0.5 if loss dict cannot be constructed here
 
     if task_type_y == "regression":
-        def score_estimator(logits: torch.Tensor) -> torch.Tensor:
+        def score_estimator(logits: torch.Tensor, *args, **kwargs) -> torch.Tensor:
             # logits: (N,1) -> (N,)
             return logits.squeeze(-1)
 
     elif task_type_y == "classification":
-        def score_estimator(logits: torch.Tensor) -> torch.Tensor:
+        def score_estimator(logits: torch.Tensor, *args, **kwargs) -> torch.Tensor:
             # expectation over classes 0..C-1
             return ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
                 logits, mode="expectation_value"
@@ -542,7 +544,7 @@ def make_score_estimator(config, model_score_estimator=None, device="cuda"):
             model_score_estimator.eval().to(device)
             score_estimator = model_score_estimator 
         else: 
-            def score_estimator(logits: torch.Tensor) -> torch.Tensor:
+            def score_estimator(logits: torch.Tensor, *args, **kwargs) -> torch.Tensor:
                 # logits: (N, 1 + C)  -> weighted combination (reg + class expectation)
                 score_reg = logits[..., 0]
                 score_cls = ra_utils.networks.score_estimator.estimate_scalar_score_from_logits(
@@ -561,6 +563,7 @@ def _merge_multihead_outputs(
     task_type_y: Literal["classification", "regression", "classification_regression_mix"],
     score_estimator,                    # function from make_score_estimator
     B: int,
+    s_type_np = None, 
     device: str = "cuda",
 ):
     """
@@ -576,6 +579,9 @@ def _merge_multihead_outputs(
     class_conf = torch.full((B,), float("nan"), device="cpu")
     head_name_per_sample = [""] * B
 
+    # s_type = batch["score_type"]             # list[str]
+    # s_type_np = np.array(s_type)
+
     raw_class_logits_available = False
 
     for hname, (idx, logits) in head_out_dict.items():
@@ -585,8 +591,10 @@ def _merge_multihead_outputs(
         idx_cpu = idx.detach().cpu().long()
         logits = logits  # (n_h, C) or (n_h,1) or (n_h,1+C)
 
+        s_type_head = s_type_np[idx.numpy(force=True)]
+
         # 1) scalar score per sample
-        sc = score_estimator(logits).detach().cpu().float()  # (n_h,)
+        sc = score_estimator(logits, s_type_head).detach().cpu().float()  # (n_h,)
         score_pred[idx_cpu] = sc
 
         # 2) class view per sample
@@ -777,7 +785,8 @@ def main():
 
     # -------------------- 0) Load config
     config = ra_utils.utils.config_parser.load_config(
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
+        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
+        default_config="/msc/home/cwatze93/data/mlflow/mlflow_RA/976870858386409169/49f1b8541acc4565a227c82568d8bcb1/artifacts/original_config_latentspace_visualization_dev.yml",
         debugging_in_jupyter_nb=False,
         silencium=True
     )
@@ -838,12 +847,17 @@ def main():
         models, config = ra_utils.training.scores_SHS.run_training_main_lib.build_models_v3(config)
         model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
 
+
         task_type_y = config.get("task_type_y", "classification")
-        score_estimator = make_score_estimator(config, device, model_score_estimator=model_score_estimator)
+        score_estimator = make_score_estimator(config, model_score_estimator=model_score_estimator, device=device)
 
         maybe_partially_init_model_from_state_dict(
-            config, model_AE, model_c,
-            verbose=config.get("model_initialization", {}).get("verbosity_level", 3)
+            config = config, 
+            model_AE = model_AE, 
+            model_c = model_c, 
+            model_score_estimator=model_score_estimator,
+            verbose=config.get("model_initialization", {}).get("verbosity_level", 3), 
+            strict=True
         )
         model_AE.to(device).eval()
         model_c.to(device).eval()
