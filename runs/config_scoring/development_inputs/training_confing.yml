@@ -21,6 +21,8 @@ AUTO_REPLACE:
   RUN_ID: "6338f0b8b00444e9a0821635ee9e77bc"
   MLFLOW_ROOT: "/msc/home/cwatze93/data/mlflow/mlflow_RA"
 
+
+# Only important for ra_utils/visualization/interactive/ra_model.py ++
 plot_settings: 
   loader_type: "val"  # val or train
   val_key: "ALL_wo_wrist"
@@ -44,6 +46,7 @@ model_initialization:
   pth_src_AE:              "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/checkpoints/model_AE_state_dict.pt"  
   pth_src_classifier:      "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/checkpoints/model_classifier_state_dict.pt"
   pth_src_score_estimator: ""
+
 
 #project: 'AutoPIX:'
 #tag: development
@@ -77,7 +80,7 @@ data:
   pattern: '*/*.npy'
 
   score_groups:
-    ALL_wo_wrist: [ #'IPED', 'IPEP', 
+    ALL: [ #'IPED', 'IPEP', 
                     #'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP', 
                     #'CMCIII', 'CMCIV', 'CMCV', 
                     #'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 
@@ -434,6 +437,17 @@ loss:
   #     metric: "cosine"
   #     squared: false          # optional    
 
+  triplet_MDP:  # Monoton disease progression
+    name: "OnlineBatchAllTripletLossMDPForward"     # or OnlineBatchAllTripletLoss
+    params:
+      margin_offset: 0.0
+      # margin_scale: 0.0 # not suppored 
+      metric: "cosine"
+      # squared: false          # optional    
+      score_direction: "ignore"  # Literal["increase", "decrease", "ignore"]
+    options: 
+      validation_multiplier: 1.0  # 1 is the default. 
+
 
   score_consistency_regularizer:
     name: "ScoresConsistencyRegularizer"     # or OnlineBatchAllTripletLoss
@@ -456,6 +470,8 @@ loss_weights:
   lambda_z_triplet_classes: 0.0   
   lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
   lambda_z_score_consistency_regularizer: 0.0 
+
+  lambda_z_triplet_MDP: 1.0   # with old DL not allowed
 
   
 

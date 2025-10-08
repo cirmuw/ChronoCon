@@ -6,6 +6,7 @@ from torch import Tensor
 #  import online_triplet_loss.losses   # now added to ra_utils and modified
 import ra_utils.loss.online_mining_triplet_loss
 import ra_utils.loss.online_mining_triplet_loss_with_scores
+import ra_utils.loss.online_mining_triplet_loss_MDP
 import ra_utils.loss.consistency_regularizer_loss
 from typing import Optional
 
@@ -66,6 +67,17 @@ def get_triplet_loss_fn_WST(cfg: dict = {}):
         return DummyReturnZeroLoss()
     if name == "OnlineBatchAllTripletLossWithScoresAndSelfTransform":
         return ra_utils.loss.online_mining_triplet_loss_with_scores.OnlineBatchAllTripletLossWithScoresAndSelfTransform(**params)
+    else: 
+        raise NotImplementedError(f"{name = }")
+
+
+
+def get_triplet_loss_fn_MDP(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {})
+    # print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if name == "OnlineBatchAllTripletLossMDPForward":
+        return ra_utils.loss.online_mining_triplet_loss_MDP.OnlineBatchAllTripletLossMDPForward(**params)
     else: 
         raise NotImplementedError(f"{name = }")
 

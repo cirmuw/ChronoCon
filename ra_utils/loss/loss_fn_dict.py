@@ -7,7 +7,8 @@ from ra_utils.networks.loss_function import (
     get_score_loss_function, 
     get_triplet_loss_fn, 
     get_consistency_regularization_loss_fn,
-    get_triplet_loss_fn_WST
+    get_triplet_loss_fn_WST, 
+    get_triplet_loss_fn_MDP
 )
 import ra_utils.loss.online_mining_delta_loss
 from ra_utils.networks.architecture import (
@@ -94,6 +95,17 @@ def get_loss_fn_dict(config, device="cuda"):
             "lambda": lambda_z_triplet_WST_time, 
             "options": config["loss"].get("triplet_WST_time", {}).get("options", {})
         }
+    
+
+    lambda_z_triplet_MDP_time = config.get('loss_weights', {}).get('lambda_z_triplet_MDP', 0.0)
+    loss_fn_z_triplet_MDP_time = get_triplet_loss_fn_MDP(config["loss"].get("triplet_MDP", {}))
+    if lambda_z_triplet_MDP_time < 1.0e-8: 
+            loss_fn_z_triplet_MDP_time = dummy3
+    loss_dct_z_triplet_MDP_time = {
+            "function": loss_fn_z_triplet_MDP_time, 
+            "lambda": lambda_z_triplet_MDP_time, 
+            "options": config["loss"].get("triplet_MDP", {}).get("options", {})
+        }    
 
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
@@ -145,7 +157,9 @@ def get_loss_fn_dict(config, device="cuda"):
         "z_triplet_WST_score": loss_dct_z_triplet_WST_score, 
         "z_triplet_WST_time": loss_dct_z_triplet_WST_time,   # Later ... or not 
         #
-        "z_score_consistency_regularizer": loss_dct_z_score_consistency_regularizer
+        "z_score_consistency_regularizer": loss_dct_z_score_consistency_regularizer,
+        #
+        "z_triplet_MDP_time": loss_dct_z_triplet_MDP_time
     }
 
     return r

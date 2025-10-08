@@ -65,7 +65,6 @@ dependencies = [
     "numexpr>=2.8.4",
     #
     #
-    # === Added to match your pip installs ===
     "transformers @ git+https://github.com/huggingface/transformers",
     "huggingface_hub",
     "fiftyone",
@@ -77,6 +76,8 @@ ra_utils__annotate_landmarks = "ra_utils.tools.landmark_annotation:main"
 ra_utils__annotate_landmarks_prepopulation = "ra_utils.tools.landmark_annotation_prepopulation:main"
 ra_utils__annotate_landmarks_combine_annotations = "ra_utils.tools.landmark_annotation_combine_annotations:main"
 ra_utils__annotate_landmarks_consistency_check = "ra_utils.tools.landmark_annotation_check_consistency:main"
+ra_utils__visualize_latentspace = "ra_utils.visualization.interactive.ra_model:main"
+
 
 # ra_utils__annotate_landmarks_foot = "ra_utils.tools.landmark_annotation_foot:main"
 # ra_utils__annotate_landmarks_feet = "ra_utils.tools.landmark_annotation_feet:main"

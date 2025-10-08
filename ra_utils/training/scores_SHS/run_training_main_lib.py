@@ -471,7 +471,6 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     models, config = build_models_v3(config)
     model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
 
-
     # Load model weights. Be strict if the training is skipped!. 
     if config.get("SKIP_TRAINING", False) or config["model_initialization"].get("STRICT_MODEL_LOAD", False): 
         strict_model_load = True

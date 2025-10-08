@@ -233,7 +233,7 @@ def main():
     parser = argparse.ArgumentParser(description='Plot and save true vs predicted summed scores')
     parser.add_argument(
         '--run_path', type=str, 
-        required=True,
+        required=False,  # <<<<
         default="/msc/home/cwatze93/data/mlflow/mlflow_RA/844424495910332051/07e62b6853554a9a911d916113bcd168",
         help='Path to the MLflow run directory'
     )
@@ -247,7 +247,7 @@ def main():
     # strict supports --strict / --no-strict
     parser.add_argument(
         '--strict', action=argparse.BooleanOptionalAction, 
-        default=True,
+        default=False, 
         help='Assert output folder does not exist (default: True). Use --no-strict to allow overwrite.'
     )
     parser.add_argument(
