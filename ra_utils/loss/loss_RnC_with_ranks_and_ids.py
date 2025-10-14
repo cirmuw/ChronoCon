@@ -87,7 +87,7 @@ class RnCIdLoss(nn.Module):
         temperature: float = 2.0,
         feature_sim: Literal["cosine", "l2"] = "cosine",
         label_diff: Literal["l1", "scalar difference"] = "scalar difference",
-        ignore_ids: bool = False,
+        ignore_ids: bool = False
     ):
         super().__init__()
         self.t = float(temperature)
@@ -182,77 +182,168 @@ class RnCIdLoss(nn.Module):
 
 
 
-# class RnCIdLoss(nn.Module):
-#     """
-#     Rank-N-Contrast with instance (patient) constraint and time-ordered denominator.
 
-#     features: [B, 2, D]  two crops per anchor -> will be stacked to [n=2B, D]
-#     labels:   [B, 1]     time scalar (e.g., days since a reference)
-#     ids:      np.ndarray length B (instance ids, strings ok)
-#     """
-#     def __init__(
-#         self,
-#         temperature: float = 2.0,
-#         feature_sim: Literal["cosine","l2"] = "cosine",
-#         label_diff: Literal["l1","scalar difference"] = "scalar difference",
-#         eps: float = 1e-12,
-#     ):
-#         super().__init__()
-#         self.t = float(temperature)
-#         self.eps = float(eps)
-#         self.label_diff_fn = LabelDifference(label_diff)
-#         self.feature_sim_fn = FeatureSimilarity(feature_sim)
-#         self.ignore_ids = False
+class RnCIdLossV2(nn.Module):
+    """
+    Rank-N-Contrast with instance (patient) constraint and time-ordered denominator.
+    Full [n, n] version (no off-diagonal compaction).
 
-
-
-#     def forward(self, features, labels, ids=None):
-#         # features: [bs, 2, feat_dim]
-#         # labels: [bs, label_dim]
-#         # ids: None or np.array of shape [bs]. -> strings are allowed
-
-#         device = features.device
-#         use_ids = ((not self.ignore_ids) and (ids is not None))
-#         if use_ids:
-#             mask_ids = get_instance_mask_2D(ids, device = device)  # [bs, bs]
-#             N_delta = mask_ids.sum(1) # how many matches? [bs]
-#         else: 
-#             bs, _ = labels.shape
-#             N_delta = torch.ones(bs, device=device) * (bs - 1)
+    Loss:
+      For each anchor i and each positive j with same id,
+        L_ij = -log( exp(sim(i,j)/t) / sum_{k in S_ij^id} exp(sim(i,k)/t) ),
+      where S_ij^id = { k != i | same-id, and D[i,k] >= D[i,j] }.
+      Average per anchor by #positives N_i^{id}; then mean over anchors with N_i^{id} > 0.
+    """
+    def __init__(
+        self,
+        temperature: float = 2.0,
+        feature_sim: Literal["cosine", "l2"] = "cosine",
+        label_diff: Literal["l1", "scalar difference"] = "scalar difference",
+        ignore_ids: bool = False
+    ):
+        super().__init__()
+        self.t = float(temperature)
+        self.feature_sim_fn = FeatureSimilarity(feature_sim)
+        self.label_diff_fn = LabelDifference(label_diff)
+        self.ignore_ids = ignore_ids
+        self.label_difference_is_metric = label_diff in ["l1"]
+        # print(f" label_difference_is_metric = {self.label_difference_is_metric}")
+        # If there is a rank based inequality then we have for S^id_ij = {k != i; id[i] = id[j] = id[k]; y_k >= y_j}  
+        # since the relative distance to the anchor drops out
 
 
-#         features = torch.cat([features[:, 0], features[:, 1]], dim=0)  # [2bs, feat_dim]
-#         labels = labels.repeat(2, 1)  # [2bs, label_dim]
-#         label_diffs = self.label_diff_fn(labels)  # be CAREFULL WITH THE SIGNEd LABELS TODO 
+    @staticmethod
+    def _repeat_ids_for_two_crops(ids_1d: np.ndarray) -> np.ndarray:
+        # Match feats = [x0..xB-1, x0'..xB-1']
+        return np.tile(ids_1d, 2)
 
+    def forward(
+        self,
+        features: torch.Tensor,
+        labels: torch.Tensor,
+        ids: Optional[np.ndarray] = None,
+        *,
+        return_support: bool = False,
+    ):
+        assert features.ndim == 3 and features.shape[1] == 2, "features must be [B,2,D]"
+        B = features.shape[0]
+        assert labels.shape[0] == B
 
-#         logits = self.feature_sim_fn(features).div(self.t) # CW: [bs, bs]
+        device = features.device
+        feats = torch.cat([features[:, 0], features[:, 1]], dim=0)   # [n, D]
+        labs  = labels.repeat(2, 1)                                  # [n, d]
+        if not self.label_difference_is_metric:
+            assert labs.shape[1] == 1
+            labs_ = labs.squeeze()                                   # [n]
+        n = feats.shape[0]
 
-        
-#         if use_ids: 
-#             # Remove maximum logit with same id
-#             logits_id = 
-#             logits_max, _ = torch.max(logits, dim=1, keepdim=True)
-#             logits -= logits_max.detach()
-#             exp_logits = logits.exp()
-#         else: 
-#             logits_max, _ = torch.max(logits, dim=1, keepdim=True)
-#             logits -= logits_max.detach()
-#             exp_logits = logits.exp()
+        sim  = self.feature_sim_fn(feats) / self.t                   # [n, n]
+        Dmat = self.label_diff_fn(labs)                              # [n, n]
 
-#         n = logits.shape[0]  # n = 2bs
+        if (not self.ignore_ids) and (ids is not None):
+            ids_2 = self._repeat_ids_for_two_crops(ids)
+            same_id_full = get_instance_mask_2D(ids_2, device=device)   # [n, n], diag False
+        else:
+            same_id_full = ~torch.eye(n, device=device, dtype=torch.bool)
 
-#         # remove diagonal
-#         logits = logits.masked_select((1 - torch.eye(n).to(logits.device)).bool()).view(n, n - 1)
-#         exp_logits = exp_logits.masked_select((1 - torch.eye(n).to(logits.device)).bool()).view(n, n - 1)
-#         label_diffs = label_diffs.masked_select((1 - torch.eye(n).to(logits.device)).bool()).view(n, n - 1)
+        N_id = same_id_full.sum(dim=1)                               # [n]
+        valid_anchor = N_id > 0
+        N_id_safe = N_id.clamp_min(1)
 
-#         loss = 0.
-#         for k in range(n - 1):
-#             pos_logits = logits[:, k]  # 2bs
-#             pos_label_diffs = label_diffs[:, k]  # 2bs
-#             neg_mask = (label_diffs >= pos_label_diffs.view(-1, 1)).float()  # [2bs, 2bs - 1]
-#             pos_log_probs = pos_logits - torch.log((neg_mask * exp_logits).sum(dim=-1))  # 2bs
-#             loss += - (pos_log_probs / (n * (n - 1))).sum()
+        per_anchor_sum = torch.zeros(n, device=device)
+        neg_inf = float('-inf')
 
-#         return loss
+        # --- support accumulators (CPU scalars) ---
+        # The code `total_valid_terms` is not doing anything in the provided snippet. It seems like a
+        # variable name is mentioned without any assignment or operation. If you want to use this
+        # variable, you need to assign a value to it or perform some operation using it.
+        total_valid_terms = 0
+        total_nontrivial_terms = 0
+        denom_sizes = []            # list of ints
+        per_j_pos_counts = torch.zeros(n, dtype=torch.long)
+        per_j_nontrivial_counts = torch.zeros(n, dtype=torch.long)
+
+        for j in range(n):
+            pos_mask_j = same_id_full[:, j]          # δ^{id}_{ij}
+            if not pos_mask_j.any():
+                continue
+
+            pos_logits = sim[:, j]
+
+            if self.label_difference_is_metric:
+                D_inequality = (Dmat >= Dmat[:, j].unsqueeze(1))
+            else:
+                D_inequality = (labs_ >= labs_[j]).unsqueeze(0)      # [1,n] -> [n,n]
+
+            denom_mask = same_id_full & D_inequality                 # [n, n]
+            sim_masked = sim.masked_fill(~denom_mask, neg_inf)
+            denom_log  = torch.logsumexp(sim_masked, dim=1)
+
+            # zero-out invalid (i,j)
+            denom_log = torch.where(pos_mask_j, denom_log, pos_logits)
+
+            neg_log_prob = -(pos_logits - denom_log) * pos_mask_j.float()
+            per_anchor_sum += neg_log_prob
+
+            # ---- collect support (no_grad) ----
+            if return_support:
+                with torch.no_grad():
+                    valid_rows = pos_mask_j                         # [n] bool
+                    denom_size_ij = denom_mask.sum(dim=1)           # [n]
+                    denom_valid = denom_size_ij[valid_rows]         # sizes for valid (i,j)
+                    num_valid_here = int(valid_rows.sum().item())
+                    num_nontrivial_here = int((denom_valid > 1).sum().item())
+
+                    total_valid_terms += num_valid_here
+                    total_nontrivial_terms += num_nontrivial_here
+                    per_j_pos_counts[j] = num_valid_here
+                    per_j_nontrivial_counts[j] = num_nontrivial_here
+                    # store a few sizes (avoid huge logs—truncate if you like)
+                    denom_sizes += denom_valid.tolist()
+
+        per_anchor_avg = per_anchor_sum / N_id_safe
+        if valid_anchor.any():
+            loss = per_anchor_avg[valid_anchor].mean()
+        else:
+            loss = per_anchor_avg.mean() * 0.0
+
+        if not return_support:
+            return loss
+
+        # --- build support dict (CPU, lightweight) ---
+        support = {
+            "B": int(B),
+            "n": int(n),
+            "num_valid_anchors": int(valid_anchor.sum().item()),
+            "frac_valid_anchors": float((valid_anchor.float().mean()).item()),
+            "total_pos_pairs": int(N_id.sum().item()),
+            "avg_pos_per_anchor": float(N_id[valid_anchor].float().mean().item() if valid_anchor.any() else 0.0),
+            "per_anchor_pos_counts": N_id.detach().cpu(),   # tensor [n]
+            "total_valid_terms": int(total_valid_terms),     # count of (i,j) with same ID
+            "nontrivial_terms": int(total_nontrivial_terms), # count with |S_ij^id| > 1
+            "frac_nontrivial_terms": float(total_nontrivial_terms / total_valid_terms) if total_valid_terms > 0 else 0.0,
+            "per_j_pos_counts": per_j_pos_counts,           # tensor [n]
+            "per_j_nontrivial_counts": per_j_nontrivial_counts,  # tensor [n]
+        }
+        if len(denom_sizes) > 0:
+            ds = torch.tensor(denom_sizes, dtype=torch.float32)
+            support.update({
+                "denom_size_mean": float(ds.mean().item()),
+                "denom_size_min": int(ds.min().item()),
+                "denom_size_max": int(ds.max().item()),
+            })
+        else:
+            support.update({
+                "denom_size_mean": 0.0,
+                "denom_size_min": 0,
+                "denom_size_max": 0,
+            })
+
+        if (not self.ignore_ids) and (ids is not None):
+            # ID histogram in the tiled space (helps debugging the sampler)
+            ids_2 = self._repeat_ids_for_two_crops(ids)
+            uniques, counts = np.unique(ids_2, return_counts=True)
+            support["unique_ids_counts"] = dict(zip(map(str, uniques.tolist()), map(int, counts.tolist())))
+
+        return loss, support
+

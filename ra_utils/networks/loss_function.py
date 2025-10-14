@@ -82,6 +82,21 @@ def get_triplet_loss_fn_MDP(cfg: dict = {}):
         raise NotImplementedError(f"{name = }")
 
 
+import ra_utils.loss.loss_RnC_with_ranks_and_ids
+
+def get_triplet_loss_RnCids(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {})
+    # print(f"loss for triplets (score): {name}; \n    params = {params}")
+    if ((name == "RnC_time") or (name == "RnC_score")):
+        return ra_utils.loss.loss_RnC_with_ranks_and_ids.RnCIdLossV2(**params)
+    else: 
+        raise NotImplementedError(f"{name = }")
+
+
+
+
+
 
 def get_consistency_regularization_loss_fn(cfg: dict = {}):
     name = cfg.get("name")

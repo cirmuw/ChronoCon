@@ -940,6 +940,14 @@ class DummyReturnZeroLoss(nn.Module):
     def forward(self, *args, **kwargs):
         return torch.tensor(0.0, device=self.device)
 
+class DummyReturnZeroLossAndDict(nn.Module):
+    def __init__(self, device="cuda"):
+        super().__init__()
+        self.device = device
+    def forward(self, *args, **kwargs):
+        return torch.tensor(0.0, device=self.device), {}
+
+
 
 class DummyReturnZeroLossMulti(nn.Module):
     def __init__(self, device="cuda", size=2):

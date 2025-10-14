@@ -8,13 +8,17 @@ from ra_utils.networks.loss_function import (
     get_triplet_loss_fn, 
     get_consistency_regularization_loss_fn,
     get_triplet_loss_fn_WST, 
-    get_triplet_loss_fn_MDP
+    get_triplet_loss_fn_MDP, 
+    get_triplet_loss_RnCids
 )
 import ra_utils.loss.online_mining_delta_loss
 from ra_utils.networks.architecture import (
     DummyReturnZeroLoss,
-    DummyReturnZeroLossMulti
+    DummyReturnZeroLossMulti, 
+    DummyReturnZeroLossAndDict
 )
+
+import ra_utils.loss.loss_RnC_with_ranks_and_ids
 
 
 
@@ -25,6 +29,7 @@ def get_loss_fn_dict(config, device="cuda"):
     #   latent rep.: z = encoder(X)
 
     dummy = DummyReturnZeroLoss(device)
+    dummy_with_dict = DummyReturnZeroLossAndDict(device)
     dummy2 = DummyReturnZeroLossMulti(device=device, size=2)
     dummy3 = DummyReturnZeroLossMulti(device=device, size=3)    
 
@@ -108,6 +113,29 @@ def get_loss_fn_dict(config, device="cuda"):
         }    
 
 
+    lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_time', 0.0)
+    loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_time", {}))
+    if lambda_ < 1.0e-8: 
+            loss_fn_ = dummy_with_dict
+    loss_dct_z_RnC_time = {
+            "function": loss_fn_, 
+            "lambda": lambda_, 
+            "options": config["loss"].get("RnC_time", {}).get("options", {})
+        }
+
+
+    lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_score', 0.0)
+    loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_score", {}))
+    if lambda_ < 1.0e-8: 
+            loss_fn_ = dummy_with_dict
+    loss_dct_z_RnC_score = {
+            "function": loss_fn_, 
+            "lambda": lambda_, 
+            "options": config["loss"].get("RnC_score", {}).get("options", {})
+        }
+
+
+
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
     lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
     loss_fn_z_score_consistency_regularizer = get_consistency_regularization_loss_fn(config["loss"].get("score_consistency_regularizer", {}))
@@ -159,7 +187,9 @@ def get_loss_fn_dict(config, device="cuda"):
         #
         "z_score_consistency_regularizer": loss_dct_z_score_consistency_regularizer,
         #
-        "z_triplet_MDP_time": loss_dct_z_triplet_MDP_time
+        "z_triplet_MDP_time": loss_dct_z_triplet_MDP_time,
+        "z_RnC_score": loss_dct_z_RnC_score,
+        "z_RnC_time": loss_dct_z_RnC_time
     }
 
     return r

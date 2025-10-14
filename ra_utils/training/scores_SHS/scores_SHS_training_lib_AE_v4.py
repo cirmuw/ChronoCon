@@ -368,11 +368,21 @@ def val_epoch_AE_v4(
     lambda_z_triplet_MDP_time = loss_fn_dict["z_triplet_MDP_time"]["lambda"]
     lambda_z_triplet_MDP_time_val_multiplier  = loss_fn_dict["z_triplet_MDP_time"]["options"].get("validation_multiplier", 1.0)
 
+    # --- add these two lines next to your other pulls ---
+    loss_fn_z_RnC_time  = loss_fn_dict["z_RnC_time"]["function"]
+    lambda_z_RnC_time   = loss_fn_dict["z_RnC_time"]["lambda"]
+    lambda_z_RnC_time_val_multiplier = loss_fn_dict["z_RnC_time"]["options"].get("validation_multiplier", 1.0)
+
+    loss_fn_z_RnC_score = loss_fn_dict["z_RnC_score"]["function"]
+    lambda_z_RnC_score  = loss_fn_dict["z_RnC_score"]["lambda"]
+    lambda_z_RnC_score_val_multiplier = loss_fn_dict["z_RnC_score"]["options"].get("validation_multiplier", 1.0)
+
+
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer",
-                               "z_triplet_MDP_time"]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score" ]
 
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
@@ -468,6 +478,7 @@ def val_epoch_AE_v4(
                     _, z_positive = model_AE(X_pos, score_types=s_type)
                 else:
                     z_positive = z  # Fall back (Note that in this case lambda should be 0!)
+                features_RnC = torch.concat([z.unsqueeze(1), z_positive.unsqueeze(1)], dim=1)
 
                 loss_x = loss_fn_x(X_pred, X)
                 loss_z = loss_fn_z(z, z * 0)
@@ -502,6 +513,42 @@ def val_epoch_AE_v4(
 
 
                 loss_z_SCR, number_of_valid_contributions_SCR = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
+
+
+                # ---- RnC TIME ----
+                loss_z_RnC_time, support_dct_RnC_time = loss_fn_z_RnC_time(
+                    features = features_RnC,
+                    labels   = years_t.unsqueeze(1),
+                    ids      = instance_label,
+                    return_support = True,
+                )
+                num_terms_time = float(support_dct_RnC_time.get("num_valid_anchors", 0))
+                contr_dct["Lz_RnC_time"] = contr_dct.get("Lz_RnC_time", 0.0) + (loss_z_RnC_time.item() * num_terms_time)
+                contr_dct["Lz_RnC_time_numTerms"] = contr_dct.get("Lz_RnC_time_numTerms", 0.0) + num_terms_time
+
+                # compact support (averaged later)
+                contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
+                contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
+                contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
+                contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
+                contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
+
+                # ---- RnC SCORE ----
+                loss_z_RnC_score, support_dct_RnC_score = loss_fn_z_RnC_score(
+                    features = features_RnC,
+                    labels   = y.unsqueeze(1),
+                    ids      = s_type_np,
+                    return_support = True,
+                )
+                num_terms_score = float(support_dct_RnC_score.get("num_valid_anchors", 0))
+                contr_dct["Lz_RnC_score"] = contr_dct.get("Lz_RnC_score", 0.0) + (loss_z_RnC_score.item() * num_terms_score)
+                contr_dct["Lz_RnC_score_numTerms"] = contr_dct.get("Lz_RnC_score_numTerms", 0.0) + num_terms_score
+
+                contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
+                contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
+                contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
+                contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
+                contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -639,23 +686,23 @@ def val_epoch_AE_v4(
                 l = loss_z_triplet_classes.item()
                 contr_dct["Lz_TriCls"] = contr_dct.get("Lz_TriCls", 0.0) + (l * N_pos)
                 contr_dct["Lz_TriCls_numPosTrip"]   = contr_dct.get("Lz_TriCls_numPosTrip", 0.0) + N_pos
-                contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item() * B
-                contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item() * B
+                contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item()
+                contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item()
 
-                N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__WST_classes.item()
+                N_pos = number_of_valid_triplets__WST_classes.item() * fraction_positive_triplets__WST_classes.item()
                 l = loss_z_triplet_WST_scores.item()
                 contr_dct["Lz_TriClsWST"] = contr_dct.get("Lz_TriClsWST", 0.0) + (l * N_pos)
                 contr_dct["Lz_TriClsWST_numPosTrip"]   = contr_dct.get("Lz_TriClsWST_numPosTrip", 0.0) + N_pos            
-                contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item() * B
-                contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item() * B
+                contr_dct["Lz_TriClsWST_fracPosTrip"]  = contr_dct.get("Lz_TriClsWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_classes.item()
+                contr_dct["Lz_TriClsWST_numValidTrip"] = contr_dct.get("Lz_TriClsWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_classes.item()
 
 
                 N_pos = number_of_valid_triplets__WST_time.item() * fraction_positive_triplets__WST_time.item()
                 l = loss_z_triplet_WST_time.item()
                 contr_dct["Lz_TriTimeWST"] = contr_dct.get("Lz_TriTimeWST", 0.0) + (l * N_pos)
                 contr_dct["Lz_TriTimeWST_numPosTrip"]   = contr_dct.get("Lz_TriTimeWST_numPosTrip", 0.0) + N_pos
-                contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item() * B
-                contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item() * B                    
+                contr_dct["Lz_TriTimeWST_fracPosTrip"]  = contr_dct.get("Lz_TriTimeWST_fracPosTrip", 0.0) + fraction_positive_triplets__WST_time.item()
+                contr_dct["Lz_TriTimeWST_numValidTrip"] = contr_dct.get("Lz_TriTimeWST_numValidTrip", 0.0) + number_of_valid_triplets__WST_time.item()                    
 
 
                 N_pos = number_of_valid_triplets__MDP_time.item() * fraction_positive_triplets__MDP_time.item()
@@ -663,13 +710,15 @@ def val_epoch_AE_v4(
                 contr_dct["Lz_TriTimeMDP"] = contr_dct.get("Lz_TriTimeMDP", 0.0) + (l * N_pos)
                 contr_dct["Lz_TriTimeMDP_numPosTrip"]   = contr_dct.get("Lz_TriTimeMDP_numPosTrip", 0.0) + N_pos
                 contr_dct["Lz_TriTimeMDP_fracPosTrip"]  = contr_dct.get("Lz_TriTimeMDP_fracPosTrip", 0.0) + fraction_positive_triplets__MDP_time.item()
-                contr_dct["Lz_TriTimeMDP_numValidTrip"] = contr_dct.get("Lz_TriTimeMDP_numValidTrip", 0.0) + number_of_valid_triplets__MDP_time.item()    
+                contr_dct["Lz_TriTimeMDP_numValidTrip"] = contr_dct.get("Lz_TriTimeMDP_numValidTrip", 0.0) + number_of_valid_triplets__MDP_time.item()   
 
 
                 N_pos = number_of_valid_contributions_SCR.item()
                 l = loss_z_SCR.item()
                 contr_dct["Lz_SCR"]   = contr_dct.get("Lz_SCR", 0.0) + (N_pos * l) 
                 contr_dct["Lz_SCR_numPos"]   = contr_dct.get("Lz_SCR_numPos", 0.0) + N_pos        
+
+
 
 
                 # ----------------------------------------------------------
@@ -698,7 +747,11 @@ def val_epoch_AE_v4(
     contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
     contr_dct["Lz_TriTimeMDP"] /= (contr_dct["Lz_TriTimeMDP_numPosTrip"]  + 1.0e-10)
     contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
-    
+    # Mean per "term" for RnC:
+    if contr_dct.get("Lz_RnC_time_numTerms", 0.0) > 0:
+        contr_dct["Lz_RnC_time"] /= (contr_dct["Lz_RnC_time_numTerms"] + 1e-10)
+    if contr_dct.get("Lz_RnC_score_numTerms", 0.0) > 0:
+        contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)    
 
 
 
@@ -710,7 +763,23 @@ def val_epoch_AE_v4(
             + contr_dct["Lz_TriTimeWST"] * lambda_z_triplet_WST_time  * lambda_z_triplet_WST_time_val_multiplier        
             + contr_dct["Lz_TriTimeMDP"] * lambda_z_triplet_MDP_time  * lambda_z_triplet_MDP_time_val_multiplier        
             + contr_dct["Lz_SCR"]        * lambda_z_CR                * lambda_z_CR_val_multiplier
+            + contr_dct.get("Lz_RnC_time", 0.0)  * lambda_z_RnC_time  * lambda_z_RnC_time_val_multiplier
+            + contr_dct.get("Lz_RnC_score", 0.0) * lambda_z_RnC_score * lambda_z_RnC_score_val_multiplier
     )
+
+    # Average compact support across minibatches and rename for auto-logging
+    for prefix in ["RNC_time", "RNC_score"]:
+        b = contr_dct.get(f"{prefix}_batches", 0.0)
+        if b > 0:
+            contr_dct[f"{prefix}_numValidAnchors"]   /= b
+            contr_dct[f"{prefix}_totalPosPairs"]     /= b
+            contr_dct[f"{prefix}_fracNontrivial"]    /= b
+            contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
+            # rename to nicer key, then to "Lz_*" for your logger
+            contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
+            for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
+                contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
+
 
     running_loss = {**running_loss, **contr_dct}
 
@@ -719,10 +788,13 @@ def val_epoch_AE_v4(
             cnt = head_counts[head_name]
             running_loss[f"Ly_{head_name}"] = (running_head_loss[head_name] / cnt if cnt else 0.0)
 
+
+
+    metrics = {**running_loss, "loss": running_loss["L"]}
+
     # ------------------------------------------------------------------
     # 3) Classical classification statistics (global)
     # ------------------------------------------------------------------
-    metrics = {**running_loss, "loss": running_loss["L"]}
 
     all_preds_np = np.array(all_preds)
     all_preds_np_float = np.array(all_preds_float)
@@ -1254,11 +1326,17 @@ def training_epoch_AE_v4(
     loss_fn_z_triplet_MDP_time = loss_fn_dict["z_triplet_MDP_time"]["function"]
     lambda_z_triplet_MDP_time = loss_fn_dict["z_triplet_MDP_time"]["lambda"]
 
+    loss_fn_z_RnC_time = loss_fn_dict["z_RnC_time"]["function"]
+    lambda_z_RnC_time = loss_fn_dict["z_RnC_time"]["lambda"]
+
+    loss_fn_z_RnC_score = loss_fn_dict["z_RnC_score"]["function"]
+    lambda_z_RnC_score = loss_fn_dict["z_RnC_score"]["lambda"]
+
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
-                               "z_triplet_MDP_time"]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score"]
 
     # Checks
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
@@ -1318,7 +1396,7 @@ def training_epoch_AE_v4(
             else: 
                 z_positive = z  # Fall back (Note that in this case lambda should be 0!)
                 assert lambda_z_triplet_WST_score == 0.0
-
+            features_RnC = torch.concat([z.unsqueeze(1), z_positive.unsqueeze(1)], dim=1)
 
             # triplet loss on classes: 
             loss_z_triplet_classes = loss_fn_z_triplet_classes(labels=y, embeddings=z, 
@@ -1352,6 +1430,43 @@ def training_epoch_AE_v4(
                                                                   scores=y)
             loss_z_triplet_MDP_time, fraction_positive_triplets__MDP_time, number_of_valid_triplets__MDP_time = loss_z_triplet_MDP_time
 
+
+            # ---- RnC TIME ----
+            loss_z_RnC_time, support_dct_RnC_time = loss_fn_z_RnC_time(
+                features = features_RnC, 
+                labels   = years_t.unsqueeze(1), 
+                ids      = instance_label, 
+                return_support=True
+            )
+            # aggregate (like triplets)
+            num_terms_time = float(support_dct_RnC_time.get("num_valid_anchors", 0))
+            contr_dct["Lz_RnC_time"] = contr_dct.get("Lz_RnC_time", 0.0) + (loss_z_RnC_time.item() * num_terms_time)
+            contr_dct["Lz_RnC_time_numTerms"] = contr_dct.get("Lz_RnC_time_numTerms", 0.0) + num_terms_time
+
+            # log compact support
+            contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
+            contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
+            contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
+            contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
+            contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
+
+
+            # ---- RnC SCORE ----
+            loss_z_RnC_score, support_dct_RnC_score = loss_fn_z_RnC_score(
+                features = features_RnC, 
+                labels   = y.unsqueeze(1), 
+                ids      = s_type_np, 
+                return_support=True
+            )
+            num_terms_score = float(support_dct_RnC_score.get("num_valid_anchors", 0))
+            contr_dct["Lz_RnC_score"] = contr_dct.get("Lz_RnC_score", 0.0) + (loss_z_RnC_score.item() * num_terms_score)
+            contr_dct["Lz_RnC_score_numTerms"] = contr_dct.get("Lz_RnC_score_numTerms", 0.0) + num_terms_score
+
+            contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
+            contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
+            contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
+            contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
+            contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
 
 
@@ -1435,6 +1550,8 @@ def training_epoch_AE_v4(
                     lambda_z_triplet_WST_score * loss_z_triplet_WST_scores + 
                     lambda_z_triplet_WST_time * loss_z_triplet_WST_time + 
                     lambda_z_triplet_MDP_time * loss_z_triplet_MDP_time + 
+                    lambda_z_RnC_time * loss_z_RnC_time + 
+                    lambda_z_RnC_score * loss_z_RnC_score + 
                     lambda_y_delta * loss_y_delta + 
                     lambda_y_reg_extra * loss_y_reg_extra
                     )
@@ -1448,11 +1565,6 @@ def training_epoch_AE_v4(
             running_loss["Ly_delta"] += loss_y_delta.item() * B
             running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
 
-            # running_loss["Lz_triplet_classes"] += loss_z_triplet_classes.item() * B
-            # running_loss["Lz_triplet_WST_score"] += loss_z_triplet_WST_scores.item() * B
-            # running_loss["Lz_triplet_WST_time"] += loss_z_triplet_WST_time.item() * B            
-            # running_loss["Lz_score_consistency_regularizer"] += loss_z_SCR.item() * B
-
             # Add fraction of positive triplets and number of valid triplets to running loss
             N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__classes.item()
             l = loss_z_triplet_classes.item()
@@ -1461,7 +1573,7 @@ def training_epoch_AE_v4(
             contr_dct["Lz_TriCls_fracPosTrip"]  = contr_dct.get("Lz_TriCls_fracPosTrip", 0.0) + fraction_positive_triplets__classes.item()
             contr_dct["Lz_TriCls_numValidTrip"] = contr_dct.get("Lz_TriCls_numValidTrip", 0.0) + number_of_valid_triplets__classes.item()
 
-            N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__WST_classes.item()
+            N_pos = number_of_valid_triplets__WST_classes.item() * fraction_positive_triplets__WST_classes.item()
             l = loss_z_triplet_WST_scores.item()
             contr_dct["Lz_TriClsWST"] = contr_dct.get("Lz_TriClsWST", 0.0) + (l * N_pos)
             contr_dct["Lz_TriClsWST_numPosTrip"]   = contr_dct.get("Lz_TriClsWST_numPosTrip", 0.0) + N_pos            
@@ -1485,6 +1597,10 @@ def training_epoch_AE_v4(
             contr_dct["Lz_TriTimeMDP_fracPosTrip"]  = contr_dct.get("Lz_TriTimeMDP_fracPosTrip", 0.0) + fraction_positive_triplets__MDP_time.item()
             contr_dct["Lz_TriTimeMDP_numValidTrip"] = contr_dct.get("Lz_TriTimeMDP_numValidTrip", 0.0) + number_of_valid_triplets__MDP_time.item()    
 
+
+
+
+
             N_pos = number_of_valid_contributions_SCR.item()
             l = loss_z_SCR.item()
             contr_dct["Lz_SCR"]   = contr_dct.get("Lz_SCR", 0.0) + (N_pos * l) 
@@ -1507,6 +1623,29 @@ def training_epoch_AE_v4(
     contr_dct["Lz_TriTimeMDP"] /= (contr_dct["Lz_TriTimeMDP_numPosTrip"]  + 1.0e-10)
     contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
     contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
+
+    # Mean per "term" for RnC:
+    if contr_dct.get("Lz_RnC_time_numTerms", 0.0) > 0:
+        contr_dct["Lz_RnC_time"] /= (contr_dct["Lz_RnC_time_numTerms"] + 1e-10)
+    if contr_dct.get("Lz_RnC_score_numTerms", 0.0) > 0:
+        contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)
+
+    # Also average the compact support across minibatches (nice for logging dashboards)
+    for prefix in ["RNC_time", "RNC_score"]:
+        b = contr_dct.get(f"{prefix}_batches", 0.0)
+        if b > 0:
+            contr_dct[f"{prefix}_numValidAnchors"]   /= b
+            contr_dct[f"{prefix}_totalPosPairs"]     /= b
+            contr_dct[f"{prefix}_fracNontrivial"]    /= b
+            contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
+            # rename to nicer keys in output
+            contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
+            # More renaming so that logging is automatic. 
+            for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
+                contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
+
+
+
 
     running_loss = {**running_loss, **contr_dct}
 

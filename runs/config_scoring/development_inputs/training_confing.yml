@@ -14,9 +14,9 @@ SAVE_MODEL_FULL: False
 SAVE_MODEL_state_dct: True
 SKIP_TRAINING: False
 
-AUTO_REPLACE:
-  # Replaces all string parts of the config starting with: "$$__" and ending with "__$$" iff the key is in this dict
-  # e.g.   "mlflow_RA/$$__EXP_ID__$$/abc" -> "mlflow_RA/844424495910332051/abc"
+# Replaces all string parts of the config starting with: "$$__" and ending with "__$$" iff the key is in this dict
+# e.g.   "mlflow_RA/$$__EXP_ID__$$/abc" -> "mlflow_RA/844424495910332051/abc"
+AUTO_REPLACE:  
   EXP_ID: "844424495910332051"
   RUN_ID: "6338f0b8b00444e9a0821635ee9e77bc"
   MLFLOW_ROOT: "/msc/home/cwatze93/data/mlflow/mlflow_RA"
@@ -449,12 +449,41 @@ loss:
       validation_multiplier: 1.0  # 1 is the default. 
 
 
+  RnC_time:  # Rank N Contrasive Loss 
+  # label=Time;  id=instance_label (e.g. PIPII_L_patient001_2010-01-01)
+  # Make sure that transforms.ACTIVATE_TRIPLET_TRAINING_TRANSFORMS is True 
+    name: "RnC_time"     # or OnlineBatchAllTripletLoss
+    params:
+      temperature: 2.0
+      feature_sim: "cosine"  # "cosine" or "l2"
+      label_diff: "scalar difference"  # "l1" or "scalar difference"
+      ignore_ids: False  # For ablation study and tests
+    options: 
+      validation_multiplier: 1.0  # 1 is the default. 
+
+
+  RnC_score:  # Rank N Contrasive Loss 
+  # label=score;  id=score_type e.g. "PIPII_JSN"
+    name: "RnC_score"     # or OnlineBatchAllTripletLoss
+    params:
+      temperature: 2.0
+      feature_sim: "cosine"  # "cosine" or "l2"
+      label_diff: "scalar difference"  # "l1" or "scalar difference"
+      ignore_ids: False  # Here this might make sense. But better keep seperate
+    options: 
+      validation_multiplier: 1.0  # 1 is the default. 
+
+
+
+
+
   score_consistency_regularizer:
     name: "ScoresConsistencyRegularizer"     # or OnlineBatchAllTripletLoss
     params:
       metric_embeddings: "cosine"  # "euclidean", "cosine", "tanh_euclidean"
       # squared_embeddings_metric: True  # Noes nothing for cosine 
       deltino: 0.1
+
 
 
 
@@ -471,9 +500,14 @@ loss_weights:
   lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
   lambda_z_score_consistency_regularizer: 0.0 
 
-  lambda_z_triplet_MDP: 1.0   # with old DL not allowed
+  lambda_z_triplet_MDP: 0.0   # with old DL not allowed
 
-  
+  lambda_z_RnC_time: 1.0
+  lambda_z_RnC_score: 1.0
+
+
+
+
 
 mlflow_runs_dir: /home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/
 model:
