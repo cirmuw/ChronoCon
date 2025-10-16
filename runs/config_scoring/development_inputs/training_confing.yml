@@ -51,11 +51,50 @@ model_initialization:
 #project: 'AutoPIX:'
 #tag: development
 training:
+  USE_GROUPED_VALIDATION_LOADER: False  # "WARINING I fUSE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! "  )
+
   batch_size: 100 #512
   early_stopping_tol: 10 # 5
   epochs: 2
   num_workers: 8 #12
-  #sampler_name: WeightedRandomSampler  # WeightedRandomSampler  PatientLevelWeightedRandomSampler  
+
+  persistent_workers:  False
+  pin_memory: False
+  batch_size_dependent_lr: True
+
+  # sampler_name: WeightedRandomSampler    # ok 
+
+  # sampler_name : PatientLevelWeightedRandomSampler  is not advised
+
+  # This sampler has the purpose that all images for Patient001_Left_PIPIIJSN are kept in same batch 
+  # 
+
+  sampler_name: "GroupLevelTypePriorBatchSampler"
+  # Fixed issue of  GroupLevelWeightedBatchSampler
+  # Seems however that some score disballance remains. Maybe because for some score_types I have reduced score range. 
+  # (Not a single example with max score -> Can not oversample but ok)  
+  sampler_settings:
+    group_identifiers: ["patient_id", "score_type", "left_or_right"]
+    target_col: "score"
+    group_score_agg: "mean_ceil"     # ceil(mean(score) over visits) → group label
+
+    # group-level oversampling
+    prior_mode: "uniform"            # enforce near-uniform over score_type
+    weight_mode: "inverse_freq"      # balance label distribution across groups
+    alpha: 1.0                       # 0=no balancing, 1=full inverse-frequency
+    epsilon: 1.0                     # smoothing for label counts
+    prior_per_label: null            # optional {label:int -> prior:float} to tilt weights
+
+    size_correction: False   # 
+
+    # batching behavior
+    group_replacement: true          # allow re-using a group across batches within an epoch
+    drop_last: false
+    seed: 0
+
+
+
+  
   #sampler_name: PatientLevelWeightedRandomSampler #  GroupedWeightedRandomSampler  #PatientLevelWeightedRandomSampler  # WeightedRandomSampler  PatientLevelWeightedRandomSampler
 
   # sampler_name: "GroupedWeightedRandomSampler"  # TwoStageGroupedWeightedRandomBatchSampler  WeightedRandomSampler
@@ -93,37 +132,7 @@ training:
   #   seed: 0
 
 
-  # This sampler has the purpose that all images for Patient001_Left_PIPIIJSN are kept in same batch 
-  # 
-  #   Fixed issue of  GroupLevelWeightedBatchSampler
-  # Seems however that some score disballance remains. Maybe because for some score_types I have reduced score range. 
-  # (Not a single example with max score -> Can not oversample but ok)
 
-  sampler_name: "GroupLevelTypePriorBatchSampler"
-  sampler_settings:
-    group_identifiers: ["patient_id", "score_type", "left_or_right"]
-    target_col: "score"
-    group_score_agg: "mean_ceil"     # ceil(mean(score) over visits) → group label
-
-    # group-level oversampling
-    prior_mode: "uniform"            # enforce near-uniform over score_type
-    weight_mode: "inverse_freq"      # balance label distribution across groups
-    alpha: 1.0                       # 0=no balancing, 1=full inverse-frequency
-    epsilon: 1.0                     # smoothing for label counts
-    prior_per_label: null            # optional {label:int -> prior:float} to tilt weights
-
-    size_correction: False   # 
-
-    # batching behavior
-    group_replacement: true          # allow re-using a group across batches within an epoch
-    drop_last: false
-    seed: 0
-
-
-  # persistent_workers:  False
-  # pin_memory: False
-
-  # batch_size_dependent_lr: True
 
 data:
   #"mean_round_delta_bin" # "mean_ceil" # "median_score"  Null  "delta_range"   "delta_buckets" "mean_ceil"  "mean_round" "delta_bin"
