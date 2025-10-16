@@ -182,7 +182,8 @@ class RnCIdLoss(nn.Module):
 
 
 
-
+## Full disclosure: I only programmed the one above and asked ChatGPT to generate the one with support. 
+# It does however give the same results.
 class RnCIdLossV2(nn.Module):
     """
     Rank-N-Contrast with instance (patient) constraint and time-ordered denominator.

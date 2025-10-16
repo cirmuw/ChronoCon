@@ -55,7 +55,71 @@ training:
   early_stopping_tol: 10 # 5
   epochs: 2
   num_workers: 8 #12
-  sampler_name: WeightedRandomSampler  # WeightedRandomSampler  PatientLevelWeightedRandomSampler  
+  #sampler_name: WeightedRandomSampler  # WeightedRandomSampler  PatientLevelWeightedRandomSampler  
+  #sampler_name: PatientLevelWeightedRandomSampler #  GroupedWeightedRandomSampler  #PatientLevelWeightedRandomSampler  # WeightedRandomSampler  PatientLevelWeightedRandomSampler
+
+  # sampler_name: "GroupedWeightedRandomSampler"  # TwoStageGroupedWeightedRandomBatchSampler  WeightedRandomSampler
+  # sampler_settings: 
+  #   #batch_size: 64
+  #   replacement: true
+  #   min_primary_fraction: 0.7
+  #   max_groups_per_batch: 3
+  #   min_primary_items: 2          # optional, stronger than the fraction
+  #   repeats_per_group_cap: 1       # optional, avoid over-repeating individuals in one batch
+  #   group_identifiers: ["patient_id","score_type","left_or_right"]
+  #   target_col: "score"
+  #   group_score_agg: "mean_ceil"
+
+
+  # Potential issues: 
+  # Class dis-ballance in scores can lead to score_type dis-ballance 
+  # 
+  # sampler_name: "GroupLevelWeightedBatchSampler"
+  # sampler_settings:
+  #   group_identifiers: ["patient_id", "score_type", "left_or_right"]
+  #   target_col: "score"
+  #   group_score_agg: "mean_ceil"     # ceil(mean(score) over visits) → group label
+
+  #   # group-level oversampling
+  #   weight_mode: "inverse_freq"      # balance label distribution across groups
+  #   alpha: 1.0                       # 0=no balancing, 1=full inverse-frequency
+  #   epsilon: 1.0                     # smoothing for label counts
+  #   prior_per_label: null            # optional {label:int -> prior:float} to tilt weights
+
+
+  #   # batching behavior
+  #   group_replacement: true          # allow re-using a group across batches within an epoch
+  #   drop_last: false
+  #   seed: 0
+
+
+  # This sampler has the purpose that all images for Patient001_Left_PIPIIJSN are kept in same batch 
+  # 
+  #   Fixed issue of  GroupLevelWeightedBatchSampler
+  # Seems however that some score disballance remains. Maybe because for some score_types I have reduced score range. 
+  # (Not a single example with max score -> Can not oversample but ok)
+
+  sampler_name: "GroupLevelTypePriorBatchSampler"
+  sampler_settings:
+    group_identifiers: ["patient_id", "score_type", "left_or_right"]
+    target_col: "score"
+    group_score_agg: "mean_ceil"     # ceil(mean(score) over visits) → group label
+
+    # group-level oversampling
+    prior_mode: "uniform"            # enforce near-uniform over score_type
+    weight_mode: "inverse_freq"      # balance label distribution across groups
+    alpha: 1.0                       # 0=no balancing, 1=full inverse-frequency
+    epsilon: 1.0                     # smoothing for label counts
+    prior_per_label: null            # optional {label:int -> prior:float} to tilt weights
+
+    size_correction: False   # 
+
+    # batching behavior
+    group_replacement: true          # allow re-using a group across batches within an epoch
+    drop_last: false
+    seed: 0
+
+
   # persistent_workers:  False
   # pin_memory: False
 
@@ -72,7 +136,11 @@ data:
   tSLR_backward_scale: 1.0
 
 
-
+    # options for how_to_deal_with_surgery:
+    # - "exclude"
+    # - "keep as is"
+    # - "keep: map over limit to limit plus one"
+    # - "keep: map over limit to limit"
   how_to_deal_with_surgery: exclude
   image_path_folder:
   - /home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/H_patches_size1.5/
@@ -90,11 +158,13 @@ data:
                     #'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV', 
                     #'IPIED', 'IPIEP', 
                     #'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 
-                    #'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP'
+                    'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 
+                    #'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP'
                    #####
                    # 'Rad_Carp', 'Sca_Cap', 'Tra_Sca',
                    # 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE', 'Base_MCIE', 'LunatE'
                    ]
+    more: ["IP"]
 
 
   network_score_groups:
@@ -502,8 +572,8 @@ loss_weights:
 
   lambda_z_triplet_MDP: 0.0   # with old DL not allowed
 
-  lambda_z_RnC_time: 1.0
-  lambda_z_RnC_score: 1.0
+  lambda_z_RnC_time: 0.0   # with old DL not allowed
+  lambda_z_RnC_score: 0.0   # with old DL not allowed
 
 
 

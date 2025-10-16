@@ -438,6 +438,7 @@ def build_models_v3(config: dict):
 
 
 import ra_utils.loss.loss_fn_dict
+import ra_utils.data.dataloader_CR_patches
 
 def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY, 
                  config_name=None,
@@ -450,6 +451,9 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     # Load tables with paths and scores (+ split)
     # data_tables = load_img_SHS_patch_data(config["data"])
     data_tables = process_several_score_groups(config["data"])
+    if config["training"]["sampler_name"] == "PatientLevelWeightedRandomSampler": 
+        print(" WARINING:: PatientLevelWeightedRandomSampler usually leads to worse performance!")
+        data_tables = ra_utils.data.dataloader_CR_patches.add_weights_for_oversampling(data_tables)
 
     # Check that elements exist
     for k,v  in data_tables.items():

@@ -1374,7 +1374,7 @@ def training_epoch_AE_v4(
             y      = batch["score"].to(device)
             s_type = batch["score_type"]             # list[str]
             s_type_np = np.array(s_type)
-            instance_label = np.array(batch["patient_scoretype_key"])
+            instance_label = np.array(batch["patient_scoretype_key"])  # e.g. H_R_SPD3_545_PIPIII  (no date!)
 
 
             years_np = datestr_to_years_since_2000(batch["date_str"])
