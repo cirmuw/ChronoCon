@@ -77,7 +77,6 @@ def generate_objective(
                     pprint(config_trial)
 
                 metrics = run_training_with_cleanup_v2(config_trial, 
-                                                    mlflow_logging=True, 
                                                     verbose=verbose,
                                                     append_BEST_VAL_as_last=True
                                                     )
@@ -126,11 +125,11 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
     print(f"{device = }")
 
     # Load the configuration
-    config, config_name = ra_utils.utils.config_parser.load_config(
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp17_dev_HPS/HPS__F_JSN_dev3.yml", 
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps03_triplet.yml", 
+    config, config_name, config_originals = ra_utils.utils.config_parser.load_config(
+        #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps03_triplet.yml",
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/hps_config.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
-        # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
+        return_originals=True
         )
 
     # Debugging option:
@@ -169,6 +168,9 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
     # Initiate the parent run and call the hyperparameter tuning child run logic
     with mlflow.start_run(experiment_id=experiment_id, run_name=config["run_name"], nested=False):
         # Initialize the Optuna study
+
+        for k, v in config_originals.items():
+            mlflow.log_dict(v, f"{k}.yml")
 
         direction = config_hps.get("search_direction", "minimize")
         extract_objective_value_from_validation_metrics_dct_OPTION = config_hps.get("extract_objective_value_from_validation_metrics_dct_OPTION")
