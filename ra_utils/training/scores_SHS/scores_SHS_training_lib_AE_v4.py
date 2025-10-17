@@ -102,14 +102,28 @@ def train_loop_AE_v4(
     log_model_state_dct: bool = False,
     verbose: bool = True,
     ES_metric_key = "L",  # which metric to use for early stopping
+    ES_metric_direction : Literal["min", "max"] = "min", 
+    extract_ES_metric_from_validation_metrics_dct_OPTION: Literal[None, "classification_report.macro avg"] = None, 
     append_BEST_VAL_as_last: bool = False,
     task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification"
 ):
-    """
-    Similar to v2 but added triplet loss. 
-    """
 
-    best_val_loss = float("inf")
+    # How to get validation metric/loss for early stopping: 
+    if extract_ES_metric_from_validation_metrics_dct_OPTION == None:
+        extract_ES_metric_from_validation_metrics_dct = lambda metrics_dct: metrics_dct[ES_metric_key]
+    elif extract_ES_metric_from_validation_metrics_dct_OPTION == "classification_report.macro avg":
+        extract_ES_metric_from_validation_metrics_dct = lambda metrics_dct: metrics_dct["classification_report"]["macro avg"][ES_metric_key]
+    else: 
+        raise NotImplementedError(f"{extract_ES_metric_from_validation_metrics_dct_OPTION = }")
+
+    if ES_metric_direction == "min":
+        best_val_loss_or_metric = float("inf")
+    elif ES_metric_direction == "max":
+        best_val_loss_or_metric = -float("inf")
+    else: 
+        raise ValueError(f"{ES_metric_direction = }")    
+
+
     best_AE_state = copy.deepcopy(model_AE.state_dict())
     best_clf_state = (
         copy.deepcopy(model_classifier.state_dict())
@@ -219,19 +233,25 @@ def train_loop_AE_v4(
 
         # ------------------------------------------------------------------
         # 4) Early stopping --------------------------------------------------
-        val_loss_ES = val_metrics_dct[ES_metric_key]  # used to be val_loss
+        val_loss_or_metric_ES = extract_ES_metric_from_validation_metrics_dct(val_metrics_dct)
         if not run_full_epochs:
-            improved = val_loss_ES < best_val_loss
+            if ES_metric_direction == "min": 
+                improved = val_loss_or_metric_ES < best_val_loss_or_metric
+            elif ES_metric_direction == "max": 
+                improved = val_loss_or_metric_ES > best_val_loss_or_metric
+            else: 
+                raise ValueError(f" {ES_metric_direction = } not implemented! Use min or max")
+
             if improved:
                 val_metrics_dct_BEST = val_metrics_dct.copy()
                 train_metrics_dct_BEST = train_metrics_dct.copy()
                 if verbose:
-                    improvement = (-(val_loss_ES - best_val_loss) / best_val_loss)*100
+                    improvement = (abs(val_loss_or_metric_ES - best_val_loss_or_metric) / best_val_loss_or_metric)*100
                     print(
-                        f"    YEAH!! New best validation {ES_metric_key} ↓ "
-                        f"{best_val_loss:.4f} → {val_loss_ES:.4f}  this is a {improvement:.1f}% improvement \n"
+                        f"    YEAH!! New best validation {ES_metric_key}  "
+                        f"{best_val_loss_or_metric:.4f} → {val_loss_or_metric_ES:.4f}  this is a {improvement:.1f}% improvement \n"
                     )
-                best_val_loss = val_loss_ES
+                best_val_loss_or_metric = val_loss_or_metric_ES
                 best_AE_state = copy.deepcopy(model_AE.state_dict())
                 if model_classifier is not None:
                     best_clf_state = copy.deepcopy(model_classifier.state_dict())
@@ -266,7 +286,7 @@ def train_loop_AE_v4(
                     # Sidecar metadata (also overwrite same name)
                     info_txt = (
                         f"best_epoch: {epoch}\n"
-                        f"val_loss: {val_loss_ES:.6f}\n"
+                        f"val_loss: {val_loss_or_metric_ES:.6f}\n"
                         f"saved_at: {datetime.datetime.now().isoformat()}\n"
                     )
                     _log_text_atomic(info_txt, nice_basename="checkpoint_info.yaml")

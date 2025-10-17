@@ -559,9 +559,12 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
             verbose=3,
             ES_metric_key=config["training"].get("early_stopping_metric_key", "L"), 
+            ES_metric_direction=config["training"].get("early_stopping_metric_direction", "min"), 
+            extract_ES_metric_from_validation_metrics_dct_OPTION = config["training"].get("extract_ES_metric_from_validation_metrics_dct_OPTION", None), 
             append_BEST_VAL_as_last=append_BEST_VAL_as_last,
             task_type_y = config.get("task_type_y", "classification")
         )
+
 
 
         artifact_uri = mlflow.get_artifact_uri()

@@ -191,7 +191,8 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
         elif extract_objective_value_from_validation_metrics_dct_OPTION == "classification_report.macro avg":
             extract_objective_value_from_validation_metrics_dct = lambda metrics_dct: metrics_dct[-1]["classification_report"]["macro avg"][search_metric]
         else: 
-            raise NotImplementedError
+            raise NotImplementedError(f"{extract_objective_value_from_validation_metrics_dct_OPTION = }")
+        
         objective = generate_objective(config,
                                        experiment_id=experiment_id, 
                                        verbose=VerboseLevel.CHATTY, #  VerboseLevel.QUIET, #PRINT_PARAMS,# CHATTY, # change later
