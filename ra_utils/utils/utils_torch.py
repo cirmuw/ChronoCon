@@ -94,6 +94,48 @@ def devide_model_paramters(model, filters: List[NamesFilter], verbose = False) -
     return filters 
             
 
+def collect_unique_named_parameters(models):
+    """Flatten and deduplicate named params from one or more models by object identity."""
+    seen = set()
+    named = []
+    for m in models:
+        for n, p in m.named_parameters():
+            if id(p) in seen:
+                continue
+            seen.add(id(p))
+            named.append((n, p))
+    return named
+
+
+def divide_params_by_filters_once(named_params, filters, *, verbose=False, catch_rest=False):
+    # reset buffers for a clean run
+    for f in filters:
+        f.matched = []
+        f.not_matched = []
+
+    remaining = list(named_params)
+
+    # sequentially carve out matches
+    for f in filters:
+        remaining = f(remaining)
+
+    if verbose:
+        for i, f in enumerate(filters):
+            print(f"[group {i}] matched {len(f.matched)} params")
+
+    # sanity check for accidental overlaps across groups
+    seen_ids = set()
+    for f in filters:
+        for _, p in f.matched:
+            pid = id(p)
+            if pid in seen_ids:
+                raise RuntimeError("A parameter matched multiple filters — fix overlapping filters.")
+            seen_ids.add(pid)
+
+    # don't assert on leftovers here; return them so caller can decide
+    return filters, remaining 
+
+
 def plan_optimization(model, 
                       learning_rates: Dict[str, float],
                       max_steps=10,
@@ -253,6 +295,7 @@ def plan_optimization_v3(models,  # Now takes a list of models
 
     return optimizer, scheduler
 
+
 def X_y_to_device(X, y, device='cpu'):
     if isinstance(X, list):
         X = [x.to(device) for x in X]
@@ -260,3 +303,87 @@ def X_y_to_device(X, y, device='cpu'):
         X = X.to(device)
     y = y.to(device)
     return X, y
+
+
+
+def plan_optimization_v4(models,
+                         optimizer_class=SGD,
+                         optimizer_params=None,
+                         scheduler_class=None,
+                         scheduler_params={"max_steps": 10},
+                         verbose=False,
+                         catch_rest=False,
+                         batch_size_for_lr_rescaling=None,
+                         batch_size_for_lr_rescaling_base=256,
+                         return_report=True,   # <-- NEW
+                        ):
+    if optimizer_params is None:
+        raise ValueError("optimizer_params must be provided")
+
+    learning_rates = optimizer_params["learning_rates"]
+    if batch_size_for_lr_rescaling is not None:
+        factor = batch_size_for_lr_rescaling / batch_size_for_lr_rescaling_base
+        learning_rates = {k: v * factor for k, v in learning_rates.items()}
+        if verbose:
+            print(f"Rescaling learning rates by factor {factor:.4f}")
+
+    other_optimizer_kwargs = optimizer_params["other_optimizer_kwargs"]
+
+    # Build filters in the same order as learning_rates
+    layer_keys = list(learning_rates.keys())
+    filters = [NamesFilter(k) for k in layer_keys]
+    if catch_rest:
+        filters.append(NamesFilter(lambda _: True))
+
+    named_params = collect_unique_named_parameters(models)
+
+    # Divide once and get leftovers
+    filters, remaining = divide_params_by_filters_once(
+        named_params, filters, verbose=verbose, catch_rest=catch_rest
+    )
+
+    # Build optimizer groups
+    opt_params_ = []
+    per_group = []
+    for i, key in enumerate(layer_keys):
+        lr_val = float(learning_rates[key])
+        group_params = [p for _, p in filters[i].matched]
+        per_group.append({
+            "group_idx": i,
+            "key": key,
+            "lr": lr_val,
+            "num_params": len(group_params),
+            "names": [n for n, _ in filters[i].matched],
+        })
+        if lr_val > 1e-10 and group_params:
+            opt_params_.append({"params": group_params, "lr": lr_val})
+        elif verbose and not group_params:
+            print(f"[group {i}:{key}] no parameters matched.")
+
+    optimizer = optimizer_class(opt_params_, **other_optimizer_kwargs)
+    scheduler = scheduler_class(optimizer, **scheduler_params) if scheduler_class is not None else None
+
+    # Build a report for unmatched params
+    unmatched_trainable = [n for n, p in remaining if p.requires_grad]
+    unmatched_frozen = [n for n, p in remaining if not p.requires_grad]
+
+    report = {
+        "total_params": len(named_params),
+        "matched_params": sum(len(g["names"]) for g in per_group),
+        "unmatched_trainable_count": len(unmatched_trainable),
+        "unmatched_frozen_count": len(unmatched_frozen),
+        "unmatched_trainable_names": unmatched_trainable,
+        "unmatched_frozen_names": unmatched_frozen,
+        "groups": per_group,
+    }
+
+    if verbose:
+        print(f"[report] total={report['total_params']} matched={report['matched_params']} "
+              f"unmatched_trainable={report['unmatched_trainable_count']} "
+              f"unmatched_frozen={report['unmatched_frozen_count']}")
+        if report["unmatched_trainable_count"]:
+            print("  Unmatched TRAINABLE params (sample):", unmatched_trainable[:10])
+        if report["unmatched_frozen_count"]:
+            print("  Unmatched FROZEN params (sample):   ", unmatched_frozen[:10])
+
+    return (optimizer, scheduler, report) if return_report else (optimizer, scheduler)

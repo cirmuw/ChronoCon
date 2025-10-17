@@ -506,12 +506,12 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     models = [model_AE, model_c]
     if model_score_estimator is not None: 
         models = models + [model_score_estimator]
-    optimizer, scheduler = ra_utils.utils.utils_torch.plan_optimization_v3(
+    optimizer, scheduler, opt_planing_report = ra_utils.utils.utils_torch.plan_optimization_v4(
         models, # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
         scheduler_class=scheduler_class, scheduler_params=scheduler_params,
-        #verbose = (verbose >= VerboseLevel.CHATTY), 
-        verbose = (verbose >= VerboseLevel.VERYCHATTY), 
+        verbose = (verbose >= VerboseLevel.CHATTY), 
+        # verbose = (verbose >= VerboseLevel.VERYCHATTY), 
         batch_size_for_lr_rescaling = (config["training"]["batch_size"] if config["training"].get("batch_size_dependent_lr", False) else None),
         batch_size_for_lr_rescaling_base = 256, 
     )
