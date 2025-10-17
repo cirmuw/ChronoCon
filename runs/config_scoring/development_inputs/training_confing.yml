@@ -1,14 +1,14 @@
 debugging: True
-RESET_IMAGE_FOLDER_WHEN_DEBUGGING: False
+RESET_IMAGE_FOLDER_WHEN_DEBUGGING: True
 
 #experiment_name: "36RR_all_except_wrist"
-experiment_name: "DEV_36RR_all_except_wrist"
+experiment_name: "DEV_40PIPIII"
 #experiment_name: "36_all_except_wrist"
 
 evaluate_and_save_training_set: False
 eval_on_val_set_once_more: true
 evaluate_on_testset: false
-run_name: "ResNet_MSECESoft_MSE0.5_CE0.5_tLSR0.2_nn0.05_nnn0.01_v2"
+run_name: "dev_ES"
 
 SAVE_MODEL_FULL: False
 SAVE_MODEL_state_dct: True
@@ -55,6 +55,19 @@ training:
 
   batch_size: 100 #512
   early_stopping_tol: 10 # 5
+  #early_stopping_metric_key: "L"  # default "L" -> loss  options: ....
+  #early_stopping_metric_direction: "min"   # default is min  # options:  min or max
+  #extract_ES_metric_from_validation_metrics_dct_OPTION: Null # None is default,   classification_report.macro avg
+
+  early_stopping_metric_key: "f1-score"  # default "L" -> loss  options: ....
+  early_stopping_metric_direction: "max"   # default is min  # options:  min or max
+  extract_ES_metric_from_validation_metrics_dct_OPTION: "classification_report.macro avg" # None is default,   classification_report.macro avg
+
+  # early_stopping_metric_key: "rmse"  # default "L" -> loss  options: ....
+  # early_stopping_metric_direction: "min"   # default is min  # options:  min or max
+  # extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
+
+
   epochs: 2
   num_workers: 8 #12
 
@@ -161,19 +174,20 @@ data:
                     #'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP', 
                     #'CMCIII', 'CMCIV', 'CMCV', 
                     #'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 
-                    'PIPII', 'PIPIII', 
+                    #'PIPII', 
+                    'PIPIII', 
                     #'PIPIV', 'PIPV', 
                     #'IP', 
                     #'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV', 
                     #'IPIED', 'IPIEP', 
                     #'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 
-                    'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 
+                    # 'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 
                     #'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP'
                    #####
                    # 'Rad_Carp', 'Sca_Cap', 'Tra_Sca',
                    # 'RadiusE', 'ScaphE', 'TrapE', 'UlnaE', 'Base_MCIE', 'LunatE'
                    ]
-    more: ["IP"]
+    #more: ["IP"]
 
 
   network_score_groups:
