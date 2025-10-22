@@ -98,7 +98,7 @@ def generate_objective(
             # Log config and parameters
             mlflow.log_params(ra_utils.utils.utils.flatten_dict(config_trial))
             mlflow.log_params(ra_utils.utils.utils.log10_params_dct(config_trial))
-            mlflow.log_metric("VAL SEARCH_METRIC", error)
+            mlflow.log_metric("VAL_SEARCH_METRIC", error)
             
             artifact_uri = mlflow.get_artifact_uri()
             print("ARTIFACTS URI = ", artifact_uri)
