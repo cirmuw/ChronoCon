@@ -83,6 +83,7 @@ def get_triplet_loss_fn_MDP(cfg: dict = {}):
 
 
 import ra_utils.loss.loss_RnC_with_ranks_and_ids
+import ra_utils.loss.loss_RnCMono
 
 def get_triplet_loss_RnCids(cfg: dict = {}):
     name = cfg.get("name")
@@ -90,6 +91,10 @@ def get_triplet_loss_RnCids(cfg: dict = {}):
     # print(f"loss for triplets (score): {name}; \n    params = {params}")
     if ((name == "RnC_time") or (name == "RnC_score")):
         return ra_utils.loss.loss_RnC_with_ranks_and_ids.RnCIdLossV2(**params)
+    
+    if (name == "RnC_mono"):
+        return ra_utils.loss.loss_RnCMono.RnCLossMono(**params)    
+
     else: 
         raise NotImplementedError(f"{name = }")
 

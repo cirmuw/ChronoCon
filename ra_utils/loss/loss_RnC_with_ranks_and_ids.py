@@ -86,7 +86,7 @@ class RnCIdLoss(nn.Module):
         self,
         temperature: float = 2.0,
         feature_sim: Literal["cosine", "l2"] = "cosine",
-        label_diff: Literal["l1", "scalar difference"] = "scalar difference",
+        label_diff: Literal["l1"] = "l1",
         ignore_ids: bool = False
     ):
         super().__init__()
@@ -95,6 +95,9 @@ class RnCIdLoss(nn.Module):
         self.label_diff_fn = LabelDifference(label_diff)
         self.ignore_ids = ignore_ids
         self.label_difference_is_metric = label_diff in ["l1"]
+
+        assert label_diff == "l1"
+
         # print(f" label_difference_is_metric = {self.label_difference_is_metric}")
         # If there is a rank based inequality then we have for S^id_ij = {k != i; id[i] = id[j] = id[k]; y_k >= y_j}  
         # since the relative distance to the anchor drops out
@@ -199,7 +202,7 @@ class RnCIdLossV2(nn.Module):
         self,
         temperature: float = 2.0,
         feature_sim: Literal["cosine", "l2"] = "cosine",
-        label_diff: Literal["l1", "scalar difference"] = "scalar difference",
+        label_diff: Literal["l1"] = "l1",
         ignore_ids: bool = False
     ):
         super().__init__()
@@ -212,6 +215,7 @@ class RnCIdLossV2(nn.Module):
         # If there is a rank based inequality then we have for S^id_ij = {k != i; id[i] = id[j] = id[k]; y_k >= y_j}  
         # since the relative distance to the anchor drops out
 
+        assert label_diff == "l1", "other parts (e.g. scalar difference) does not make sense in this implementation."
 
     @staticmethod
     def _repeat_ids_for_two_crops(ids_1d: np.ndarray) -> np.ndarray:
@@ -315,6 +319,7 @@ class RnCIdLossV2(nn.Module):
         support = {
             "B": int(B),
             "n": int(n),
+            "num_terms_normalization": int(valid_anchor.sum().item()),  # what makes the most sense to accumulate over batches for full validation loss.  
             "num_valid_anchors": int(valid_anchor.sum().item()),
             "frac_valid_anchors": float((valid_anchor.float().mean()).item()),
             "total_pos_pairs": int(N_id.sum().item()),

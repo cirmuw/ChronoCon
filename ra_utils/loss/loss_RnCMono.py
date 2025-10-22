@@ -158,7 +158,8 @@ class RnCLossMono(nn.Module):
         feature_sim: Literal["cosine",'negative l1', 'negative l2'] = "cosine",
         label_diff: Literal["l1", "scalar difference"] = "scalar difference",
         ignore_ids: bool = False,
-        normalization: Literal["pair balanced", "anchor balanced", "pair balanced positive"] = "pair balanced positive"
+        normalization: Literal["pair balanced", "anchor balanced", "pair balanced positive"] = "pair balanced positive",
+        #return_support = True
     ):
 
 
@@ -166,10 +167,18 @@ class RnCLossMono(nn.Module):
         self.tau = float(temperature)
         self.feature_sim_fn = FeatureSimilarity(feature_sim)
         self.label_diff_fn = LabelDifference(label_diff)
+        self.feature_sim = feature_sim
+        self.label_diff = label_diff
+        #self.return_support = return_support
+
         self.ignore_ids = ignore_ids
         self.normalization = normalization
 
-
+    def __repr__(self):
+        return f"RnCLossMono(τ = {self.tau}, " \
+               f"feature_sim = {self.feature_sim}, label_diff = {self.label_diff}, " \
+               f"ignore_ids = {self.ignore_ids}, "\
+               f"normalization = {self.normalization})"
 
     @staticmethod
     def _repeat_ids_for_two_crops(ids_1d: np.ndarray) -> np.ndarray:
@@ -233,19 +242,17 @@ class RnCLossMono(nn.Module):
         else:
             raise ValueError(f"unknown normalization: {normalization}")        
 
-
         support = {
             "num_terms_normalization": N_norm.item(),
             "num_valid_anchors": N_valid_anchors.item(),
             "num_pos": N_pos.item()
         }
-
-
         return loss, support
 
 
 
-    def forward(self, features: torch.Tensor, labels: torch.Tensor, ids: Optional[np.ndarray] = None) -> torch.Tensor:
+    def forward(self, features: torch.Tensor, labels: torch.Tensor, ids: Optional[np.ndarray] = None, 
+                return_support=True) -> torch.Tensor:
         """
         features : shape [B, 2, D]  Two encoded crops/ self-transforms. 
         labels   : shape [B, N_l]   Usually the label is the "time" -> shape [B, 1]
@@ -324,25 +331,28 @@ class RnCLossMono(nn.Module):
             S_mask_ijk=S_greater_mask_ijk, 
             normalization=self.normalization)
 
-
-        support = {
-            # "loss_lesser": loss_l.item(),
-            # "loss_greater": loss_g.item(),
-            # combined terms
-            "num_terms_normalization": (sup_g["num_terms_normalization"] + sup_l["num_terms_normalization"]),       # This depends on the normalization model ( -> use for average over full dataset)          
-            "ratio lesser / total": loss_l.item() / (loss_g.item() + loss_l.item() +  1.0e-10),
-            #  lesser terms 
-            "num_terms_normalization_lesser": sup_l["num_terms_normalization"], 
-            "num_pos_lesser": sup_l["num_pos"], 
-            "num_valid_anchors_lesser": sup_l["num_valid_anchors"], 
-            #  greater terms
-            "num_terms_normalization_greater": sup_g["num_terms_normalization"],
-            "num_pos_greater": sup_g["num_pos"], 
-            "num_valid_anchors_greater": sup_g["num_valid_anchors"], 
-        }
-
         loss = loss_l + loss_g
-        return loss, support
+
+        if return_support: 
+            support = {
+                # "loss_lesser": loss_l.item(),
+                # "loss_greater": loss_g.item(),
+                # combined terms
+                "num_terms_normalization": (sup_g["num_terms_normalization"] + sup_l["num_terms_normalization"]),       # This depends on the normalization model ( -> use for average over full dataset)          
+                "ratio lesser / total": loss_l.item() / (loss_g.item() + loss_l.item() +  1.0e-10),
+                #  lesser terms 
+                "num_terms_normalization_lesser": sup_l["num_terms_normalization"], 
+                "num_pos_lesser": sup_l["num_pos"], 
+                "num_valid_anchors_lesser": sup_l["num_valid_anchors"], 
+                #  greater terms
+                "num_terms_normalization_greater": sup_g["num_terms_normalization"],
+                "num_pos_greater": sup_g["num_pos"], 
+                "num_valid_anchors_greater": sup_g["num_valid_anchors"], 
+            }    
+            return loss, support
+        else: 
+            return loss
+
 
 
 

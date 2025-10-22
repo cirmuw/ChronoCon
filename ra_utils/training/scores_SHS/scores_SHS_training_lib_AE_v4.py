@@ -542,16 +542,16 @@ def val_epoch_AE_v4(
                     ids      = instance_label,
                     return_support = True,
                 )
-                num_terms_time = float(support_dct_RnC_time.get("num_valid_anchors", 0))
+                num_terms_time = float(support_dct_RnC_time.get("num_terms_normalization", 0))
                 contr_dct["Lz_RnC_time"] = contr_dct.get("Lz_RnC_time", 0.0) + (loss_z_RnC_time.item() * num_terms_time)
                 contr_dct["Lz_RnC_time_numTerms"] = contr_dct.get("Lz_RnC_time_numTerms", 0.0) + num_terms_time
 
                 # compact support (averaged later)
-                contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
-                contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
-                contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
-                contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
-                contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
+                # contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
+                # contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
+                # contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
+                # contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
+                # contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
 
                 # ---- RnC SCORE ----
                 loss_z_RnC_score, support_dct_RnC_score = loss_fn_z_RnC_score(
@@ -564,11 +564,11 @@ def val_epoch_AE_v4(
                 contr_dct["Lz_RnC_score"] = contr_dct.get("Lz_RnC_score", 0.0) + (loss_z_RnC_score.item() * num_terms_score)
                 contr_dct["Lz_RnC_score_numTerms"] = contr_dct.get("Lz_RnC_score_numTerms", 0.0) + num_terms_score
 
-                contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
-                contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
-                contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
-                contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
-                contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
+                # contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
+                # contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
+                # contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
+                # contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
+                # contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -787,18 +787,18 @@ def val_epoch_AE_v4(
             + contr_dct.get("Lz_RnC_score", 0.0) * lambda_z_RnC_score * lambda_z_RnC_score_val_multiplier
     )
 
-    # Average compact support across minibatches and rename for auto-logging
-    for prefix in ["RNC_time", "RNC_score"]:
-        b = contr_dct.get(f"{prefix}_batches", 0.0)
-        if b > 0:
-            contr_dct[f"{prefix}_numValidAnchors"]   /= b
-            contr_dct[f"{prefix}_totalPosPairs"]     /= b
-            contr_dct[f"{prefix}_fracNontrivial"]    /= b
-            contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
-            # rename to nicer key, then to "Lz_*" for your logger
-            contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
-            for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
-                contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
+    # # Average compact support across minibatches and rename for auto-logging
+    # for prefix in ["RNC_time", "RNC_score"]:
+    #     b = contr_dct.get(f"{prefix}_batches", 0.0)
+    #     if b > 0:
+    #         contr_dct[f"{prefix}_numValidAnchors"]   /= b
+    #         contr_dct[f"{prefix}_totalPosPairs"]     /= b
+    #         contr_dct[f"{prefix}_fracNontrivial"]    /= b
+    #         contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
+    #         # rename to nicer key, then to "Lz_*" for your logger
+    #         contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
+    #         for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
+    #             contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
 
 
     running_loss = {**running_loss, **contr_dct}
@@ -1459,16 +1459,16 @@ def training_epoch_AE_v4(
                 return_support=True
             )
             # aggregate (like triplets)
-            num_terms_time = float(support_dct_RnC_time.get("num_valid_anchors", 0))
+            num_terms_time = float(support_dct_RnC_time.get("num_terms_normalization", 0))  # TODO change to "num_terms" for time at least
             contr_dct["Lz_RnC_time"] = contr_dct.get("Lz_RnC_time", 0.0) + (loss_z_RnC_time.item() * num_terms_time)
             contr_dct["Lz_RnC_time_numTerms"] = contr_dct.get("Lz_RnC_time_numTerms", 0.0) + num_terms_time
 
-            # log compact support
-            contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
-            contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
-            contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
-            contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
-            contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
+            # # log compact support
+            # contr_dct["RNC_time_numValidAnchors"]   = contr_dct.get("RNC_time_numValidAnchors", 0.0) + float(support_dct_RnC_time.get("num_valid_anchors", 0))
+            # contr_dct["RNC_time_totalPosPairs"]     = contr_dct.get("RNC_time_totalPosPairs", 0.0) + float(support_dct_RnC_time.get("total_pos_pairs", 0))
+            # contr_dct["RNC_time_fracNontrivial"]    = contr_dct.get("RNC_time_fracNontrivial", 0.0) + float(support_dct_RnC_time.get("frac_nontrivial_terms", 0.0))
+            # contr_dct["RNC_time_denomSizeMean_sum"] = contr_dct.get("RNC_time_denomSizeMean_sum", 0.0) + float(support_dct_RnC_time.get("denom_size_mean", 0.0))
+            # contr_dct["RNC_time_batches"]           = contr_dct.get("RNC_time_batches", 0.0) + 1.0
 
 
             # ---- RnC SCORE ----
@@ -1478,15 +1478,15 @@ def training_epoch_AE_v4(
                 ids      = s_type_np, 
                 return_support=True
             )
-            num_terms_score = float(support_dct_RnC_score.get("num_valid_anchors", 0))
+            num_terms_score = float(support_dct_RnC_score.get("num_terms_normalization", 0))
             contr_dct["Lz_RnC_score"] = contr_dct.get("Lz_RnC_score", 0.0) + (loss_z_RnC_score.item() * num_terms_score)
             contr_dct["Lz_RnC_score_numTerms"] = contr_dct.get("Lz_RnC_score_numTerms", 0.0) + num_terms_score
 
-            contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
-            contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
-            contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
-            contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
-            contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
+            # contr_dct["RNC_score_numValidAnchors"]   = contr_dct.get("RNC_score_numValidAnchors", 0.0) + float(support_dct_RnC_score.get("num_valid_anchors", 0))
+            # contr_dct["RNC_score_totalPosPairs"]     = contr_dct.get("RNC_score_totalPosPairs", 0.0) + float(support_dct_RnC_score.get("total_pos_pairs", 0))
+            # contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
+            # contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
+            # contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
 
 
@@ -1650,19 +1650,19 @@ def training_epoch_AE_v4(
     if contr_dct.get("Lz_RnC_score_numTerms", 0.0) > 0:
         contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)
 
-    # Also average the compact support across minibatches (nice for logging dashboards)
-    for prefix in ["RNC_time", "RNC_score"]:
-        b = contr_dct.get(f"{prefix}_batches", 0.0)
-        if b > 0:
-            contr_dct[f"{prefix}_numValidAnchors"]   /= b
-            contr_dct[f"{prefix}_totalPosPairs"]     /= b
-            contr_dct[f"{prefix}_fracNontrivial"]    /= b
-            contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
-            # rename to nicer keys in output
-            contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
-            # More renaming so that logging is automatic. 
-            for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
-                contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
+    # # Also average the compact support across minibatches (nice for logging dashboards)
+    # for prefix in ["RNC_time", "RNC_score"]:
+    #     b = contr_dct.get(f"{prefix}_batches", 0.0)
+    #     if b > 0:
+    #         contr_dct[f"{prefix}_numValidAnchors"]   /= b
+    #         contr_dct[f"{prefix}_totalPosPairs"]     /= b
+    #         contr_dct[f"{prefix}_fracNontrivial"]    /= b
+    #         contr_dct[f"{prefix}_denomSizeMean_sum"] /= b
+    #         # rename to nicer keys in output
+    #         contr_dct[f"{prefix}_denomSizeMean"] = contr_dct.pop(f"{prefix}_denomSizeMean_sum")
+    #         # More renaming so that logging is automatic. 
+    #         for v in ["numValidAnchors", "totalPosPairs", "fracNontrivial", "denomSizeMean"]:
+    #             contr_dct[f"Lz_{prefix}_{v}"] = contr_dct.pop(f"{prefix}_{v}")
 
 
 
