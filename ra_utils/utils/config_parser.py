@@ -202,7 +202,7 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
 
     AUTO_REPLACE_DCT = config.get("AUTO_REPLACE")
     if AUTO_REPLACE_DCT is not None: 
-        config = auto_replace_strings(config, AUTO_REPLACE_DCT, verbose=True)
+        config = auto_replace_strings(config, AUTO_REPLACE_DCT, verbose= (not silencium))
 
 
 

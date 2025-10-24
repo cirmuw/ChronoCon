@@ -212,6 +212,37 @@ def ensure_png_for_sample(tensor_img: torch.Tensor,
 from ra_utils.utils.utils import datestr_to_years_since_2000
 from ra_utils.utils.utils import datestr_to_years_since_2000
 
+
+def compute_relative_time(years: np.ndarray, patient_scoretype_keys: np.ndarray) -> np.ndarray:
+    """
+    Compute relative time for each sample: (t-t_min)/(t_max - t_min + 1.0e-10)
+    Grouped by patient_scoretype_key.
+    
+    Args:
+        years: Array of years since 2000 for each sample
+        patient_scoretype_keys: Array of patient_scoretype_key for each sample
+        
+    Returns:
+        Array of relative times (0.0 to 1.0) for each sample
+    """
+    t_rel = np.zeros_like(years, dtype=float)
+    
+    # Group by patient_scoretype_key
+    unique_keys = np.unique(patient_scoretype_keys)
+    
+    for key in unique_keys:
+        mask = patient_scoretype_keys == key
+        key_years = years[mask]
+        
+        if len(key_years) > 0:
+            t_min = np.min(key_years)
+            t_max = np.max(key_years)
+            t_range = t_max - t_min + 1.0e-10  # Add small epsilon to avoid division by zero
+            
+            t_rel[mask] = (key_years - t_min) / t_range
+    
+    return t_rel
+
 @torch.no_grad()
 def extract_embeddings_and_pngs(
     model_AE,
@@ -309,6 +340,11 @@ def extract_embeddings_and_pngs(
 
     Z = np.concatenate(Z_list, axis=0)
 
+    # Compute relative time
+    years_array = np.array(years_all, dtype=float)
+    ps_key_array = np.array(ps_key_all)
+    t_rel = compute_relative_time(years_array, ps_key_array)
+
     return dict(
         Z=Z,
         display_paths=np.array(png_paths),
@@ -338,6 +374,7 @@ def extract_embeddings_and_pngs(
         patient_scoretype_key=np.array(ps_key_all),
         years_since_2000=np.array(years_all, dtype=float),
         date_str=np.array(date_str_all),
+        t_rel=t_rel,
     )
 
 
@@ -387,6 +424,7 @@ def build_fiftyone_dataset(
         s["patient_scoretype_key"] = str(pack["patient_scoretype_key"][i])
         s["years_since_2000"]      = float(pack["years_since_2000"][i])
         s["date_str"]              = str(pack["date_str"][i])
+        s["t_rel"]                 = float(pack["t_rel"][i])
 
         # store None as None (not strings) for numeric filters
         prev_v = pack["score_difference_prev_visit"][i]
@@ -431,6 +469,7 @@ def plot_trajectories_html(
     color_by: np.ndarray | None,     # optional numeric to color points (e.g., score_pred)
     title: str,
     out_html: str,
+    t_rel: np.ndarray | None = None, # optional relative time for coloring
 ):
     """
     Creates an interactive Plotly figure:
@@ -452,6 +491,8 @@ def plot_trajectories_html(
     marker_kwargs = dict(size=7)
     if color_by is not None:
         marker_kwargs.update(dict(color=color_by, showscale=True))
+    elif t_rel is not None:
+        marker_kwargs.update(dict(color=t_rel, showscale=True, colorscale="Viridis"))
 
     fig.add_trace(go.Scattergl(
         x=x, y=y,
@@ -495,14 +536,14 @@ def plot_trajectories_html(
 
 
 
-def fo_visualize_multi(ds, methods=("umap", "pca"), seed=42):
+def fo_visualize_multi(ds, methods=("umap", "pca"), seed=42, port=None):
     for m in methods:
         fob.compute_visualization(ds, embeddings="embedding", brain_key=f"{m}2d", method=m, seed=seed)
 
     if "sim_index" not in ds.list_brain_runs():
         fob.compute_similarity(ds, embeddings="embedding", brain_key="sim_index", metric="cosine")
 
-    session = fo.launch_app(ds)   # returns a Session
+    session = fo.launch_app(ds, port=port)   # returns a Session
     #session.open_tab()            # optional: pop a browser tab
     print("Opened FiftyOne. In the Embeddings panel, pick 'umap2d' or 'pca2d'.")
     session.wait()                # <-- block so the session stays alive
@@ -669,6 +710,7 @@ def save_pack(pack: dict, out_dir: str, png_root: str | None = None, save_projec
         "patient_scoretype_key": pack["patient_scoretype_key"],
         "years_since_2000": pack["years_since_2000"],
         "date_str": pack["date_str"],
+        "t_rel": pack["t_rel"],
     })
     df.to_parquet(out / "summary.parquet", index=False)
 
@@ -700,7 +742,7 @@ def load_pack(in_dir: str) -> dict:
     # Rebuild dict with explicit dtypes where needed
     pack = {k: data[k] for k in data.files}
     # Ensure a few expected dtypes
-    for k in ("score_gt", "score_pred", "class_conf", "years_since_2000"):
+    for k in ("score_gt", "score_pred", "class_conf", "years_since_2000", "t_rel"):
         if k in pack: pack[k] = pack[k].astype(float)
     for k in ("class_gt", "class_pred"):
         if k in pack: pack[k] = pack[k].astype(int)
@@ -752,6 +794,7 @@ def rebuild_fo_dataset_from_pack(
         s["patient_scoretype_key"] = str(pack["patient_scoretype_key"][i])
         s["years_since_2000"]      = float(pack["years_since_2000"][i])
         s["date_str"]              = str(pack["date_str"][i])
+        s["t_rel"]                 = float(pack["t_rel"][i])
 
         # numeric deltas (may be None)
         pv = pack["score_difference_prev_visit"][i] if "score_difference_prev_visit" in pack else None
@@ -801,6 +844,7 @@ def main():
     cache_dir_reload = ps.get("cache_dir_reload", None)
     SAVE             = bool(ps.get("SAVE_EMBEDDINGS", False))
     RELOAD           = bool(ps.get("RELOAD_EMBEDDINGS", False))
+    PORT             = ps.get("PORT", None)
 
     methods = tuple(ps.get("dimension_reduction_techniques", ["umap", "pca"]))
 
@@ -889,7 +933,7 @@ def main():
     ds_name = f"ra_embeddings_{ds_suffix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     ds = build_fiftyone_dataset(ds_name, pack, task_type_y)
 
-    fo_visualize_multi(ds, methods=methods)
+    fo_visualize_multi(ds, methods=methods, port=PORT)
 
 
 if __name__ == "__main__":
