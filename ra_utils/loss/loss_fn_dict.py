@@ -70,9 +70,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
     # Triplet loss on scores and Instance Id
     lambda_z_triplet_classes = config.get('loss_weights', {}).get('lambda_z_triplet_classes', 0.0)
-    loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores_classes", {}))
     if lambda_z_triplet_classes < 1.0e-8: 
             loss_fn_z_triplet_classes = dummy3
+    else: 
+        loss_fn_z_triplet_classes = get_triplet_loss_fn(config["loss"].get("triplet_scores_classes", {}))
     loss_dct_z_triplet_classes = {
             "function": loss_fn_z_triplet_classes, 
             "lambda": lambda_z_triplet_classes, 
@@ -81,9 +82,10 @@ def get_loss_fn_dict(config, device="cuda"):
     
     # Triplet loss with self transform (WST) on scores
     lambda_z_triplet_WST_score = config.get('loss_weights', {}).get('lambda_z_triplet_WST_scores', 0.0)
-    loss_fn_z_triplet_WST_score = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_scores", {}))
     if lambda_z_triplet_WST_score < 1.0e-8: 
-            loss_fn_z_triplet_WST_score = dummy3
+        loss_fn_z_triplet_WST_score = dummy3
+    else: 
+        loss_fn_z_triplet_WST_score = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_scores", {}))
     loss_dct_z_triplet_WST_score = {
             "function": loss_fn_z_triplet_WST_score, 
             "lambda": lambda_z_triplet_WST_score, 
@@ -92,9 +94,10 @@ def get_loss_fn_dict(config, device="cuda"):
     
     # # Triplet loss with self transform (WST) on time
     lambda_z_triplet_WST_time = config.get('loss_weights', {}).get('lambda_z_triplet_WST_time', 0.0)
-    loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
     if lambda_z_triplet_WST_time < 1.0e-8: 
             loss_fn_z_triplet_WST_time = dummy3
+    else: 
+        loss_fn_z_triplet_WST_time = get_triplet_loss_fn_WST(config["loss"].get("triplet_WST_time", {}))
     loss_dct_z_triplet_WST_time = {
             "function": loss_fn_z_triplet_WST_time, 
             "lambda": lambda_z_triplet_WST_time, 
@@ -103,9 +106,10 @@ def get_loss_fn_dict(config, device="cuda"):
     
 
     lambda_z_triplet_MDP_time = config.get('loss_weights', {}).get('lambda_z_triplet_MDP', 0.0)
-    loss_fn_z_triplet_MDP_time = get_triplet_loss_fn_MDP(config["loss"].get("triplet_MDP", {}))
     if lambda_z_triplet_MDP_time < 1.0e-8: 
-            loss_fn_z_triplet_MDP_time = dummy3
+        loss_fn_z_triplet_MDP_time = dummy3
+    else: 
+        loss_fn_z_triplet_MDP_time = get_triplet_loss_fn_MDP(config["loss"].get("triplet_MDP", {}))
     loss_dct_z_triplet_MDP_time = {
             "function": loss_fn_z_triplet_MDP_time, 
             "lambda": lambda_z_triplet_MDP_time, 
@@ -114,9 +118,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
 
     lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_time', 0.0)
-    loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_time", {}))
     if lambda_ < 1.0e-8: 
             loss_fn_ = dummy_with_dict
+    else: 
+        loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_time", {}))
     loss_dct_z_RnC_time = {
             "function": loss_fn_, 
             "lambda": lambda_, 
@@ -125,9 +130,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
 
     lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_score', 0.0)
-    loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_score", {}))
     if lambda_ < 1.0e-8: 
-            loss_fn_ = dummy_with_dict
+        loss_fn_ = dummy_with_dict
+    else: 
+        loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_score", {}))
     loss_dct_z_RnC_score = {
             "function": loss_fn_, 
             "lambda": lambda_, 
@@ -138,9 +144,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
     lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
-    loss_fn_z_score_consistency_regularizer = get_consistency_regularization_loss_fn(config["loss"].get("score_consistency_regularizer", {}))
     if lambda_z_score_consistency_regularizer < 1.0e-8: 
             loss_fn_z_score_consistency_regularizer = dummy2
+    else: 
+            loss_fn_z_score_consistency_regularizer = get_consistency_regularization_loss_fn(config["loss"].get("score_consistency_regularizer", {})) 
     loss_dct_z_score_consistency_regularizer = {
             "function": loss_fn_z_score_consistency_regularizer, 
             "lambda": lambda_z_score_consistency_regularizer, 
@@ -149,9 +156,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
     # Duplet loss (e.g. Huber loss)
     lambda_y_delta = config.get('loss_weights', {}).get('lambda_y_delta', 0.0)
-    loss_fn_y_delta = ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
     if lambda_y_delta < 1.0e-8: 
         loss_fn_y_delta = dummy
+    else: 
+        loss_fn_y_delta = ra_utils.loss.online_mining_delta_loss.batch_all_score_differences_loss
     loss_dct_y_delta = {
         "function": loss_fn_y_delta,
         "lambda": lambda_y_delta,
@@ -160,9 +168,10 @@ def get_loss_fn_dict(config, device="cuda"):
 
 
     lambda_y_reg_extra = config.get('loss_weights', {}).get('lambda_y_reg_extra', 0.0)
-    loss_fn_y_reg_extra = nn.MSELoss()
     if lambda_y_reg_extra < 1.0e-8: 
         loss_fn_y_reg_extra = dummy
+    else: 
+        loss_fn_y_reg_extra = nn.MSELoss()
     loss_dct_y_reg_extra = {
         "function": loss_fn_y_reg_extra,
         "lambda": lambda_y_reg_extra,
