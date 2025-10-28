@@ -141,6 +141,18 @@ def get_loss_fn_dict(config, device="cuda"):
         }
 
 
+    # lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_score_mono', 0.0)
+    # if lambda_ < 1.0e-8: 
+    #     loss_fn_ = dummy_with_dict
+    # else: 
+    #     loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_score_mono", {}))
+    # loss_dct_z_RnC_score_mono = {
+    #         "function": loss_fn_, 
+    #         "lambda": lambda_, 
+    #         "options": config["loss"].get("RnC_score_mono", {}).get("options", {})
+    #     }
+
+
 
     # Score consistency loss (similar to https://arxiv.org/html/2508.00496v2)
     lambda_z_score_consistency_regularizer = config.get('loss_weights', {}).get('lambda_z_score_consistency_regularizer', 0.0)
@@ -198,6 +210,7 @@ def get_loss_fn_dict(config, device="cuda"):
         #
         "z_triplet_MDP_time": loss_dct_z_triplet_MDP_time,
         "z_RnC_score": loss_dct_z_RnC_score,
+        #"z_RnC_score_mono": loss_dct_z_RnC_score_mono,
         "z_RnC_time": loss_dct_z_RnC_time
     }
 

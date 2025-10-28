@@ -27,18 +27,18 @@ def parse_option():
     parser.add_argument('--trial', type=str, default='0', help='id for recording multiple runs')
 
     parser.add_argument('--data_folder', type=str, default='./data', help='path to custom dataset')
+    # parser.add_argument('--base_data_dir', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/', help='base directory for saving models and logs')
     parser.add_argument('--dataset', type=str, default='AgeDB', choices=['AgeDB'], help='dataset')
     parser.add_argument('--model', type=str, default='resnet18', choices=['resnet18', 'resnet50'])
     parser.add_argument('--resume', type=str, default='', help='resume ckpt path')
     parser.add_argument('--aug', type=str, default='crop,flip,color,grayscale', help='augmentations')
+    parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
 
     parser.add_argument('--ckpt', type=str, default='', help='path to the trained encoder')
 
     opt = parser.parse_args()
 
-    opt.model_name = 'Regressor_{}_ep_{}_lr_{}_d_{}_wd_{}_mmt_{}_bsz_{}_trial_{}'. \
-        format(opt.dataset, opt.epochs, opt.learning_rate, opt.lr_decay_rate,
-               opt.weight_decay, opt.momentum, opt.batch_size, opt.trial)
+    opt.model_name = f"Regressor_{opt.dataset}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_trial_{opt.trial}"
     if len(opt.resume):
         opt.model_name = opt.resume.split('/')[-1][:-len('_last.pth')]
     opt.save_folder = '/'.join(opt.ckpt.split('/')[:-1])
@@ -65,9 +65,9 @@ def set_loader(opt):
     print(f"Train Transforms: {train_transform}")
     print(f"Val Transforms: {val_transform}")
 
-    train_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=train_transform, split='train')
-    val_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=val_transform, split='val')
-    test_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=val_transform, split='test')
+    train_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=train_transform, split='train', path_to_data_table=opt.path_to_data_table)
+    val_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=val_transform, split='val', path_to_data_table=opt.path_to_data_table)
+    test_dataset = globals()[opt.dataset](data_folder=opt.data_folder, transform=val_transform, split='test', path_to_data_table=opt.path_to_data_table)
 
     print(f'Train set size: {train_dataset.__len__()}\t'
           f'Val set size: {val_dataset.__len__()}\t'
@@ -124,7 +124,9 @@ def train(train_loader, model, regressor, criterion, optimizer, epoch, opt):
     losses = AverageMeter()
 
     end = time.time()
-    for idx, (images, labels) in enumerate(train_loader):
+    for idx, batch in enumerate(train_loader):
+        images = batch['image']
+        labels = batch['y_true']
         data_time.update(time.time() - end)
 
         images = images.cuda(non_blocking=True)
@@ -163,7 +165,9 @@ def validate(val_loader, model, regressor):
     criterion_l1 = torch.nn.L1Loss()
 
     with torch.no_grad():
-        for idx, (images, labels) in enumerate(val_loader):
+        for idx, batch in enumerate(val_loader):
+            images = batch['image']
+            labels = batch['y_true']
             images = images.cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]

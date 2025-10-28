@@ -18,27 +18,28 @@ def parse_option():
     parser.add_argument('--save_freq', type=int, default=50, help='save frequency')
     parser.add_argument('--save_curr_freq', type=int, default=1, help='save curr last frequency')
 
-    parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
-    parser.add_argument('--num_workers', type=int, default=16, help='num of workers to use')
-    parser.add_argument('--epochs', type=int, default=400, help='number of training epochs')
+    parser.add_argument('--batch_size', type=int, default=8, help='batch_size') # used to be 256
+    parser.add_argument('--num_workers', type=int, default=6, help='num of workers to use')  # used to be 16
+    parser.add_argument('--epochs', type=int, default=2, help='number of training epochs')  # used to be 400
     parser.add_argument('--learning_rate', type=float, default=0.2, help='learning rate')
     parser.add_argument('--lr_decay_rate', type=float, default=0.1, help='decay rate for learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
     parser.add_argument('--trial', type=str, default='0', help='id for recording multiple runs')
 
-    parser.add_argument('--data_folder', type=str, default='./data', help='path to custom dataset')
+    parser.add_argument('--base_data_dir', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/', help='base directory for saving models and logs')
+    parser.add_argument('--data_folder', type=str, default='/home/cwatzenboeck/data/public/agedb/', help='path to custom dataset')
+    
     parser.add_argument('--dataset', type=str, default='AgeDB', choices=['AgeDB'], help='dataset')
     parser.add_argument('--model', type=str, default='resnet18', choices=['resnet18', 'resnet50'])
     parser.add_argument('--resume', type=str, default='', help='resume ckpt path')
     parser.add_argument('--aug', type=str, default='crop,flip,color,grayscale', help='augmentations')
+    parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
 
     opt = parser.parse_args()
 
-    opt.model_path = './save/{}_models'.format(opt.dataset)
-    opt.model_name = 'L1_{}_{}_ep_{}_lr_{}_d_{}_wd_{}_mmt_{}_bsz_{}_aug_{}_trial_{}'. \
-        format(opt.dataset, opt.model, opt.epochs, opt.learning_rate, opt.lr_decay_rate, opt.weight_decay, opt.momentum,
-               opt.batch_size, opt.aug, opt.trial)
+    opt.model_path = f'{opt.base_data_dir}/save/{opt.dataset}_models'
+    opt.model_name = f"L1_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_aug_{opt.aug}_trial_{opt.trial}"
     if len(opt.resume):
         opt.model_name = opt.resume.split('/')[-2]
 
@@ -78,13 +79,13 @@ def set_loader(opt):
           f'Test set size: {test_dataset.__len__()}')
 
     train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers, pin_memory=True
+        train_dataset, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers, pin_memory=True, path_to_data_table=opt.path_to_data_table
     )
     val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True
+        val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True, path_to_data_table=opt.path_to_data_table
     )
     test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True
+        test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True, path_to_data_table=opt.path_to_data_table
     )
 
     return train_loader, val_loader, test_loader
@@ -112,7 +113,9 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     losses = AverageMeter()
 
     end = time.time()
-    for idx, (images, labels) in enumerate(train_loader):
+    for idx, batch in enumerate(train_loader):
+        images = batch['image']
+        labels = batch['y_true']
         data_time.update(time.time() - end)
         bsz = labels.shape[0]
 
@@ -151,7 +154,9 @@ def validate(val_loader, model):
     criterion_l1 = torch.nn.L1Loss()
 
     with torch.no_grad():
-        for idx, (images, labels) in enumerate(val_loader):
+        for idx, batch in enumerate(val_loader):
+            images = batch['image']
+            labels = batch['y_true']
             images = images.cuda()
             labels = labels.cuda()
             bsz = labels.shape[0]

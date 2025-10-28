@@ -29,6 +29,7 @@ def parse_option():
     parser.add_argument('--trial', type=str, default='0', help='id for recording multiple runs')
 
     parser.add_argument('--data_folder', type=str, default='./data', help='path to custom dataset')
+    parser.add_argument('--base_data_dir', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/', help='base directory for saving models and logs')
     parser.add_argument('--dataset', type=str, default='AgeDB', choices=['AgeDB'], help='dataset')
     parser.add_argument('--model', type=str, default='resnet18', choices=['resnet18', 'resnet50'])
     parser.add_argument('--resume', type=str, default='', help='resume ckpt path')
@@ -38,13 +39,17 @@ def parse_option():
     parser.add_argument('--temp', type=float, default=2, help='temperature')
     parser.add_argument('--label_diff', type=str, default='l1', choices=['l1'], help='label distance function')
     parser.add_argument('--feature_sim', type=str, default='l2', choices=['l2'], help='feature similarity function')
+    parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
 
     opt = parser.parse_args()
 
-    opt.model_path = './save/{}_models'.format(opt.dataset)
-    opt.model_name = 'RnC_{}_{}_ep_{}_lr_{}_d_{}_wd_{}_mmt_{}_bsz_{}_aug_{}_temp_{}_label_{}_feature_{}_trial_{}'. \
-        format(opt.dataset, opt.model, opt.epochs, opt.learning_rate, opt.lr_decay_rate, opt.weight_decay, opt.momentum,
-               opt.batch_size, opt.aug, opt.temp, opt.label_diff, opt.feature_sim, opt.trial)
+    # opt.model_path = './save/{}_models'.format(opt.dataset)
+    opt.model_path = f'{opt.base_data_dir}/save/{opt.dataset}_models'
+    opt.model_name = (
+        f"RnC_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}"
+        f"_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_aug_{opt.aug}"
+        f"_temp_{opt.temp}_label_{opt.label_diff}_feature_{opt.feature_sim}_trial_{opt.trial}"
+    )
     if len(opt.resume):
         opt.model_name = opt.resume.split('/')[-2]
 
@@ -82,7 +87,7 @@ def set_loader(opt):
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=opt.batch_size, shuffle=True,
-        num_workers=opt.num_workers, pin_memory=True, drop_last=True)
+        num_workers=opt.num_workers, pin_memory=True, drop_last=True, path_to_data_table=opt.path_to_data_table)
 
     return train_loader
 
@@ -109,8 +114,9 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
     losses = AverageMeter()
 
     end = time.time()
-    for idx, data_tuple in enumerate(train_loader):
-        images, labels = data_tuple
+    for idx, batch in enumerate(train_loader):
+        images = batch['image']
+        labels = batch['y_true']
         data_time.update(time.time() - end)
         bsz = labels.shape[0]
         images = torch.cat([images[0], images[1]], dim=0)

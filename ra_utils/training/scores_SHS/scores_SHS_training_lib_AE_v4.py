@@ -1492,6 +1492,8 @@ def training_epoch_AE_v4(
 
 
 
+
+
             # if i_batch == 0 and  i_dataloader==0 and verbose: 
             #     print(f"              first batch first DL:: fraction_positive_triplets__triplet_classes = {fraction_positive_triplets__classes.item()}")
             #     print(f"              first batch first DL:: fraction_positive_triplets__WST_classes     = {fraction_positive_triplets__WST_classes.item() }")        
