@@ -6,26 +6,32 @@ I've implemented a custom PyTorch sampler system that groups samples by their "n
 
 ## Files Created
 
-1. **`grouped_sampler.py`** - Main implementation
+1. **`samplers/grouped_sampler.py`** - Main implementation
    - `GroupedBatchSampler`: Full batch control, best grouping
    - `GroupedRandomSampler`: Simpler approach, less control but easier to integrate
 
-2. **`test_grouped_sampler.py`** - Comprehensive testing
+2. **`samplers/test_grouped_sampler.py`** - Comprehensive testing
    - Tests both sampler types
    - Compares standard vs grouped sampling
    - Shows statistics and grouping effectiveness
 
-3. **`example_usage.py`** - Quick start guide
+3. **`samplers/example_usage.py`** - Quick start guide
    - Minimal working example
    - Shows comparison with standard sampling
    - Demonstrates integration
 
-4. **`main_l1_with_grouped_sampler.py`** - Integration example
-   - Modified version of your training script
-   - Adds `--use_grouped_sampler` flag
+4. **`main_l1.py`** - L1 training with sampler support
+   - Now includes `--use_grouped_sampler` flag
    - Shows best practices for integration
+   - Replaces old main_l1.py and main_l1_with_grouped_sampler.py
 
-5. **`GROUPED_SAMPLER_README.md`** - Full documentation
+5. **`main_linear.py`** - Linear probe training with sampler support
+   - Updated to support `--use_grouped_sampler` flag
+
+6. **`main_rnc.py`** - Rank-N-Contrast training with sampler support
+   - Updated to support `--use_grouped_sampler` flag
+
+7. **`samplers/README.md`** - Full documentation
    - Detailed usage instructions
    - Troubleshooting guide
    - Performance considerations
@@ -49,7 +55,7 @@ I've implemented a custom PyTorch sampler system that groups samples by their "n
 ### Basic Usage (3 lines of code change)
 
 ```python
-from grouped_sampler import GroupedBatchSampler
+from samplers import GroupedBatchSampler
 
 # Create sampler (instead of shuffle=True in DataLoader)
 sampler = GroupedBatchSampler(dataset, batch_size=32, shuffle=True)
@@ -62,13 +68,13 @@ train_loader = DataLoader(dataset, batch_sampler=sampler, num_workers=4)
 
 ```bash
 # See it in action
-python example_usage.py
+python samplers/example_usage.py
 
 # Run comprehensive tests
-python test_grouped_sampler.py
+python samplers/test_grouped_sampler.py
 
 # Compare standard vs grouped
-python test_grouped_sampler.py compare
+python samplers/test_grouped_sampler.py compare
 ```
 
 ## How Well Does It Work?
@@ -81,23 +87,31 @@ Based on the AgeDB dataset:
 
 ## Integration Options
 
-### Option 1: Replace existing file
-Copy the sampler code into your existing training script
-
-### Option 2: Import and use
-Add to your imports and modify loader creation
-
-### Option 3: Command line flag
-Use the example in `main_l1_with_grouped_sampler.py` to add a flag:
+### Option 1: Use existing scripts with flags
+All main training scripts now support grouped sampling via command-line flags:
 ```bash
+# L1 regression
 python main_l1.py --use_grouped_sampler --batch_size 32
+
+# Linear probe
+python main_linear.py --use_grouped_sampler --ckpt /path/to/encoder.pth
+
+# Rank-N-Contrast
+python main_rnc.py --use_grouped_sampler --batch_size 256
+```
+
+### Option 2: Import and use in custom scripts
+Add to your imports and modify loader creation:
+```python
+from samplers import GroupedBatchSampler
+# Create sampler and use in DataLoader
 ```
 
 ## Next Steps
 
-1. **Try the example**: Run `python example_usage.py` to see it work
-2. **Run tests**: Execute `python test_grouped_sampler.py compare` 
-3. **Integrate**: Choose one of the integration options above
+1. **Try the example**: Run `python samplers/example_usage.py` to see it work
+2. **Run tests**: Execute `python samplers/test_grouped_sampler.py compare` 
+3. **Use in training**: Add `--use_grouped_sampler` to any main script
 4. **Train**: Use in your actual training runs
 
 ## Technical Details
@@ -116,9 +130,10 @@ python main_l1.py --use_grouped_sampler --batch_size 32
 
 ## Support
 
-- See `GROUPED_SAMPLER_README.md` for detailed documentation
-- Check `test_grouped_sampler.py` for usage examples
-- Run `example_usage.py` for a working demo
+- See `samplers/README.md` for detailed documentation
+- Check `samplers/test_grouped_sampler.py` for usage examples
+- Run `samplers/example_usage.py` for a working demo
+- All main training scripts (`main_l1.py`, `main_linear.py`, `main_rnc.py`) now support `--use_grouped_sampler`
 
 ---
 

@@ -1,3 +1,11 @@
+"""
+main_l1.py
+
+L1 regression training script with optional grouped sampler support.
+
+Use --use_grouped_sampler to enable grouping of samples by name within batches.
+"""
+
 import argparse
 import os
 import sys
@@ -7,6 +15,7 @@ import time
 from model import SupResNet
 from dataset import *
 from utils import *
+from training_utils import train_epoch, validate_epoch, create_dataloader_with_sampler
 
 print = logging.info
 
@@ -18,9 +27,9 @@ def parse_option():
     parser.add_argument('--save_freq', type=int, default=50, help='save frequency')
     parser.add_argument('--save_curr_freq', type=int, default=1, help='save curr last frequency')
 
-    parser.add_argument('--batch_size', type=int, default=8, help='batch_size') # used to be 256
-    parser.add_argument('--num_workers', type=int, default=6, help='num of workers to use')  # used to be 16
-    parser.add_argument('--epochs', type=int, default=2, help='number of training epochs')  # used to be 400
+    parser.add_argument('--batch_size', type=int, default=8, help='batch_size')
+    parser.add_argument('--num_workers', type=int, default=6, help='num of workers to use')
+    parser.add_argument('--epochs', type=int, default=2, help='number of training epochs')
     parser.add_argument('--learning_rate', type=float, default=0.2, help='learning rate')
     parser.add_argument('--lr_decay_rate', type=float, default=0.1, help='decay rate for learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
@@ -35,40 +44,58 @@ def parse_option():
     parser.add_argument('--resume', type=str, default='', help='resume ckpt path')
     parser.add_argument('--aug', type=str, default='crop,flip,color,grayscale', help='augmentations')
     parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
+    
+    # NEW: Add option to use grouped sampler
+    parser.add_argument('--use_grouped_sampler', action='store_true', 
+                        help='Use GroupedBatchSampler to keep samples with same name in same batch')
+    parser.add_argument('--sampler_type', type=str, default='batch', choices=['batch', 'random'],
+                        help='Type of grouped sampler: "batch" uses GroupedBatchSampler, "random" uses GroupedRandomSampler')
+    parser.add_argument('--use_grouped_sampler_val', action='store_true',
+                        help='Use GroupedBatchSampler for validation/test (deterministic, no shuffling)')
 
     opt = parser.parse_args()
 
     opt.model_path = f'{opt.base_data_dir}/save/{opt.dataset}_models'
-    opt.model_name = f"L1_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_aug_{opt.aug}_trial_{opt.trial}"
+    sampler_suffix = '_grouped' if opt.use_grouped_sampler else ''
+    val_sampler_suffix = '_val_grouped' if opt.use_grouped_sampler_val else ''
+    opt.model_name = f"L1_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_aug_{opt.aug}_trial_{opt.trial}{sampler_suffix}{val_sampler_suffix}"
+    
     if len(opt.resume):
         opt.model_name = opt.resume.split('/')[-2]
 
     opt.save_folder = os.path.join(opt.model_path, opt.model_name)
     if not os.path.isdir(opt.save_folder):
         os.makedirs(opt.save_folder)
-    else:
-        print('WARNING: folder exist.')
 
-    logging.root.handlers = []
+    opt.log_folder = os.path.join(f'{opt.base_data_dir}/save/{opt.dataset}_logs/', opt.model_name)
+    if not os.path.isdir(opt.log_folder):
+        os.makedirs(opt.log_folder)
+    
+    
+    
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s | %(message)s",
         handlers=[
             logging.FileHandler(os.path.join(opt.save_folder, 'training.log')),
             logging.StreamHandler()
-        ])
-
+        ]
+    )
     print(f"Model name: {opt.model_name}")
     print(f"Options: {opt}")
+    print(f"Logging to: {os.path.join(opt.save_folder, 'training.log')}")
 
     return opt
 
 
-
-
 def set_loader(opt):
+    """
+    Create data loaders with optional grouped sampling support.
+    Uses create_dataloader_with_sampler from training_utils.
+    """
     train_transform = get_transforms(split='train', aug=opt.aug)
     val_transform = get_transforms(split='val', aug=opt.aug)
+
     print(f"Train Transforms: {train_transform}")
     print(f"Val Transforms: {val_transform}")
 
@@ -80,15 +107,11 @@ def set_loader(opt):
           f'Val set size: {val_dataset.__len__()}\t'
           f'Test set size: {test_dataset.__len__()}')
 
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=opt.batch_size, shuffle=True, num_workers=opt.num_workers, pin_memory=True
-    )
-    val_loader = torch.utils.data.DataLoader(
-        val_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True
-    )
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=opt.batch_size, shuffle=False, num_workers=opt.num_workers, pin_memory=True
-    )
+    # Create loaders using the helper function
+    train_loader = create_dataloader_with_sampler(train_dataset, opt, split='train', drop_last=False)
+    val_loader = create_dataloader_with_sampler(val_dataset, opt, split='val', drop_last=False)
+    # Test loader always uses standard sampler (no grouped sampling)
+    test_loader = create_dataloader_with_sampler(test_dataset, opt, split='test', drop_last=False, use_grouped_override=False)
 
     return train_loader, val_loader, test_loader
 
@@ -109,66 +132,48 @@ def set_model(opt):
 
 def train(train_loader, model, criterion, optimizer, epoch, opt):
     model.train()
-
-    batch_time = AverageMeter()
-    data_time = AverageMeter()
-    losses = AverageMeter()
-
-    end = time.time()
-    for idx, batch in enumerate(train_loader):
+    
+    def compute_loss_fn(batch):
+        """Compute loss for L1 regression."""
         images = batch['image']
         labels = batch['y_true']
-        data_time.update(time.time() - end)
-        bsz = labels.shape[0]
-
+        # names = batch['name']  # Available if loss needs sample IDs
+        
         if torch.cuda.is_available():
             images = images.cuda(non_blocking=True)
             labels = labels.cuda(non_blocking=True)
-
+        
         output = model(images)
-
         loss = criterion(output, labels)
-        losses.update(loss.item(), bsz)
-
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if (idx + 1) % opt.print_freq == 0:
-            to_print = 'Train: [{0}][{1}/{2}]\t'\
-                       'BT {batch_time.val:.3f} ({batch_time.avg:.3f})\t'\
-                       'DT {data_time.val:.3f} ({data_time.avg:.3f})\t'\
-                       'loss {loss.val:.5f} ({loss.avg:.5f})'.format(
-                epoch, idx + 1, len(train_loader), batch_time=batch_time,
-                data_time=data_time, loss=losses
-            )
-            print(to_print)
-            sys.stdout.flush()
+        bsz = labels.shape[0]
+        
+        return loss, bsz
+    
+    return train_epoch(train_loader, compute_loss_fn, optimizer, epoch, opt, print_fn=print)
 
 
 def validate(val_loader, model):
+    """
+    Validation loop.
+    Uses generic validate_epoch from training_utils.
+    """
     model.eval()
-
-    losses = AverageMeter()
     criterion_l1 = torch.nn.L1Loss()
-
-    with torch.no_grad():
-        for idx, batch in enumerate(val_loader):
-            images = batch['image']
-            labels = batch['y_true']
-            images = images.cuda()
-            labels = labels.cuda()
-            bsz = labels.shape[0]
-
-            output = model(images)
-
-            loss_l1 = criterion_l1(output, labels)
-            losses.update(loss_l1.item(), bsz)
-
-    return losses.avg
+    
+    def compute_val_loss_fn(batch):
+        """Compute validation loss for L1 regression."""
+        images = batch['image']
+        labels = batch['y_true']
+        images = images.cuda()
+        labels = labels.cuda()
+        bsz = labels.shape[0]
+        
+        output = model(images)
+        loss = criterion_l1(output, labels)
+        
+        return loss, bsz
+    
+    return validate_epoch(val_loader, compute_val_loss_fn, print_fn=print)
 
 
 def main():

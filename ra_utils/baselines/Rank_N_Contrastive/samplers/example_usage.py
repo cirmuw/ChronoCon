@@ -7,8 +7,12 @@ Run this script to see it in action!
 
 import torch
 from torch.utils.data import DataLoader
+import sys
+from pathlib import Path
+# Add parent directory to path to import from sibling modules
+sys.path.insert(0, str(Path(__file__).parent.parent))
 from dataset import AgeDB
-from grouped_sampler import GroupedBatchSampler
+from samplers.grouped_sampler import GroupedBatchSampler
 from utils import get_transforms
 
 
