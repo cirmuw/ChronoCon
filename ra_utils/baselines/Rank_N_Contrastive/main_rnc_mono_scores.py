@@ -9,6 +9,8 @@ from utils import *
 from model import Encoder
 from loss import RnCLoss
 from training_utils import train_epoch, create_dataloader_with_sampler
+from main_rnc import set_loader
+from ra_utils.loss.loss_RnCMono import RnCLossMono
 
 print = logging.info
 
@@ -20,9 +22,9 @@ def parse_option():
     parser.add_argument('--save_freq', type=int, default=50, help='save frequency')
     parser.add_argument('--save_curr_freq', type=int, default=1, help='save curr last frequency')
 
-    parser.add_argument('--batch_size', type=int, default=256, help='batch_size')
+    parser.add_argument('--batch_size', type=int, default=150, help='batch_size')  # 300 but two crops take memory
     parser.add_argument('--num_workers', type=int, default=6, help='num of workers to use')
-    parser.add_argument('--epochs', type=int, default=400, help='number of training epochs')
+    parser.add_argument('--epochs', type=int, default=1, help='number of training epochs')  # 400
     parser.add_argument('--learning_rate', type=float, default=0.5, help='learning rate')
     parser.add_argument('--lr_decay_rate', type=float, default=0.1, help='decay rate for learning rate')
     parser.add_argument('--weight_decay', type=float, default=1e-4, help='weight decay')
@@ -36,11 +38,19 @@ def parse_option():
     parser.add_argument('--resume', type=str, default='', help='resume ckpt path')
     parser.add_argument('--aug', type=str, default='crop,flip,color,grayscale', help='augmentations')
 
-    # RnCLoss Parameters
+    # RnC Mono Loss Parameters
     parser.add_argument('--temp', type=float, default=2, help='temperature')
-    parser.add_argument('--label_diff', type=str, default='l1', choices=['l1'], help='label distance function')
-    parser.add_argument('--feature_sim', type=str, default='l2', choices=['l2'], help='feature similarity function')
-    parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
+    parser.add_argument('--label_diff', type=str, default='scalar difference', choices=['l1', 'scalar difference'], help='label distance function')
+    parser.add_argument('--feature_sim', type=str, default='negative l2', choices=['cosine', 'negative l1', 'negative l2'], help='feature similarity function')
+    parser.add_argument('--path_to_data_table', type=str, 
+                                                default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', help='path to data table')
+    parser.add_argument('--normalization', type=str, default='pair balanced positive', choices=['pair balanced', 'anchor balanced', 'pair balanced positive'],
+                        help='Normalization strategy for RnC Mono loss')
+    parser.add_argument('--ignore_ids', action='store_true', 
+                        help='If set, RnC Mono will allow for positives between any samples in batch (iff label diff is in range). "--id_label" is used as id.')
+    parser.add_argument('--ids_label', type=str, default='name', choices=["name", 'sex'])
+    
+    
 
     # Grouped sampler options
     parser.add_argument('--use_grouped_sampler', action='store_true', 
@@ -53,10 +63,12 @@ def parse_option():
     # opt.model_path = './save/{}_models'.format(opt.dataset)
     opt.model_path = f'{opt.base_data_dir}/save/{opt.dataset}_models'
     sampler_suffix = '_grouped' if opt.use_grouped_sampler else ''
+    normalization_str = opt.normalization.replace(" ", "-")
     opt.model_name = (
-        f"RnC_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}"
+        f"RnCMonoScores_{opt.dataset}_{opt.model}_ep_{opt.epochs}_lr_{opt.learning_rate}_d_{opt.lr_decay_rate}"
         f"_wd_{opt.weight_decay}_mmt_{opt.momentum}_bsz_{opt.batch_size}_aug_{opt.aug}"
-        f"_temp_{opt.temp}_label_{opt.label_diff}_feature_{opt.feature_sim}_trial_{opt.trial}{sampler_suffix}"
+        f"_temp_{opt.temp}_label_{opt.label_diff}_feature_{opt.feature_sim}_normalization-{normalization_str}_ignore_ids-{opt.ignore_ids}_ids_label-{opt.ids_label}"
+        f"_trial_{opt.trial}{sampler_suffix}"
     )
     if len(opt.resume):
         opt.model_name = opt.resume.split('/')[-2]
@@ -77,38 +89,19 @@ def parse_option():
         ])
 
     print(f"Model name: {opt.model_name}")
-    print(f"Options: {opt}")
+    print("Options:")
+    for key, value in vars(opt).items():
+        print(f"  {key:25s}: {value}")
 
     return opt
 
 
-def set_loader(opt):
-    """
-    Create data loader with optional grouped sampling support.
-    Uses create_dataloader_with_sampler from training_utils.
-    Note: RnC uses TwoCropTransform for contrastive learning.
-    """
-    train_transform = get_transforms(split='train', aug=opt.aug)
-    print(f"Train Transforms: {train_transform}")
-
-    train_dataset = globals()[opt.dataset](
-        data_folder=opt.data_folder,
-        transform=TwoCropTransform(train_transform),
-        split='train',
-        path_to_data_table=opt.path_to_data_table
-    )
-    print(f'Train set size: {train_dataset.__len__()}')
-
-    # Create train loader using the helper function
-    # RnC requires drop_last=True for contrastive learning
-    train_loader = create_dataloader_with_sampler(train_dataset, opt, split='train', drop_last=True)
-
-    return train_loader
 
 
 def set_model(opt):
     model = Encoder(name=opt.model)
-    criterion = RnCLoss(temperature=opt.temp, label_diff=opt.label_diff, feature_sim=opt.feature_sim)
+    criterion = RnCLossMono(temperature=opt.temp, label_diff=opt.label_diff, feature_sim=opt.feature_sim,
+                            ignore_ids = opt.ignore_ids, normalization=opt.normalization)
 
     if torch.cuda.is_available():
         if torch.cuda.device_count() > 1:
@@ -122,7 +115,7 @@ def set_model(opt):
 
 def train(train_loader, model, criterion, optimizer, epoch, opt):
     """
-    Training loop for Rank-N-Contrast.
+    Training loop for Rank-N-Contrast Mono.
     Uses generic train_epoch from training_utils.
     """
     model.train()
@@ -131,9 +124,17 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         """Compute loss for RnC contrastive learning."""
         images = batch['image']
         labels = batch['y_true']
-        # names = batch['name']  # Available if loss needs sample IDs
+        
+        names = batch['name']
+        sex   = batch['sex']
+        
+        if opt.ids_label == "name":
+            ids = np.array(names)
+        elif opt.ids_label == "sex":
+            ids = np.array(sex)
         
         bsz = labels.shape[0]
+
         # Concatenate two crops for contrastive learning
         images = torch.cat([images[0], images[1]], dim=0)
         
@@ -146,9 +147,12 @@ def train(train_loader, model, criterion, optimizer, epoch, opt):
         f1, f2 = torch.split(features, [bsz, bsz], dim=0)
         features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
         
-        loss = criterion(features, labels)
+        loss, support = criterion(features = features, labels=labels, ids = ids, return_support=True)
         
-        return loss, bsz
+        # Note: num_terms used to be bsz for RnC loss. But with new loss (with ids, ...) not all samples will contribute equally.
+        num_terms = support["num_terms_normalization"]
+        
+        return loss, num_terms
     
     return train_epoch(train_loader, compute_loss_fn, optimizer, epoch, opt, print_fn=print)
 

@@ -67,9 +67,10 @@ def parse_option():
     if not os.path.isdir(opt.save_folder):
         os.makedirs(opt.save_folder)
 
-    opt.log_folder = os.path.join(f'{opt.base_data_dir}/save/{opt.dataset}_logs/', opt.model_name)
-    if not os.path.isdir(opt.log_folder):
-        os.makedirs(opt.log_folder)
+
+    # opt.log_folder = os.path.join(f'{opt.base_data_dir}/save/{opt.dataset}_logs/', opt.model_name)
+    # if not os.path.isdir(opt.log_folder):
+    #     os.makedirs(opt.log_folder)
     
     
     
@@ -190,7 +191,7 @@ def main():
 
     start_epoch = 1
     if len(opt.resume):
-        ckpt_state = torch.load(opt.resume)
+        ckpt_state = torch.load(opt.resume, weights_only=False)
         model.load_state_dict(ckpt_state['model'])
         optimizer.load_state_dict(ckpt_state['optimizer'])
         start_epoch = ckpt_state['epoch'] + 1

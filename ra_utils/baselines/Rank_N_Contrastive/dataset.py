@@ -27,7 +27,7 @@ class AgeDB(data.Dataset):
         sample = {}
         sample['y_true'] = np.asarray([row['age']]).astype(np.float32)
         sample['name'] = row['name'] if 'name' in row else None
-        #sample['sex'] = row['sex'] if 'sex' in row else None
+        sample['sex'] = row['sex'] if 'sex' in row else None
         #sample['image_id'] = row['image_id'] if 'image_id' in row else None
         #sample['path'] = row['path']
         img_path = os.path.join(self.data_folder, row['path'])
@@ -36,3 +36,6 @@ class AgeDB(data.Dataset):
             img = self.transform(img)
         sample['image'] = img
         return sample
+
+
+

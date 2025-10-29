@@ -122,8 +122,8 @@ def train_epoch(train_loader, compute_loss_fn, optimizer, epoch, opt, print_fn=p
         data_time.update(time.time() - end)
         
         # Compute loss using the provided function
-        loss, bsz = compute_loss_fn(batch)
-        losses.update(loss.item(), bsz)
+        loss, num_loss_terms = compute_loss_fn(batch)
+        losses.update(loss.item(), num_loss_terms)
         
         # Backward pass
         optimizer.zero_grad()

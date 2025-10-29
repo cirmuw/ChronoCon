@@ -16,7 +16,7 @@ def parse_option():
     parser = argparse.ArgumentParser('argument for training')
 
     parser.add_argument('--print_freq', type=int, default=10, help='print frequency')
-    parser.add_argument('--save_freq', type=int, default=50, help='save frequency')
+    #parser.add_argument('--save_freq', type=int, default=50, help='save frequency')
 
     parser.add_argument('--batch_size', type=int, default=64, help='batch_size')
     parser.add_argument('--num_workers', type=int, default=6, help='num of workers to use')
@@ -27,7 +27,7 @@ def parse_option():
     parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
     parser.add_argument('--trial', type=str, default='0', help='id for recording multiple runs')
 
-    parser.add_argument('--base_data_dir', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/', help='base directory for saving models and logs')
+    # parser.add_argument('--base_data_dir', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/', help='base directory for saving models and logs')
     parser.add_argument('--data_folder', type=str, default='/home/cwatzenboeck/data/public/agedb/', help='path to custom dataset')
     parser.add_argument('--dataset', type=str, default='AgeDB', choices=['AgeDB'], help='dataset')
     parser.add_argument('--model', type=str, default='resnet18', choices=['resnet18', 'resnet50'])
@@ -103,7 +103,7 @@ def set_model(opt):
     dim_in = model_dict[opt.model][1]
     dim_out = get_label_dim(opt.dataset)
     regressor = torch.nn.Linear(dim_in, dim_out)
-    ckpt = torch.load(opt.ckpt, map_location='cpu')
+    ckpt = torch.load(opt.ckpt, map_location='cpu', weights_only=False)
     state_dict = ckpt['model']
 
     if torch.cuda.device_count() > 1:
@@ -198,7 +198,7 @@ def main():
 
     start_epoch = 1
     if len(opt.resume):
-        ckpt_state = torch.load(opt.resume)
+        ckpt_state = torch.load(opt.resume, weights_only=False)
         regressor.load_state_dict(ckpt_state['state_dict'])
         start_epoch = ckpt_state['epoch'] + 1
         best_error = ckpt_state['best_error']
@@ -234,7 +234,7 @@ def main():
 
     print("=" * 120)
     print("Test best model on test set...")
-    checkpoint = torch.load(save_file_best)
+    checkpoint = torch.load(save_file_best, weights_only=False)
     regressor.load_state_dict(checkpoint['state_dict'])
     print(f"Loaded best model, epoch {checkpoint['epoch']}, best val error {checkpoint['best_error']:.3f}")
     test_loss = validate(test_loader, model, regressor)
