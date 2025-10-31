@@ -137,6 +137,11 @@ import umap as umap_pkg
 import plotly.graph_objects as go
 from collections import defaultdict
 from sklearn.manifold import TSNE
+from ra_utils.visualization.trajectories import (
+    compute_2d_projection as traj_compute_2d_projection,
+    save_projection as traj_save_projection,
+    load_projection as traj_load_projection,
+)
 
 # import torch.multiprocessing as mp
 # mp.set_sharing_strategy("file_system")  # avoids /dev/shm exhaustion issues on Linux
@@ -725,10 +730,36 @@ def save_pack(pack: dict, out_dir: str, png_root: str | None = None, save_projec
             coords_pca  = compute_projection(pack["Z"], method="pca",  seed=42)
             np.save(out / "umap2d.npy", coords_umap)
             np.save(out / "pca2d.npy",  coords_pca)
+
+            # Optionally write tsne2d.npy iff provided in the pack (avoid expensive compute here)
+            if "tsne2d" in pack:
+                np.save(out / "tsne2d.npy", np.asarray(pack["tsne2d"]))
         except Exception as e:
             print(f"[save_pack] Skipping projections: {e}")
 
     print(f"[save_pack] Wrote cache to: {out.resolve()}")
+
+
+def save_or_compute_projection(pack: dict,
+                               out_dir: str,
+                               method: str = "umap",
+                               seed: int = 42,
+                               save_reducer: bool = False):
+    """
+    Convenience helper: load cached projection if present; otherwise compute and save.
+    Returns (coords_2d, reducer_or_None).
+    """
+    try:
+        coords, reducer = traj_load_projection(out_dir, method, load_reducer=save_reducer)
+        print(f"[save_or_compute_projection] Loaded {method} from cache: {out_dir}")
+        return coords, reducer
+    except FileNotFoundError:
+        pass
+
+    coords, reducer = traj_compute_2d_projection(pack, reduction_method=method, seed=seed)
+    traj_save_projection(coords, reducer, out_dir, method, save_reducer=save_reducer)
+    print(f"[save_or_compute_projection] Computed and cached {method} to: {out_dir}")
+    return coords, reducer
 
 
 def load_pack(in_dir: str) -> dict:

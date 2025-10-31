@@ -489,17 +489,40 @@ def main():
 
 
     # Combined plot
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5))
-    # Recreate plots directly into subplots
-    _ = plot_SHS_sums(df_summed_SvH.dropna(),    ax_scatter=axs[0], name="SvH H+F", plot_histograms=False, regplot=True)
-    _ = plot_SHS_sums(df_summed_H_F_JSN.dropna(), ax_scatter=axs[1], name="JSN H+F", plot_histograms=False, regplot=True)
-    _ = plot_SHS_sums(df_summed_ERO_H_F.dropna(), ax_scatter=axs[2], name="ERO H+F", plot_histograms=False, regplot=True)
-
-    fig.tight_layout()
-
+    # fig, axs = plt.subplots(1, 3, figsize=(15, 5))
+    # # Recreate plots directly into subplots
+    # _ = plot_SHS_sums(df_summed_SvH.dropna(),    ax_scatter=axs[0], name="SvH H+F", plot_histograms=False, regplot=True)
+    # _ = plot_SHS_sums(df_summed_H_F_JSN.dropna(), ax_scatter=axs[1], name="JSN H+F", plot_histograms=False, regplot=True)
+    # _ = plot_SHS_sums(df_summed_ERO_H_F.dropna(), ax_scatter=axs[2], name="ERO H+F", plot_histograms=False, regplot=True)
+    # fig.tight_layout()
 
     fig.savefig(dst_sums_plot)
     print(f" Saved figure to {dst_sums_plot}")
+
+    # Save individual 1x1 plots
+    fig1, ax1 = plt.subplots(1, 1, figsize=(5, 5))
+    plot_SHS_sums(df_summed_SvH.dropna(), ax_scatter=ax1, name="SvH H+F", plot_histograms=False, regplot=True)
+    fig1.tight_layout()
+    suffix = "_EV_SvH_H+F.png" if soft_prediction else "_SvH_H+F.png"
+    dst_svH_individual = dst_sums_plot.replace('.png', suffix)
+    fig1.savefig(dst_svH_individual)
+    print(f" Saved figure to {dst_svH_individual}")
+
+    fig2, ax2 = plt.subplots(1, 1, figsize=(5, 5))
+    plot_SHS_sums(df_summed_H_F_JSN.dropna(), ax_scatter=ax2, name="JSN H+F", plot_histograms=False, regplot=True)
+    fig2.tight_layout()
+    suffix = "_EV_JSN_H+F.png" if soft_prediction else "_JSN_H+F.png"
+    dst_jsn_individual = dst_sums_plot.replace('.png', suffix)
+    fig2.savefig(dst_jsn_individual)
+    print(f" Saved figure to {dst_jsn_individual}")
+
+    fig3, ax3 = plt.subplots(1, 1, figsize=(5, 5))
+    plot_SHS_sums(df_summed_ERO_H_F.dropna(), ax_scatter=ax3, name="ERO H+F", plot_histograms=False, regplot=True)
+    fig3.tight_layout()
+    suffix = "_EV_ERO_H+F.png" if soft_prediction else "_ERO_H+F.png"
+    dst_ero_individual = dst_sums_plot.replace('.png', suffix)
+    fig3.savefig(dst_ero_individual)
+    print(f" Saved figure to {dst_ero_individual}")
 
 
     #plt.show()

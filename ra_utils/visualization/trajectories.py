@@ -5,6 +5,14 @@ from sklearn.decomposition import PCA
 import umap
 import numpy as np
 from collections import defaultdict
+from pathlib import Path
+from typing import Tuple, Optional
+
+try:
+    from joblib import dump as joblib_dump, load as joblib_load
+except Exception:
+    joblib_dump = None
+    joblib_load = None
 
 def compute_2d_projection(pack, reduction_method="tsne", seed=43):
     """
@@ -105,10 +113,34 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
                 cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}')
                 
             except (ValueError, TypeError):
-                # Non-numeric values, use as categorical
+                # Non-numeric values, treat as categorical
                 print(f"Non-numeric values detected, using categorical coloring")
-                ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
-                          c=background_values, s=20, alpha=0.3, label='All other samples')
+                
+                # Convert categorical values to numeric indices
+                unique_categories = np.unique(background_values)
+                category_to_idx = {cat: idx for idx, cat in enumerate(unique_categories)}
+                numeric_categories = np.array([category_to_idx[val] for val in background_values])
+                
+                print(f"Found {len(unique_categories)} unique categories: {unique_categories}")
+                
+                # Use a discrete colormap
+                n_categories = len(unique_categories)
+                if n_categories <= 10:
+                    cmap = plt.cm.get_cmap('tab10', n_categories)
+                elif n_categories <= 20:
+                    cmap = plt.cm.get_cmap('tab20', n_categories)
+                else:
+                    cmap = plt.cm.get_cmap(background_colormap, n_categories)
+                
+                scatter = ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
+                                   c=numeric_categories, cmap=cmap, s=20, alpha=0.3, 
+                                   vmin=-0.5, vmax=n_categories-0.5)
+                
+                # Add colorbar with category labels
+                cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}', 
+                                   ticks=np.arange(n_categories))
+                cbar.ax.set_yticklabels(unique_categories)
+                
         else:
             print(f"Warning: '{background_color_key}' not found in pack!")
             print(f"Available keys in pack: {list(pack.keys())}")
@@ -193,4 +225,93 @@ def plot_embeddings_with_trajectories_v3(pack, trajectories_to_connect, n_most_c
     return plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect, reduction_method, figsize, no_legend, background_color_key, background_colormap, traj_colors_columns, traj_colors_colorbar)
 
 
+
+
+# ===== Helpers to cache/load 2D projections =====
+def _method_to_filenames(method: str) -> Tuple[str, str]:
+    """
+    Returns (coords_filename, reducer_filename) for a given method.
+    Example for "umap": ("umap2d.npy", "umap_reducer.joblib")
+    """
+    m = method.lower()
+    if m not in ("umap", "pca", "tsne"):
+        raise ValueError(f"Unknown method: {method}")
+    coords_name = f"{m}2d.npy"
+    reducer_name = f"{m}_reducer.joblib"
+    return coords_name, reducer_name
+
+
+def save_projection(coords_2d: np.ndarray,
+                    reducer,
+                    out_dir: str,
+                    method: str,
+                    save_reducer: bool = False) -> None:
+    """
+    Save 2D coordinates (+ optional reducer) to disk.
+    - coords saved to <out_dir>/{method}2d.npy
+    - reducer saved to <out_dir>/{method}_reducer.joblib if save_reducer=True
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    coords_name, reducer_name = _method_to_filenames(method)
+
+    np.save(out / coords_name, np.asarray(coords_2d))
+
+    if save_reducer and reducer is not None:
+        if joblib_dump is None:
+            raise RuntimeError("joblib is not available to save reducer. Install joblib or set save_reducer=False.")
+        joblib_dump(reducer, out / reducer_name)
+
+
+def load_projection(out_dir: str,
+                    method: str,
+                    load_reducer: bool = False):
+    """
+    Load 2D coordinates (+ optional reducer) from disk.
+    Returns (coords_2d, reducer_or_None).
+    Raises FileNotFoundError if the coords file is missing.
+    """
+    p = Path(out_dir)
+    coords_name, reducer_name = _method_to_filenames(method)
+
+    coords_path = p / coords_name
+    if not coords_path.exists():
+        raise FileNotFoundError(str(coords_path))
+
+    coords_2d = np.load(coords_path)
+    reducer = None
+    if load_reducer:
+        if joblib_load is None:
+            raise RuntimeError("joblib is not available to load reducer. Install joblib or set load_reducer=False.")
+        reducer_path = p / reducer_name
+        if not reducer_path.exists():
+            raise FileNotFoundError(str(reducer_path))
+        reducer = joblib_load(reducer_path)
+
+    return coords_2d, reducer
+
+
+def load_or_compute_projection(pack,
+                               out_dir: str,
+                               method: str = "umap",
+                               seed: int = 43,
+                               save_reducer: bool = False):
+    """
+    Convenience: try to load cached 2D coords from out_dir; if missing, compute
+    with compute_2d_projection(pack, method, seed), save to cache, and return.
+
+    Returns (coords_2d, reducer_or_None). For most use cases, reducer is None
+    and not needed; coords are sufficient for plotting.
+    """
+    try:
+        coords, reducer = load_projection(out_dir, method, load_reducer=save_reducer)
+        print(f"[load_or_compute_projection] Loaded {method} coords from: {out_dir}")
+        return coords, reducer
+    except FileNotFoundError:
+        pass
+
+    coords, reducer = compute_2d_projection(pack, reduction_method=method, seed=seed)
+    save_projection(coords, reducer, out_dir, method, save_reducer=save_reducer)
+    print(f"[load_or_compute_projection] Computed and cached {method} coords to: {out_dir}")
+    return coords, reducer
 
