@@ -304,14 +304,14 @@ class RnCLossMono(nn.Module):
         # S_lesser_mask_ijk 
         # t_i <= t_j   <->  0 <=  t_j - t_i   <-> 0 <= Dij 
         #                               (t_i <= t_j)       &       (t_j <= t_k)  
-        mask_ti_leq_tj_leq_tk = ( (0 <= Dmat).unsqueeze(2) & (0 <= Dmat).unsqueeze(0) )
+        mask_ti_leq_tj_leq_tk = ( (0 <= Dmat).unsqueeze(2) & (0 < Dmat).unsqueeze(0) )
         S_lesser_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_leq_tj_leq_tk)
 
         # S_greater_mask_ijk 
         # 
         #     t_i >= t_j   <->  0 >=  t_j - t_i   <-> 0 >= Dij 
         #                               (t_i >= t_j)       &       (t_j >= t_k)          
-        mask_ti_geq_tj_geq_tk = ( (0 >= Dmat).unsqueeze(2) & (0 >= Dmat).unsqueeze(0) )
+        mask_ti_geq_tj_geq_tk = ( (0 >= Dmat).unsqueeze(2) & (0 > Dmat).unsqueeze(0) )
         #mask_ti_geq_tj_geq_tk = ( (0 >= D3_ij) & (0 >= D3_jk) )
         S_greater_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_geq_tj_geq_tk)
 
