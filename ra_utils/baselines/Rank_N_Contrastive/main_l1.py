@@ -83,7 +83,9 @@ def parse_option():
         ]
     )
     print(f"Model name: {opt.model_name}")
-    print(f"Options: {opt}")
+    print("Options:")
+    for key, value in vars(opt).items():
+        print(f"  {key:25s}: {value}")
     print(f"Logging to: {os.path.join(opt.save_folder, 'training.log')}")
 
     return opt
