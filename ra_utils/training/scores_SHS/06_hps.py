@@ -125,11 +125,12 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
     print(f"{device = }")
 
     # Load the configuration
-    config, config_name, config_originals = ra_utils.utils.config_parser.load_config(
+    config, config_name, config_originals, raw_config_content = ra_utils.utils.config_parser.load_config(
         #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/hps03_triplet.yml",
         default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/hps_config.yml", 
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
-        return_originals=True
+        return_originals=True,
+        return_raw_config=True
         )
 
     # Debugging option:
@@ -171,6 +172,12 @@ def run_HP_search_study(verbose : VerboseLevel = PRINT_PARAMS):
 
         for k, v in config_originals.items():
             mlflow.log_dict(v, f"{k}.yml")
+        
+        # Log original config file with comments and exact order preserved
+        if raw_config_content is not None:
+            # Determine file extension for proper naming
+            config_ext = config_name.suffix or ".yml"
+            mlflow.log_text(raw_config_content, f"original_config{config_ext}")
 
         direction = config_hps.get("search_direction", "minimize")
         extract_objective_value_from_validation_metrics_dct_OPTION = config_hps.get("extract_objective_value_from_validation_metrics_dct_OPTION")

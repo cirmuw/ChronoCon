@@ -26,14 +26,26 @@ def get_git_infos(repo_path):
     git_folder = Path(repo_path,'.git')
     if not git_folder.exists():
         return {"message": f"The given path {repo_path} is not a git repository."}
-    git_repo = git.Repo(repo_path)
-    is_dirty = git_repo.is_dirty()
-    commit_message = git_repo.head.commit.message
-    head_name = Path(git_folder, 'HEAD').read_text().split('\n')[0].split(' ')[-1]
-    head_ref = Path(git_folder,head_name)
-    commit = head_ref.read_text().replace('\n','')
-    r = dict(commit=commit, commit_message=commit_message, dirty=is_dirty)
-    return r
+    
+    try:
+        git_repo = git.Repo(repo_path)
+        is_dirty = git_repo.is_dirty()
+        commit_message = git_repo.head.commit.message
+        # Use hexsha directly - works for both normal and detached HEAD state
+        commit = git_repo.head.commit.hexsha
+        
+        return dict(commit=commit, commit_message=commit_message, dirty=is_dirty)
+    
+    except FileNotFoundError as e:
+        return {
+            "message": f"Git information could not be retrieved: {str(e)}. This may occur in detached HEAD state or corrupted git repository.",
+            "error": str(e)
+        }
+    except Exception as e:
+        return {
+            "message": f"Error retrieving git information: {str(e)}",
+            "error": str(e)
+        }
     
 
 def flatten_dict(d, parent_key='', sep='.'):

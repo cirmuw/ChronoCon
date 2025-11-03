@@ -213,6 +213,7 @@ class RnCLossMono(nn.Module):
             denom_log = torch.where(pos_mask_j, denom_log, pos_logits)
             neg_log_prob = -(pos_logits - denom_log) * pos_mask_j.float()  # [n]
             per_anchor_sum += neg_log_prob
+            # print(f"neg_log_prob: {neg_log_prob}  ({j=})")
 
             # Sum the non-trivial i, j terms; 
             # Empty sets as well as those with a single term  only (-log(p) + log(p) = 0) are trivial. 
@@ -301,19 +302,23 @@ class RnCLossMono(nn.Module):
         off_diag_ik = off_diag_ik[:, None, :]  # [i,1,k] -> broadcast over j
         ids_are_same = same_id_full.unsqueeze(2) & same_id_full.unsqueeze(0)  # id_i = id_j = id_k     
 
+        eye_jk = torch.eye(n, device=device, dtype=torch.bool).unsqueeze(0)  # [1, n, n] diag over (j,k)
+        
+
+
         # S_lesser_mask_ijk 
         # t_i <= t_j   <->  0 <=  t_j - t_i   <-> 0 <= Dij 
-        #                               (t_i <= t_j)       &       (t_j <= t_k)  
-        mask_ti_leq_tj_leq_tk = ( (0 <= Dmat).unsqueeze(2) & (0 < Dmat).unsqueeze(0) )
-        S_lesser_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_leq_tj_leq_tk)
+        #                               (t_i <= t_j)       &          (t_j < t_k)   OR j=k; otherwise normalization issues ... 
+        mask_ti_leq_tj_l_tk_or_eq = ((0 <= Dmat).unsqueeze(2) & (((0 < Dmat).unsqueeze(0)) | eye_jk)) 
+        S_lesser_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_leq_tj_l_tk_or_eq)
 
         # S_greater_mask_ijk 
         # 
         #     t_i >= t_j   <->  0 >=  t_j - t_i   <-> 0 >= Dij 
-        #                               (t_i >= t_j)       &       (t_j >= t_k)          
-        mask_ti_geq_tj_geq_tk = ( (0 >= Dmat).unsqueeze(2) & (0 > Dmat).unsqueeze(0) )
+        #                               (t_i >= t_j)       &       (t_j > t_k)   BUT include j=k; otherwise log(0) can happen
+        mask_ti_geq_tj_g_tk_or_eq = ((0 >= Dmat).unsqueeze(2) & (((0 > Dmat).unsqueeze(0)) | eye_jk))
         #mask_ti_geq_tj_geq_tk = ( (0 >= D3_ij) & (0 >= D3_jk) )
-        S_greater_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_geq_tj_geq_tk)
+        S_greater_mask_ijk = off_diag_ik & (ids_are_same & mask_ti_geq_tj_g_tk_or_eq)
 
 
 

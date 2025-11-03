@@ -148,7 +148,8 @@ def auto_replace_strings(
 def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_landmarks/train_landmarks_01.yaml",
                 debugging_in_jupyter_nb=False, silencium=False, return_config_name=False, 
                 return_originals = False, 
-                default_path_substitution_config=None):
+                default_path_substitution_config=None,
+                return_raw_config = False):
 
     def parse_args():
         parser = argparse.ArgumentParser(
@@ -184,6 +185,12 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
     # Check if the file exists
     if not config_file.exists():
         raise FileNotFoundError(f"The file {config_file} does not exist.")
+
+    # Read raw config content if requested (preserves comments and order)
+    raw_config_content = None
+    if return_raw_config:
+        with open(config_file, 'r', encoding='utf-8') as f:
+            raw_config_content = f.read()
 
     # Determine file type based on extension and load accordingly
     if config_file.suffix.lower() == '.json':
@@ -221,14 +228,18 @@ def load_config(default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_
         from pprint import pprint
         pprint(config)
 
+    # Build return tuple based on flags
+    return_values = [config]
+    
     if return_config_name:
-        if return_originals: 
-            return config, config_file, originals
-        else: 
-            return config, config_file
-    else: 
-        if return_originals: 
-            return config, originals
-        else: 
-            return config
+        return_values.append(config_file)
+    
+    if return_originals:
+        return_values.append(originals)
+    
+    if return_raw_config:
+        return_values.append(raw_config_content)
+    
+    # Return single value if only config, otherwise return tuple
+    return return_values[0] if len(return_values) == 1 else tuple(return_values)
     

@@ -46,14 +46,15 @@ from ra_utils.training.scores_SHS.run_training_main_lib import run_training_v2
 def main():
 
     # Load the configuration
-    config, config_name, config_originals = ra_utils.utils.config_parser.load_config(
+    config, config_name, config_originals, raw_config_content = ra_utils.utils.config_parser.load_config(
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/dev_triplet.yml",
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/MTAN_r01_debugging.yml",
         #default_config = "/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev_PIP_MCPv3.yml",
         default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
-        return_originals=True
+        return_originals=True,
+        return_raw_config=True
         # default_path_substitution_config="/home/cwatzenboeck/code/RA/ra_utils/runs/path_sustitution/cirpc_to_msc.yml"
         )
 
@@ -113,6 +114,12 @@ def main():
         mlflow.log_dict(config, "config.yml")
         for k, v in config_originals.items():
             mlflow.log_dict(v, f"{k}.yml")
+        
+        # Log original config file with comments and exact order preserved
+        if raw_config_content is not None:
+            # Determine file extension for proper naming
+            config_ext = config_name.suffix or ".yml"
+            mlflow.log_text(raw_config_content, f"original_config{config_ext}")
 
         _ = run_training_v2(config = config,  
                                verbose=VerboseLevel.CHATTY,

@@ -51,7 +51,7 @@ model_initialization:
 #project: 'AutoPIX:'
 #tag: development
 training:
-  USE_GROUPED_VALIDATION_LOADER: False  # "WARINING I fUSE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! "  )
+  USE_GROUPED_VALIDATION_LOADER: True  # "WARINING I fUSE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! And losses certainly not. "  )
 
   batch_size: 100 #512
   early_stopping_tol: 10 # 5
@@ -559,7 +559,7 @@ loss:
   # Make sure that transforms.ACTIVATE_TRIPLET_TRAINING_TRANSFORMS is True 
     name: "RnC_mono"    # RnC_time (only with l1) or RnC_mono (RnC_mono is advised)
     params:
-      temperature: 2.0
+      temperature: 1.0
       feature_sim: "cosine"  # "cosine" (DEFAULT) ,'negative l1', 'negative l2'
       #label_diff: "scalar difference"  # "l1", "scalar difference" (DEFAULT)
       # ignore_ids: False  # For ablation study and tests
@@ -568,17 +568,27 @@ loss:
     #   validation_multiplier: 1.0  # 1 is the default. 
 
 
+# ## Rank N-Contrastive on SCORE "classio"
+#   RnC_score:  # Rank N Contrasive Loss 
+#   # label=score;  id=score_type e.g. "PIPII_JSN"
+#     name: "RnC_score"     # or OnlineBatchAllTripletLoss
+#     params:
+#       temperature: 1.0
+#       feature_sim: "cosine"  # "cosine" or "l2"
+#       label_diff: "l1"  # "l1" or "scalar difference"
+#       ignore_ids: False  # Here this might make sense. But better keep seperate
+#     # options: 
+#     #   validation_multiplier: 1.0  # 1 is the default. 
 
+
+## Rank N-Contrastive on SCORE "MONO"
   RnC_score:  # Rank N Contrasive Loss 
   # label=score;  id=score_type e.g. "PIPII_JSN"
-    name: "RnC_score"     # or OnlineBatchAllTripletLoss
+    name: "RnC_mono"     # or OnlineBatchAllTripletLoss
     params:
-      temperature: 2.0
+      temperature: 1.0
       feature_sim: "cosine"  # "cosine" or "l2"
-      label_diff: "l1"  # "l1" or "scalar difference"
       ignore_ids: False  # Here this might make sense. But better keep seperate
-    # options: 
-    #   validation_multiplier: 1.0  # 1 is the default. 
 
 
 
@@ -609,7 +619,7 @@ loss_weights:
 
   lambda_z_triplet_MDP: 0.0   # with old DL not allowed
 
-  lambda_z_RnC_time: 1.0   # with old DL not allowed
+  lambda_z_RnC_time: 0.01   # with old DL not allowed
   lambda_z_RnC_score: 1.0   # with old DL not allowed
 
 
@@ -654,26 +664,25 @@ model_name: "ResNetNoAE + MultiHeadClassifier"
 
 AE_transform: 
   name: GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
-  GaussianNoise_sigma: !!float 2.0e-05
+  GaussianNoise_sigma: !!float 1.0e-05
 
 
 optimizer_name: "torch.optim.AdamW"
 
 optimizer_params:
   learning_rates:
-    # encoder__OR__decoder: 8.164522178527674e-06
-    #"auto_encoder.decoders":  !!float 1e-4
-    "auto_encoder":  !!float  3.0e-05
-    heads: !!float  3.0e-04
-    score_estimators: !!float 3.0e-4
+    "auto_encoder":  !!float  2.0e-04
+    heads: !!float  2.0e-05
+    score_estimators: !!float 5.0e-3
   other_optimizer_kwargs:
-    weight_decay: !!float 1.0e-3
+    weight_decay: !!float 1.0e-6
 
 
-# scheduler_name: "torch.optim.lr_scheduler.ReduceLROnPlateau"
-# scheduler_params:
-#    mode: 'min'
-#    verbose: True
+
+scheduler_name: "torch.optim.lr_scheduler.ReduceLROnPlateau"
+scheduler_params:
+   mode: 'min'
+   verbose: True
 
 
 
