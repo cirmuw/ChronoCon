@@ -1,0 +1,664 @@
+#################################################################
+########################### General settings ####################
+#################################################################
+
+debugging: True
+
+mlflow_runs_dir: /home/cwatzenboeck/data/mlflow_cirpc_tmp/RA/data/
+
+RESET_IMAGE_FOLDER_WHEN_DEBUGGING: False
+
+experiment_name: "ExpDev"
+
+evaluate_and_save_training_set: False
+eval_on_val_set_once_more: true
+evaluate_on_testset: false
+run_name: "pretraining_setup"
+
+
+SAVE_MODEL_state_dct: True
+SKIP_TRAINING: False
+
+# Replaces all string parts of the config starting with: "$$__" and ending with "__$$" iff the key is in this dict
+# e.g.   "mlflow_RA/$$__EXP_ID__$$/abc" -> "mlflow_RA/844424495910332051/abc"
+# AUTO_REPLACE:  
+#   EXP_ID: ""
+#   RUN_ID: ""
+#   MLFLOW_ROOT: "/msc/home/cwatze93/data/mlflow/mlflow_RA"
+
+
+# Only important for ra_utils/visualization/interactive/ra_model.py ++
+# plot_settings: 
+#   loader_type: "val"  # val or train
+#   val_key: "ALL_wo_wrist"
+#   # png_root: "/home/cwatzenboeck/data/fo_png_cache/val"
+#   png_root: "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/embeddings/val_png"
+#   dimension_reduction_techniques:  ["umap", "pca"]
+#   cache_dir_save:   "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/embeddings/val_emb_all"
+#   cache_dir_reload: "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/embeddings/val_emb_all"
+#   SAVE_EMBEDDINGS: False
+#   RELOAD_EMBEDDINGS: True
+
+
+
+  # dimension_reduction_techniques
+
+# model_initialization: 
+#   load_full_AE: False
+#   load_classifier: False
+#   load_decoder_only: False
+#   load_score_estimator: False
+#   pth_src_AE:              "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/checkpoints/model_AE_state_dict.pt"  
+#   pth_src_classifier:      "$$__MLFLOW_ROOT__$$/$$__EXP_ID__$$/$$__RUN_ID__$$/artifacts/checkpoints/model_classifier_state_dict.pt"
+#   pth_src_score_estimator: ""
+
+
+#project: 'AutoPIX:'
+#tag: development
+
+
+#################################################################
+########################### TRAINING ############################
+#################################################################
+
+training:
+  USE_GROUPED_VALIDATION_LOADER: True  # "WARINING I fUSE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! And losses certainly not. "  )
+
+  batch_size: 100 #512
+  early_stopping_tol: 10 # 5
+  early_stopping_metric_key: "mae"  # default "L" -> loss  options: ....
+  early_stopping_metric_direction: "min"   # default is min  # options:  min or max
+  extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
+
+
+
+  epochs: 2
+  num_workers: 8 #12
+
+  persistent_workers:  False
+  pin_memory: False
+  batch_size_dependent_lr: True
+
+
+  sampler_name: "GroupLevelTypePriorBatchSampler"
+  sampler_settings:
+    group_identifiers: ["patient_id", "score_type", "left_or_right"]
+    target_col: "score"
+    group_score_agg: "mean_ceil"     # ceil(mean(score) over visits) → group label
+
+    # group-level oversampling
+    prior_mode: "uniform"            # enforce near-uniform over score_type
+    weight_mode: "inverse_freq"      # balance label distribution across groups
+    alpha: 1.0                       # 0=no balancing, 1=full inverse-frequency
+    epsilon: 1.0                     # smoothing for label counts
+    prior_per_label: null            # optional {label:int -> prior:float} to tilt weights
+
+    size_correction: False   # 
+
+    # batching behavior
+    group_replacement: true          # allow re-using a group across batches within an epoch
+    drop_last: false
+    seed: 0
+
+
+#################################################################
+########################### LOSS ################################
+#################################################################
+
+loss:
+  score:
+    name: MSELoss  # FocalLoss  MSELoss  "MSE+CELoss"  ""
+    params: {}
+
+  RnC_time:  # Rank N Contrasive Loss 
+  # label=Time;  id=instance_label (e.g. PIPII_L_patient001_2010-01-01)
+  # Make sure that transforms.ACTIVATE_TRIPLET_TRAINING_TRANSFORMS is True 
+    name: "RnC_mono"    # RnC_time (only with l1) or RnC_mono (RnC_mono is advised)
+    params:
+      temperature: 1.0
+      feature_sim: "cosine"  # "cosine" (DEFAULT) ,'negative l1', 'negative l2'
+      #label_diff: "scalar difference"  # "l1", "scalar difference" (DEFAULT)
+      # ignore_ids: False  # For ablation study and tests
+      #normalization: "pair balanced positive" #  "pair balanced", "anchor balanced", "pair balanced positive" (DEFAULT) 
+
+
+# ## Rank N-Contrastive on SCORE "classio"
+#   RnC_score:  # Rank N Contrasive Loss 
+#   # label=score;  id=score_type e.g. "PIPII_JSN"
+#     name: "RnC_score"     # or OnlineBatchAllTripletLoss
+#     params:
+#       temperature: 1.0
+#       feature_sim: "cosine"  # "cosine" or "l2"
+#       label_diff: "l1"  # "l1" or "scalar difference"
+#       ignore_ids: False  # Here this might make sense. But better keep seperate
+
+
+## Rank N-Contrastive on SCORE "MONO"
+  RnC_score:  # Rank N Contrasive Loss 
+  # label=score;  id=score_type e.g. "PIPII_JSN"
+    name: "RnC_mono"     # or OnlineBatchAllTripletLoss
+    params:
+      temperature: 1.0
+      feature_sim: "cosine"  # "cosine" or "l2"
+      ignore_ids: False  # Here this might make sense. But better keep seperate
+
+REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: True 
+
+loss_weights:
+  lambda_y: !!float 0.0 # 1e-0  
+  lambda_z_RnC_time: 1.0   # with old DL not allowed
+  lambda_z_RnC_score: 1.0   # with old DL not allowed
+
+  # not active for now
+  lambda_x: !!float 0.0 # 1e2  
+  lambda_y_delta: 0.0      # Huber loss for same patient, ... 
+  lambda_y_reg_extra: 0.0  # An extra MSE Loss (makes only sense on top of Classification loss)
+  lambda_z:  0.0    
+  lambda_z_triplet_classes: 0.0   
+  lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
+  lambda_z_score_consistency_regularizer: 0.0 
+  lambda_z_triplet_MDP: 0.0   # with old DL not allowed
+
+
+
+
+
+
+#################################################################
+########################### MODEL ###############################
+#################################################################
+
+model_name: "ResNetNoAE + MultiHeadClassifier"
+
+model:
+  autoencoder:
+    arch: "resnet18"
+  classifier:
+    name: "Reg"  # Reg or LogReg or MixLogAndReg       
+    model_dct_keys_to_convert_to_lists: []
+    model_kw_requires_import:
+    - dropout_op
+    - nonlin
+    model_params:
+      depth: 1
+      dropout_op: torch.nn.Dropout
+      dropout_op_kwargs.p: 0.0
+      hidden_dim: 512
+      nonlin: torch.nn.ReLU
+      nonlin_kwargs: {}
+      norm_op_kwargs: {}
+      normalization: layer
+  postprocessor_recon:
+    name: PostprocessingGrayScaleMaker_v3 # Null #PostprocessingGrayScaleMaker # Null #PostprocessingGrayScaleMaker_v2
+    params:
+      output_function: "sigmoid" #"sigmoid" #   "None"   # "sigmoid" "relu" "None"
+  preprocessor:
+    name: ResNetRGBMaker # ResNetRGBMaker  # Null ResNetRGBMaker
+  score_type_encoder:
+    name: null # "ROI_type_encoder"  # null  # ROI_type_encoder
+  #-.-----------------------  
+  # score_estimator: # Only used when  MixLogAndReg # Comment out -> Not used
+  #   model_params:
+  #     bias: True  
+
+
+
+
+#################################################################
+########################### OPTIMIZER ###########################
+#################################################################
+
+optimizer_name: "torch.optim.AdamW"
+
+optimizer_params:
+  learning_rates:
+    "auto_encoder":  !!float  2.0e-04
+    heads: !!float  2.0e-05
+    score_estimators: !!float 5.0e-3
+  other_optimizer_kwargs:
+    weight_decay: !!float 1.0e-6
+
+
+
+scheduler_name: "torch.optim.lr_scheduler.ReduceLROnPlateau"
+scheduler_params:
+   mode: 'min'
+   verbose: True
+
+
+
+#################################################################
+########################### TRANSFORMS ##########################
+#################################################################
+
+
+transforms:
+  drop_img_original: False
+  ACTIVATE_TRIPLET_TRAINING_TRANSFORMS: True
+
+
+  # --- output / channels / normalization ---
+  OUTPUT_DIM: [128, 128]
+
+  RBG_channels__bool: false
+  # Normalize__bool: true
+  # Normalize__mean: [0.485, 0.456, 0.406]
+  # Normalize__std:  [0.229, 0.224, 0.225]
+
+  # --- geometry (applied per-view before crop) ---
+  RandAffined__bool: True
+  RandAffined__prob: 0.8
+  RandAffined__rotation_range_degree: 10
+  RandAffined__translate_range_pixels: 19
+  RandAffined__scale_range: 0.1
+  RandAffined__shear_range: null   # e.g., [-0.05, 0.05] to enable
+
+  Rand2DElasticd__bool: false
+  Rand2DElasticd__prob: 0.2
+  Rand2DElasticd__spacing: 12
+  Rand2DElasticd__magnitude: 2.73
+  # Rand2DElasticd__shear_range: null  # not used in current code path
+
+  # 
+  # RandFlipd__bool: false
+  # RandFlipd__prob: 0.5
+
+  # --- photometric (per-view, after crop, before final normalize) ---
+  RandScaleIntensityd__bool: True
+  RandScaleIntensityd__prob: 0.5
+  RandScaleIntensityd__factors: [-0.1, 0.1]
+
+  RandShiftIntensityd__bool: True
+  RandShiftIntensityd__prob: 0.5
+  RandShiftIntensityd__offsets: [-0.1, 0.1]
+
+
+  RandAdjustContrastd__bool: True
+  RandAdjustContrastd__prob: 0.5
+  RandAdjustContrastd__gamma: [0.7, 1.5]
+  RandAdjustContrastd__invert_image: False
+
+  RandHistogramShiftd__bool: False
+  RandHistogramShiftd__prob: 0.5
+  RandHistogramShiftd__num_control_points: [5,15]
+
+  # --- blur / noise / occlusion (per-view) ---
+  RandGaussianSmoothd__bool: True
+  RandGaussianSmoothd__prob: 0.5
+  RandGaussianSmoothd__sigma: [0.3, 0.8]
+
+  RandGaussianNoised__bool: True
+  RandGaussianNoised__prob: 0.5
+  RandGaussianNoised__std: 0.02
+
+  RandCoarseDropoutd__bool: False
+  RandCoarseDropoutd__prob: 1.0
+  RandCoarseDropoutd__holes: 3
+  RandCoarseDropoutd__spatial_size: [8, 8]   # use [8,8,4] for 3D
+  RandCoarseDropoutd__fill_value: 0.0  
+
+  Clamp01__bool: true  
+
+#################################################################
+###################### AE/Contrastive transforms #################
+#################################################################
+
+AE_transform: 
+  name: Null # GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
+  GaussianNoise_sigma: !!float 1.0e-05
+
+
+Contrastive_transform: 
+  name: GaussianNoiseWithClip # Null # GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
+  GaussianNoise_sigma: !!float 1.0e-05
+
+
+
+#################################################################
+########################### DATA SETTINGS #######################
+#################################################################
+
+data:
+
+
+
+  score_groups:
+    ALL: ['PIPIII']
+
+    # H_MSCPIPIII_JSN_ERO:  ["PIPIII", "MCPIII", 'PIPIIIED', 'PIPIIIEP', 'MCPIIIED', 'MCPIIIEP']
+
+    # ALL: ['IPED', 'IPEP', 
+    #       'MTPIED', 'MTPIEP', 'MTPIIED', 'MTPIIEP', 'MTPIIIED', 'MTPIIIEP', 'MTPIVED', 'MTPIVEP', 'MTPVED', 'MTPVEP', 
+    #       'CMCIII', 'CMCIV', 'CMCV', 
+    #       'MCPI', 'MCPII', 'MCPIII', 'MCPIV', 'MCPV', 
+    #       'PIPII', 'PIPIII', 'PIPIV', 'PIPV', 
+    #       'IP', 
+    #       'MTPI', 'MTPII', 'MTPIII', 'MTPIV', 'MTPV', 
+    #       'IPIED', 'IPIEP', 
+    #       'MCPIED', 'MCPIEP', 'MCPIIED', 'MCPIIEP', 'MCPIIIED', 'MCPIIIEP', 'MCPIVED', 'MCPIVEP', 'MCPVED', 'MCPVEP', 
+    #       'PIPIIED', 'PIPIIEP', 'PIPIIIED', 'PIPIIIEP', 'PIPIVED', 'PIPIVEP', 'PIPVED', 'PIPVEP',
+    #       'Rad_Carp', 'Sca_Cap', 'Tra_Sca',
+    #       'RadiusE', 'ScaphE', 'TrapE', 'UlnaE', 'Base_MCIE', 'LunatE'
+    #      ]
+
+
+
+
+  #"mean_round_delta_bin" # "mean_ceil" # "median_score"  Null  "delta_range"   "delta_buckets" "mean_ceil"  "mean_round" "delta_bin"
+  patient_level_class_balance_aggregation_rule: "mean_ceil"   # "mean_round_delta_bin" 
+  delta_buckets_k: 5
+
+  enable_tSLR: False
+  tSLR_time_scale:  0.0  
+  tSLR_forward_scale: 1.0
+  tSLR_backward_scale: 1.0
+
+
+    # options for how_to_deal_with_surgery:
+    # - "exclude"
+    # - "keep as is"
+    # - "keep: map over limit to limit plus one"
+    # - "keep: map over limit to limit"
+  how_to_deal_with_surgery: exclude
+  image_path_folder:
+  - /home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/H_patches_size1.5/
+  - /home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/F_patches_size1.5/
+  pattern: '*/*.npy'
+
+
+
+  # network_score_groups:  only important for MTAN
+  #   ERO_P: ["IPIEP", "PIPIIEP", "PIPIIIEP", "PIPIVEP", "PIPVEP",   # Hand no wrist
+  #           "MCPIEP", "MCPIIEP", "MCPIIIEP", "MCPIVEP", "MCPVEP",  # Hand no wrist
+  #           "MTPIEP",                                              # Foot 
+  #           "IPEP",
+  #           "MTPIIEP", "MTPIIIEP", "MTPIVEP", "MTPVEP",
+  #   ]
+  #   ERO_D: ["IPIED", "PIPIIED", "PIPIIIED", "PIPIVED", "PIPVED",
+  #           "MCPIED", "MCPIIED", "MCPIIIED", "MCPIVED", "MCPVED",  # Hand
+  #           "MTPIED",                                              # Foot 
+  #           "MTPIIED", "MTPIIIED", "MTPIVED", "MTPVED",
+  #           "IPED"
+  #   ]
+
+  #   JSN: ["PIPII", "PIPIII", "PIPIV", "PIPV",               # H_JSN
+  #         "MCPI", "MCPII", "MCPIII", "MCPIV", "MCPV",       # H_JSN 
+  #         "CMCIII", "CMCIV", "CMCV",                        # H_JSN
+  #         "MTPI", "MTPII", "MTPIII", "MTPIV", "MTPV", "IP"  # F_JSN
+  #   ]
+  #   # # ERO WRIST
+  #   # H_ERO_BASE_MC:   ["Base_MCIE"]
+  #   # H_ERO_LUNATE:    ["LunatE"]
+  #   # H_ERO_RADIUS:    ["RadiusE"]
+  #   # H_ERO_SCAPHOID:  ["ScaphE"]
+  #   # H_ERO_TRAPEZIUM: ["TrapE"]
+  #   # H_ERO_ULNA:      ["UlnaE"]
+
+
+  #   # #H_JSN_CARPAL_JOINTS:     
+  #   # H_JSN_Rad_Carp:          ["Rad_Carp"]
+  #   # H_JSN_Tra_Sca:           ["Tra_Sca"]
+  #   # H_JSN_Sca_Cap:           ["Sca_Cap"]
+
+
+  classifier_head_infos:
+    # Hand JSN---------------
+    PIPII:
+      out_dim: 5
+      score_types:
+        - PIPII
+    PIPIII:
+      out_dim: 5
+      score_types:
+        - PIPIII
+    PIPIV:
+      out_dim: 5
+      score_types:
+        - PIPIV
+    PIPV:
+      out_dim: 5
+      score_types:
+        - PIPV
+    MCPI:
+      out_dim: 5
+      score_types:
+        - MCPI
+    MCPII:
+      out_dim: 5
+      score_types:
+        - MCPII
+    MCPIII:
+      out_dim: 5
+      score_types:
+        - MCPIII
+    MCPIV:
+      out_dim: 5
+      score_types:
+        - MCPIV
+    MCPV:
+      out_dim: 5
+      score_types:
+        - MCPV
+    CMCIII:
+      out_dim: 5
+      score_types:
+        - CMCIII
+    CMCIV:
+      out_dim: 5
+      score_types:
+        - CMCIV
+    CMCV:
+      out_dim: 5
+      score_types:
+        - CMCV
+
+    # ---Hand JSN Wrist
+    # Rad_Carp:
+    #   out_dim: 5
+    #   score_types:
+    #     - Rad_Carp
+    # Sca_Cap:
+    #   out_dim: 5
+    #   score_types:
+    #     - Sca_Cap
+    # Tra_Sca:
+    #   out_dim: 5
+    #   score_types:
+    #     - Tra_Sca
+    
+        
+    # Foot JSN ---------------
+    MTPI:
+      out_dim: 5
+      score_types:
+        - MTPI
+    MTPII:
+      out_dim: 5
+      score_types:
+        - MTPII
+    MTPIII:
+      out_dim: 5
+      score_types:
+        - MTPIII
+    MTPIV:
+      out_dim: 5
+      score_types:
+        - MTPIV
+    MTPV:
+      out_dim: 5
+      score_types:
+        - MTPV
+    IP:
+      out_dim: 5
+      score_types:
+        - IP
+
+    # Hand ERO  ---------------
+    IPIED:
+      out_dim: 6
+      score_types:
+        - IPIED
+    IPIEP:
+      out_dim: 6
+      score_types:
+        - IPIEP
+    MCPIED:
+      out_dim: 6
+      score_types:
+        - MCPIED
+    MCPIEP:
+      out_dim: 6
+      score_types:
+        - MCPIEP
+    MCPIIED:
+      out_dim: 6
+      score_types:
+        - MCPIIED
+    MCPIIEP:
+      out_dim: 6
+      score_types:
+        - MCPIIEP
+    MCPIIIED:
+      out_dim: 6
+      score_types:
+        - MCPIIIED
+    MCPIIIEP:
+      out_dim: 6
+      score_types:
+        - MCPIIIEP
+    MCPIVED:
+      out_dim: 6
+      score_types:
+        - MCPIVED
+    MCPIVEP:
+      out_dim: 6
+      score_types:
+        - MCPIVEP
+    MCPVED:
+      out_dim: 6
+      score_types:
+        - MCPVED
+    MCPVEP:
+      out_dim: 6
+      score_types:
+        - MCPVEP
+    PIPIIED:
+      out_dim: 6
+      score_types:
+        - PIPIIED
+    PIPIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIEP
+    PIPIIIED:
+      out_dim: 6
+      score_types:
+        - PIPIIIED
+    PIPIIIEP:
+      out_dim: 6
+      score_types:
+        - PIPIIIEP
+    PIPIVED:
+      out_dim: 6
+      score_types:
+        - PIPIVED
+    PIPIVEP:
+      out_dim: 6
+      score_types:
+        - PIPIVEP
+    PIPVED:
+      out_dim: 6
+      score_types:
+        - PIPVED
+    PIPVEP:
+      out_dim: 6
+      score_types:
+        - PIPVEP
+    # Hand ERO wrist: 
+    # Base_MCIE:
+    #   out_dim: 6
+    #   score_types:
+    #     - Base_MCIE
+    # LunatE:
+    #   out_dim: 6
+    #   score_types:
+    #     - LunatE
+    # RadiusE:
+    #   out_dim: 6
+    #   score_types:
+    #     - RadiusE
+    # ScaphE:
+    #   out_dim: 6
+    #   score_types:
+    #     - ScaphE
+    # TrapE:
+    #   out_dim: 6
+    #   score_types:
+    #     - TrapE
+    # UlnaE:
+    #   out_dim: 6
+    #   score_types:
+    #     - UlnaE
+
+
+
+
+    # Foot ERO ---------------
+    MTPIEP:
+      out_dim: 6
+      score_types:
+        - MTPIEP
+    MTPIED:
+      out_dim: 6
+      score_types:
+        - MTPIED
+    MTPIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIEP
+    MTPIIIEP:
+      out_dim: 6
+      score_types:
+        - MTPIIIEP
+    MTPIVEP:
+      out_dim: 6
+      score_types:
+        - MTPIVEP
+    MTPVEP:
+      out_dim: 6
+      score_types:
+        - MTPVEP
+    MTPIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIED
+    MTPIIIED:
+      out_dim: 6
+      score_types:
+        - MTPIIIED
+    MTPIVED:
+      out_dim: 6
+      score_types:
+        - MTPIVED
+    MTPVED:
+      out_dim: 6
+      score_types:
+        - MTPVED
+    IPEP:
+      out_dim: 6
+      score_types:
+        - IPEP
+    IPED:
+      out_dim: 6
+      score_types:
+        - IPED        
+
+
+
+  score_path_F: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_feet.csv
+  score_path_H: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/autoscoRA_hands.csv
+  splits_file: /home/cwatzenboeck/data/AutoPIX_local_data/tabular/autoscoRA_data/splits_info/df_patient_ids_split.csv
+  sum_wrist_points: false
+  surgery_patientids_list_path_json: null
+  use_splits_file: true
+

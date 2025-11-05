@@ -97,6 +97,7 @@ def train_loop_AE_v4(
     patience: int = 10,
     run_full_epochs: bool = False,
     transform=lambda x: x,
+    transform_Contrastive=lambda x: x,
     classes: Optional[List[str]] = None,
     log_model_full: bool = False,
     log_model_state_dct: bool = False,
@@ -145,6 +146,7 @@ def train_loop_AE_v4(
             model_score_estimator=model_score_estimator,
             loss_fn_dict=loss_fn_dict,
             transform=transform,
+            transform_Contrastive=transform_Contrastive,
             device=device,
             task_type_y=task_type_y
         )
@@ -292,14 +294,15 @@ def train_loop_AE_v4(
                     _log_text_atomic(info_txt, nice_basename="checkpoint_info.yaml")
 
                 # artifacts: save best classification report & CM
-                mlflow.log_dict(
-                    val_metrics_dct["classification_report"],
-                    "metrics/best_val_classification_report.json",
-                )
-                mlflow.log_dict(
-                    val_metrics_dct["confusion_matrix"],
-                    "metrics/best_val_confusion_matrix.json",
-                )
+                if model_classifier is not None:
+                    mlflow.log_dict(
+                        val_metrics_dct["classification_report"],
+                        "metrics/best_val_classification_report.json",
+                    )
+                    mlflow.log_dict(
+                        val_metrics_dct["confusion_matrix"],
+                        "metrics/best_val_confusion_matrix.json",
+                    )
             else:
                 epochs_no_improve += 1
                 if epochs_no_improve >= patience:
@@ -846,40 +849,41 @@ def val_epoch_AE_v4(
     all_preds_np_classes = all_preds_np_classes.astype(np.int64)
     all_labels_np = all_labels_np.astype(np.int64)
 
-    metrics_ = calculate_some_classification_metrics(
-        all_preds_np_classes, all_labels_np, calc_ICC3=calc_ICC3,
-    )
-    metrics.update(metrics_)
-
-    if (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
-        # regression-style metrics on the raw (non-rounded) predictions
-        regression_metrics = calculate_some_classification_metrics(
-            all_preds_np, all_labels_np, calc_ICC3=calc_ICC3,
-            add_classification_metrics=False, add_spearman=True, add_kappa=False,
+    if model_classifier is not None:
+        metrics_ = calculate_some_classification_metrics(
+            all_preds_np_classes, all_labels_np, calc_ICC3=calc_ICC3,
         )
-        metrics.update(regression_metrics)
+        metrics.update(metrics_)
 
-    if task_type_y == "classification":
-        # ---- top-2 accuracy --------------------------------------------------
-        top2 = np.argsort(all_probs_np, axis=1)[:, -2:]
-        top2_correct = sum(label in top2[i] for i, label in enumerate(all_labels_np))
-        metrics["top2_accuracy"] = top2_correct / len(all_labels_np)
+        if (task_type_y == "regression") or (task_type_y == "classification_regression_mix"):
+            # regression-style metrics on the raw (non-rounded) predictions
+            regression_metrics = calculate_some_classification_metrics(
+                all_preds_np, all_labels_np, calc_ICC3=calc_ICC3,
+                add_classification_metrics=False, add_spearman=True, add_kappa=False,
+            )
+            metrics.update(regression_metrics)
 
-    # ---- confusion matrix & classification report -----------------------
-    cm = confusion_matrix(all_labels_np, all_preds_np_classes)
-    metrics["confusion_matrix"] = cm.tolist()
+        if task_type_y == "classification":
+            # ---- top-2 accuracy --------------------------------------------------
+            top2 = np.argsort(all_probs_np, axis=1)[:, -2:]
+            top2_correct = sum(label in top2[i] for i, label in enumerate(all_labels_np))
+            metrics["top2_accuracy"] = top2_correct / len(all_labels_np)
 
-    if classes is not None:
-        labels = list(range(len(classes)))
-        report = classification_report(
-            all_labels_np, all_preds_np_classes, labels=labels, target_names=classes,
-            output_dict=True, zero_division=0.0,
-        )
-    else:
-        report = classification_report(
-            all_labels_np, all_preds_np_classes, output_dict=True, zero_division=0.0
-        )
-    metrics["classification_report"] = report
+        # ---- confusion matrix & classification report -----------------------
+        cm = confusion_matrix(all_labels_np, all_preds_np_classes)
+        metrics["confusion_matrix"] = cm.tolist()
+
+        if classes is not None:
+            labels = list(range(len(classes)))
+            report = classification_report(
+                all_labels_np, all_preds_np_classes, labels=labels, target_names=classes,
+                output_dict=True, zero_division=0.0,
+            )
+        else:
+            report = classification_report(
+                all_labels_np, all_preds_np_classes, output_dict=True, zero_division=0.0
+            )
+        metrics["classification_report"] = report
 
     # ------------------------------------------------------------------
     # 4) Optionally return per-sample outputs
@@ -1308,6 +1312,7 @@ def training_epoch_AE_v4(
     model_classifier=None,
     model_score_estimator=None,
     transform=lambda x: x,
+    transform_Contrastive=lambda x: x,
     device="cuda",
     debugging: bool = False, 
     task_type_y: Literal["classification","regression", "classification_regression_mix"]="classification"
@@ -1410,7 +1415,7 @@ def training_epoch_AE_v4(
             # -- (denoising-)autoencoder ---------------------------------------------------- #
             X_pred, z = model_AE(transform(X), s_type)       # ONE forward pass
             if X_pos is not None: 
-                _, z_positive  = model_AE(X_pos, score_types=s_type)   # Could add transform(X_pos) 
+                _, z_positive  = model_AE(transform_Contrastive(X_pos), score_types=s_type)   # Could add transform(X_pos) 
                                                              # as well but should not matter. 
                                                              # Usually denoising is already trained before
             else: 

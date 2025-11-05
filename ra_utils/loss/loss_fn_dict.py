@@ -34,11 +34,14 @@ def get_loss_fn_dict(config, device="cuda"):
     dummy3 = DummyReturnZeroLossMulti(device=device, size=3)    
 
     # Loss on the score 
-    lambda_y=config.get('loss_weights', {}).get('lambda_y', 0.0)    
-    loss_fn_y = get_score_loss_function(config["loss"]["score"])
+    lambda_ = config.get('loss_weights', {}).get('lambda_y', 0.0)
+    if lambda_ < 1.0e-8: 
+        loss_fn_ = dummy
+    else: 
+        loss_fn_ = get_score_loss_function(config["loss"]["score"])
     loss_dct_y = {
-            "function": loss_fn_y, 
-            "lambda": lambda_y, 
+            "function": loss_fn_, 
+            "lambda": lambda_, 
             "options": config["loss"].get("score", {}).get("options", {})
         }
     

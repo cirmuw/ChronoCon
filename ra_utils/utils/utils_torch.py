@@ -99,6 +99,8 @@ def collect_unique_named_parameters(models):
     seen = set()
     named = []
     for m in models:
+        if m is None:
+            continue
         for n, p in m.named_parameters():
             if id(p) in seen:
                 continue

@@ -47,11 +47,11 @@ def main():
 
     # Load the configuration
     config, config_name, config_originals, raw_config_content = ra_utils.utils.config_parser.load_config(
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev.yml", 
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/Exp31_hps/dev_triplet.yml",
-        # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/36_all_but_wrist/MTAN_r01_debugging.yml",
-        #default_config = "/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/DEV_DELTA/dev_PIP_MCPv3.yml",
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
+        #
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config.yml",
+        #
+        #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config_cleaned.yml",
+        #
         debugging_in_jupyter_nb=False, silencium=False, return_config_name=True, 
         return_originals=True,
         return_raw_config=True

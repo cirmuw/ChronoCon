@@ -475,8 +475,13 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     models, config = build_models_v3(config)
     model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
 
+    if config.get("REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL", False):
+        print("Removing regression or classification model")
+        model_c = None
+        model_score_estimator = None
+
     # Load model weights. Be strict if the training is skipped!. 
-    if config.get("SKIP_TRAINING", False) or config["model_initialization"].get("STRICT_MODEL_LOAD", False): 
+    if config.get("SKIP_TRAINING", False) or config.get("model_initialization", {}).get("STRICT_MODEL_LOAD", False): 
         strict_model_load = True
     else: 
         strict_model_load = False
@@ -486,9 +491,11 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
                                                strict = strict_model_load
                                                )
     model_AE.to(device)
-    model_c.to(device)
-    if model_score_estimator is not None: 
+    if model_c is not None: 
+        model_c.to(device)
+    if model_score_estimator is not None:
         model_score_estimator.to(device)
+
 
     loss_fn_dict = ra_utils.loss.loss_fn_dict.get_loss_fn_dict(config, device=device)
     pprint(loss_fn_dict)
@@ -529,6 +536,18 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     else: 
         raise NotImplementedError(f"{AE_transform_name = }")
 
+
+    Contrastive_transform_name = config.get("Contrastive_transform", {}).get("name")
+    if Contrastive_transform_name == None: 
+        transform_Contrastive = lambda x: x
+        print("NO Contrastive transform!!!")
+    elif Contrastive_transform_name == "GaussianNoiseWithClip":    
+        sigma = config.get("Contrastive_transform", {}).get("GaussianNoise_sigma", 0.05)
+        transform_Contrastive = v2.GaussianNoise(mean=0, sigma = sigma, clip=True)
+    else: 
+        raise NotImplementedError(f"{Contrastive_transform_name = }")
+
+
     train_dataloaders = {k: data[k]["train_loader"] for k in data.keys()}
     train_dataloaders_with_val_transforms = {k: data[k]["train_loader_with_val_transforms"] for k in data.keys()}
     val_loaders = {k: data[k]["val_loader"] for k in data.keys()}
@@ -555,6 +574,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             epochs=epochs,
             patience=config["training"].get("early_stopping_tol", 100),
             transform=transform_AE,
+            transform_Contrastive=transform_Contrastive,
             log_model_full=config.get("SAVE_MODEL_FULL", False),
             log_model_state_dct = config.get("SAVE_MODEL_state_dct", False),
             verbose=3,
