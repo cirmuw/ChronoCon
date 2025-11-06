@@ -659,6 +659,7 @@ class EncoderDecoderNetwork(nn.Module):
         self.encoder = encoder
         self.decoder = decoder
         self.reducer = reducer
+        self.latent_dim = self.encoder.latent_dim
         
         
     def forward(self, x, *args, **kwargs):  # Other model is called with signature (img, score_types)
@@ -881,9 +882,9 @@ def build_ResNetAutoEncoder_v2p1(arch="resnet18", output_function="sigmoid"):
     return net
     
 class ResNetAutoEncoder(nn.Module):
-    def __init__(self, arch='resnet18'):
+    def __init__(self, arch='resnet18', out_ch=3):
         super().__init__()
-        out_ch=3
+        #out_ch=3
         if arch == 'resnet18':
             self.encoder = resnet18(pretrained=True)
             self.decoder = resnet18_decoder(out_ch=out_ch)
@@ -896,9 +897,9 @@ class ResNetAutoEncoder(nn.Module):
         else:
             raise NotImplementedError
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.latend_dim = self.encoder.fc.in_features
+        self.latent_dim = self.encoder.fc.in_features
 
-    def forward(self, x): # , *args, **kwargs):  # Other model is called with signature (img, score_types)
+    def forward(self, x, *args, **kwargs):  # Other model is called with signature (img, score_types)
         z = self.encoder(x)
         z_out = self.avgpool(z)
         z_out = torch.flatten(z_out, 1)

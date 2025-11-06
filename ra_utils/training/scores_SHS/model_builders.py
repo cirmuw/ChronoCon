@@ -18,7 +18,8 @@ from ra_utils.networks.architecture import (
     ResNetAutoEncoder, 
     ResNetNOAutoEncoder,
     build_ResNetAutoEncoder_v2,
-    build_ResNetAutoEncoder_v2p1
+    build_ResNetAutoEncoder_v2p1,
+   # build_ResNetAutoEncoder_v2p2
 )
 
 import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_mtan
@@ -306,6 +307,19 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
     elif model_name ==  "ResNetAE_v2p1 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = build_ResNetAutoEncoder_v2p1(**AE_kwargs)  
+        model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
+        latend_dim = model_AE.latent_dim        
+        cfg = config["model"]["classifier"]
+        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
+                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
+        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+
+    elif model_name ==  "ResNetAE_v2p2 + MultiHeadClassifier": 
+        AE_kwargs = config["model"]["autoencoder"]
+        #model_AE = build_ResNetAutoEncoder_v2p2(**AE_kwargs)  
+        model_AE = ResNetAutoEncoder(**AE_kwargs, out_ch=1)
+        
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim        
         cfg = config["model"]["classifier"]

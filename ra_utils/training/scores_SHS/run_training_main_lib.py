@@ -416,7 +416,7 @@ from copy import deepcopy
 def build_models_v3(config: dict):
     classifier_head_infos, attention_paths_dct, config_updated = check_config_consistency_and_partially_make_consistent(config)
     model_name = config_updated["model_name"]
-    model_AE, model_c,  = build_models_AE_v1_and2(
+    model_AE, model_c  = build_models_AE_v1_and2(
                                         model_name, config_updated, 
                                         classifier_head_infos = classifier_head_infos, 
                                         attention_paths_dct = attention_paths_dct
