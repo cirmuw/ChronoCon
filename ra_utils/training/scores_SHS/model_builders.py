@@ -29,65 +29,56 @@ def count_parameters(model):
 
 
 
+def _build_classifier_head(config: dict, classifier_head_infos: dict, latent_dim: int):
+    """Helper function to build classifier head, avoiding code duplication."""
+    cfg = config["model"]["classifier"]
+    classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(
+        cfg["model_params"], 
+        model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+        model_kw_requires_import=cfg.get("model_kw_requires_import", [])
+    )
+    return ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latent_dim, mlp_kwargs=classifier_kwargs)
+
+
 def build_models_AE(model_name: str, config: dict, classifier_head_infos: dict):
     if model_name == "UNetMTANAE + MultiHeadClassifier":
         model_AE = build_MTANAE(in_channels=1, out_channels=1)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=480)
 
     elif model_name ==  "ResNetAE + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetAutoEncoder(**AE_kwargs)
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetAE_v2 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = build_ResNetAutoEncoder_v2(**AE_kwargs)  
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetAE_v2p1 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = build_ResNetAutoEncoder_v2p1(**AE_kwargs)  
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetNoAE + MultiHeadClassifier":
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetNOAutoEncoder(**AE_kwargs)
         latend_dim = model_AE.encoder.fc.in_features  # hack (fc is actually never called)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
     
     elif model_name ==  "UNetMTANAEv2 + MultiHeadClassifier":
         raise NotImplementedError(f"{model_name = }")     
-
+    
     elif model_name ==  "ResNetMTANAE + MultiHeadClassifier":
         raise NotImplementedError(f"{model_name = }")     
     
     else:
         raise NotImplementedError()
     
-    return model_AE, model_c     
+    return model_AE, model_c
 
 
 
@@ -108,11 +99,7 @@ def build_models_AE_v2(model_name: str, config: dict,
             )
         
         # classifier:
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=480,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=480)
 
     if model_name == "ResNetMTANAE + MultiHeadClassifier":
         # Encoder / Autoencoder
@@ -122,11 +109,7 @@ def build_models_AE_v2(model_name: str, config: dict,
                                                                                         **model_kwargs)
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     else:
         raise NotImplementedError(f"{model_name = }")
@@ -164,11 +147,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         latent_dim = model_AE.latent_dim 
 
         # classifier:
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latent_dim,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latent_dim)
 
     elif model_name == "ResNetMTANAE + MultiHeadClassifier":
         # Encoder / Autoencoder
@@ -180,11 +159,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
 
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name == "ResNetMTANAEv2 + MultiHeadClassifier":
         # Encoder / Autoencoder
@@ -195,11 +170,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
 
     elif model_name == "ResNetMTANAEv3 + MultiHeadClassifier":
@@ -211,11 +182,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
 
     elif model_name == "ResNetMTANAEv4 + MultiHeadClassifier":
@@ -227,11 +194,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
 
     elif model_name == "ResNetMTANAEv5 + MultiHeadClassifier":
@@ -243,11 +206,7 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         # classifier:
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
 
 
@@ -276,44 +235,28 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
     elif model_name == "UNetMTANAE + MultiHeadClassifier":
         model_AE = build_MTANAE(in_channels=1, out_channels=1)
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=model_AE.latent_dim,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=model_AE.latent_dim)
 
     elif model_name ==  "ResNetAE + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetAutoEncoder(**AE_kwargs)
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetAE_v2 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = build_ResNetAutoEncoder_v2(**AE_kwargs)  
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetAE_v2p1 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = build_ResNetAutoEncoder_v2p1(**AE_kwargs)  
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim        
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetAE_v2p2 + MultiHeadClassifier": 
         AE_kwargs = config["model"]["autoencoder"]
@@ -322,22 +265,14 @@ def build_models_AE_v1_and2(model_name: str, config: dict,
         
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim        
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim, mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
 
     elif model_name ==  "ResNetNoAE + MultiHeadClassifier":
         AE_kwargs = config["model"]["autoencoder"]
         model_AE = ResNetNOAutoEncoder(**AE_kwargs)
         model_AE = add_preprocessor_postprocessor_roi_type_encoder_to_model_AE(model_AE, config)
         latend_dim = model_AE.latent_dim
-        cfg = config["model"]["classifier"]
-        classifier_kwargs = ra_utils.utils.utils.model_parameter_imports_(cfg["model_params"], 
-                                model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
-                                model_kw_requires_import=cfg.get("model_kw_requires_import", []))
-        model_c = ClassifierHeads(classifier_head_infos=classifier_head_infos, latent_dim=latend_dim,  mlp_kwargs=classifier_kwargs)
+        model_c = _build_classifier_head(config, classifier_head_infos, latent_dim=latend_dim)
     
     else:
         raise NotImplementedError(f"{model_name = }")

@@ -84,6 +84,7 @@ def get_triplet_loss_fn_MDP(cfg: dict = {}):
 
 import ra_utils.loss.loss_RnC_with_ranks_and_ids
 import ra_utils.loss.loss_RnCMono
+import ra_utils.loss.loss_DeltaHead
 
 def get_triplet_loss_RnCids(cfg: dict = {}):
     name = cfg.get("name")
@@ -100,7 +101,16 @@ def get_triplet_loss_RnCids(cfg: dict = {}):
 
 
 
-
+def get_delta_head_loss(cfg: dict = {}):
+    name = cfg.get("name")
+    params = cfg.get("params", {})
+    # print(f"loss for delta head: {name}; \n    params = {params}")
+    if name == None: 
+        return None
+    elif name == "DeltaHeadLoss":
+        return ra_utils.loss.loss_DeltaHead.DeltaHeadLoss(**params)
+    else: 
+        raise NotImplementedError(f"{name = }")
 
 
 def get_consistency_regularization_loss_fn(cfg: dict = {}):

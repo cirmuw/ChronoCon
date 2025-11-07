@@ -74,18 +74,156 @@ def model_interface_forward(model: nn.Module, batch: dict, device="cuda",
 #-------------------------    utils   -------------------------#
 #--------------------------------------------------------------#
 
+# make_mlp_OLD:: Makes little sense 
+# (Resnet has has as last part basically Conv -> norm -> ReLU)
+# for d=1 this then has another norm -> ReLU  so squeezes the representation ... 
+# ##### d =  1
+# Sequential(
+#   (0): Dropout(p=0.0, inplace=False)
+#   (1): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+#   (2): ReLU()
+#   (3): Linear(in_features=1024, out_features=1, bias=True)
+# )
+# --------------------
+# ##### d =  2
+# Sequential(
+#   (0): Dropout(p=0.0, inplace=False)
+#   (1): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+#   (2): ReLU()
+#   (3): Linear(in_features=1024, out_features=128, bias=True)
+#   (4): Dropout(p=0.0, inplace=False)
+#   (5): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+#   (6): ReLU()
+#   (7): Linear(in_features=128, out_features=1, bias=True)
+# )
+# --------------------
+# ##### d =  3
+# Sequential(
+#   (0): Dropout(p=0.0, inplace=False)
+#   (1): LayerNorm((1024,), eps=1e-05, elementwise_affine=True)
+#   (2): ReLU()
+# ...
+#   (10): ReLU()
+#   (11): Linear(in_features=128, out_features=1, bias=True)
+# )
+# --------------------
+
+
+# def make_mlp_OLD(
+#     latent_dim: int = 320,
+#     hidden_dim: int = 256,
+#     normalization: Literal["batch", "instance", "layer"] = "batch",
+#     norm_op_kwargs: dict = {},
+#     depth: int = 2,
+#     nonlin=nn.ReLU,
+#     nonlin_kwargs: dict = {},
+#     dropout_op: Optional[nn.Module] = nn.Dropout,
+#     dropout_op_kwargs: dict = {"p": 0.2},
+#     out_dim=1
+# ):
+#     def get_normalization_block(norm_dim: int = hidden_dim):
+#         if normalization == "batch":
+#             return nn.BatchNorm1d(norm_dim, **norm_op_kwargs)
+#         elif normalization == "layer":
+#             return nn.LayerNorm(norm_dim, **norm_op_kwargs)
+#         elif normalization == "instance":
+#             return nn.Sequential(
+#                 nn.Unflatten(1, (1, norm_dim)),  # ->  Nb, 1, hidden_dim
+#                 nn.InstanceNorm1d(1, **norm_op_kwargs),
+#                 nn.Flatten()  # -> Nb, hidden_dim
+#             )
+#         else: 
+#             raise NotADirectoryError(f"{normalization = }")
+
+#     mlp_layers = []
+
+#     # note that there was already a linear layer just before that in the reduction step # CW note true!!
+#     if depth >0:
+#         if dropout_op is not None:
+#             mlp_layers.append(dropout_op(**dropout_op_kwargs))
+#         mlp_layers.append(get_normalization_block(latent_dim))
+#         mlp_layers.append(nonlin(**nonlin_kwargs))
+
+#     if depth > 1:
+#         mlp_layers.append(nn.Linear(latent_dim, hidden_dim))
+#         if dropout_op is not None:
+#             mlp_layers.append(dropout_op(**dropout_op_kwargs))
+#         mlp_layers.append(get_normalization_block(hidden_dim))
+#         mlp_layers.append(nonlin(**nonlin_kwargs))
+
+#         for i in range(depth-2):
+#             mlp_layers.append(nn.Linear(hidden_dim, hidden_dim))
+#             if dropout_op is not None:
+#                 mlp_layers.append(dropout_op(**dropout_op_kwargs))
+#             mlp_layers.append(get_normalization_block(hidden_dim))
+#             mlp_layers.append(nonlin(**nonlin_kwargs))
+
+#         mlp_layers.append(nn.Linear(hidden_dim, out_dim))
+
+#     else:
+#         mlp_layers.append(nn.Linear(latent_dim, out_dim))
+
+#     return nn.Sequential(*mlp_layers)
+
+
+
+### This gives: 
+# ##### d =  1
+# Sequential(
+#   (0): Linear(in_features=1024, out_features=1, bias=True)
+# )
+# --------------------
+# ##### d =  2
+# Sequential(
+#   (0): Linear(in_features=1024, out_features=128, bias=True)
+#   (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+#   (2): ReLU()
+#   (3): Dropout(p=0.0, inplace=False)
+#   (4): Linear(in_features=128, out_features=1, bias=True)
+# )
+# --------------------
+# ##### d =  3
+# Sequential(
+#   (0): Linear(in_features=1024, out_features=128, bias=True)
+#   (1): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+#   (2): ReLU()
+#   (3): Dropout(p=0.0, inplace=False)
+#   (4): Linear(in_features=128, out_features=128, bias=True)
+#   (5): LayerNorm((128,), eps=1e-05, elementwise_affine=True)
+#   (6): ReLU()
+#   (7): Dropout(p=0.0, inplace=False)
+#   (8): Linear(in_features=128, out_features=1, bias=True)
+# )
+# --------------------
+
+
 def make_mlp(
     latent_dim: int = 320,
     hidden_dim: int = 256,
     normalization: Literal["batch", "instance", "layer"] = "batch",
     norm_op_kwargs: dict = {},
-    depth: int = 2,
+    depth: int = 1,
     nonlin=nn.ReLU,
     nonlin_kwargs: dict = {},
     dropout_op: Optional[nn.Module] = nn.Dropout,
     dropout_op_kwargs: dict = {"p": 0.2},
-    out_dim=1
+    out_dim: int = 1,
+    prepend_normalization: bool = False,
 ):
+    """
+    Note:
+      - depth=1 both produce:  (optional prepend norm/act) → Linear(latent→out)
+      - depth>=2: standard MLP with Linear→Norm→Act→(Dropout) blocks.
+      - prepend_normalization=True might make sense for "frozen encoder"
+    """
+
+    assert depth >= 1, f"{depth=} must be >= 1. 1 corresponds to no hidden layer"
+
+    # Defensive copies
+    norm_op_kwargs = dict(norm_op_kwargs)
+    nonlin_kwargs = dict(nonlin_kwargs)
+    dropout_op_kwargs = dict(dropout_op_kwargs)
+
     def get_normalization_block(norm_dim: int = hidden_dim):
         if normalization == "batch":
             return nn.BatchNorm1d(norm_dim, **norm_op_kwargs)
@@ -93,42 +231,49 @@ def make_mlp(
             return nn.LayerNorm(norm_dim, **norm_op_kwargs)
         elif normalization == "instance":
             return nn.Sequential(
-                nn.Unflatten(1, (1, norm_dim)),  # ->  Nb, 1, hidden_dim
+                nn.Unflatten(1, (1, norm_dim)),
                 nn.InstanceNorm1d(1, **norm_op_kwargs),
-                nn.Flatten()  # -> Nb, hidden_dim
+                nn.Flatten(),
             )
-        else: 
-            raise NotADirectoryError(f"{normalization = }")
+        else:
+            raise ValueError(f"Unknown normalization: {normalization = }")
 
     mlp_layers = []
 
-    # note that there was already a linear layer just before that in the reduction step # CW note true!!
-    if depth >0:
-        if dropout_op is not None:
-            mlp_layers.append(dropout_op(**dropout_op_kwargs))
+    # Optional initial normalization/activation (useful if encoder is frozen)
+    if prepend_normalization:
         mlp_layers.append(get_normalization_block(latent_dim))
-        mlp_layers.append(nonlin(**nonlin_kwargs))
+        #mlp_layers.append(nonlin(**nonlin_kwargs))   # MAKES MORE SENSE IF REMOVED RIGHT!!  -> if ReLU of encoder (e.g. ResNet) NO ReLU -> norm -> ReLU
+        #if dropout_op is not None:
+        #    mlp_layers.append(dropout_op(**dropout_op_kwargs))
 
-    if depth > 1:
-        mlp_layers.append(nn.Linear(latent_dim, hidden_dim))
-        if dropout_op is not None:
-            mlp_layers.append(dropout_op(**dropout_op_kwargs))
+    # depth = 0 or 1 → simple linear head
+    if depth <= 1:
+        mlp_layers.append(nn.Linear(latent_dim, out_dim))
+        return nn.Sequential(*mlp_layers)
+
+    # depth >= 2: first hidden block
+    mlp_layers.append(nn.Linear(latent_dim, hidden_dim))
+    mlp_layers.append(get_normalization_block(hidden_dim))
+    mlp_layers.append(nonlin(**nonlin_kwargs))
+    if dropout_op is not None:
+        mlp_layers.append(dropout_op(**dropout_op_kwargs))
+
+    # additional hidden blocks
+    for _ in range(depth - 2):
+        mlp_layers.append(nn.Linear(hidden_dim, hidden_dim))
         mlp_layers.append(get_normalization_block(hidden_dim))
         mlp_layers.append(nonlin(**nonlin_kwargs))
+        if dropout_op is not None:
+            mlp_layers.append(dropout_op(**dropout_op_kwargs))
 
-        for i in range(depth-2):
-            mlp_layers.append(nn.Linear(hidden_dim, hidden_dim))
-            if dropout_op is not None:
-                mlp_layers.append(dropout_op(**dropout_op_kwargs))
-            mlp_layers.append(get_normalization_block(hidden_dim))
-            mlp_layers.append(nonlin(**nonlin_kwargs))
-
-        mlp_layers.append(nn.Linear(hidden_dim, out_dim))
-
-    else:
-        mlp_layers.append(nn.Linear(latent_dim, out_dim))
+    # output layer
+    mlp_layers.append(nn.Linear(hidden_dim, out_dim))
 
     return nn.Sequential(*mlp_layers)
+
+
+
 
 #--------------------------------------------------------------#
 #-------------------------    Classes   -----------------------#

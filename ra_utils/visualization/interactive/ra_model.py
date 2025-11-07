@@ -80,32 +80,10 @@ from ra_utils.autoscora.autoscorRA_Pipeline.scoring.src.network import Custom_VG
 from ra_utils.utils.utils_SHS_scoring import get_classes
 
 # MTAN / AE models
-import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_mtan
-import ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_recon_mtan
-from ra_utils.mtan.im2im_pred.model_resnet_mtan.resnet_recon_mtan import (
-    MTANReconCls,
-    build_mtan_recon_cls,
-)
 
-from ra_utils.progressionlearning.models.MTANUNet import (
-    MTANRecUnet,
-    MTANRecUnet_v2,
-    MTANRecUnet_v3,
-)
-
-from ra_utils.progressionlearning.models.builder import (
-    build_MTANAE,
-    build_MTANAE_v2,
-)
-
-from ra_utils.training.scores_SHS.model_builders import (
-    build_models_AE,
-    build_models_AE_v1_and2,
-    build_models_AE_v2,
-)
 
 from ra_utils.training.scores_SHS.run_training_main_lib import (
-    check_config_consistency_and_partially_make_consistent,
+    #check_config_consistency_and_partially_make_consistent,
     maybe_partially_init_model_from_state_dict,
 )
 

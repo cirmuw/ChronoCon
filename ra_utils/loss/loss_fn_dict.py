@@ -9,7 +9,8 @@ from ra_utils.networks.loss_function import (
     get_consistency_regularization_loss_fn,
     get_triplet_loss_fn_WST, 
     get_triplet_loss_fn_MDP, 
-    get_triplet_loss_RnCids
+    get_triplet_loss_RnCids, 
+    get_delta_head_loss
 )
 import ra_utils.loss.online_mining_delta_loss
 from ra_utils.networks.architecture import (
@@ -144,6 +145,19 @@ def get_loss_fn_dict(config, device="cuda"):
         }
 
 
+    # lambda_ = config.get('loss_weights', {}).get('lambda_y_delta', 0.0)
+    # if lambda_ < 1.0e-8: 
+    #     loss_fn_ = dummy_with_dict
+    # else: 
+    #     loss_fn_ = get_triplet_loss_RnCids(config["loss"].get("RnC_score", {}))
+    # loss_dct_z_RnC_score = {
+    #         "function": loss_fn_, 
+    #         "lambda": lambda_, 
+    #         "options": config["loss"].get("RnC_score", {}).get("options", {})
+    #     }
+
+
+
     # lambda_ = config.get('loss_weights', {}).get('lambda_z_RnC_score_mono', 0.0)
     # if lambda_ < 1.0e-8: 
     #     loss_fn_ = dummy_with_dict
@@ -182,6 +196,19 @@ def get_loss_fn_dict(config, device="cuda"):
     }
 
 
+    lambda_ = config.get('loss_weights', {}).get('lambda_y_DeltaHead_loss', 0.0)
+    if lambda_ < 1.0e-8: 
+        loss_fn_ = dummy_with_dict
+    else: 
+        loss_fn_ = get_delta_head_loss(config["loss"].get("DeltaHead_loss", {}))
+    loss_dct_y_DeltaHead = {
+            "function": loss_fn_, 
+            "lambda": lambda_, 
+            "options": config["loss"].get("delta_head_loss", {}).get("options", {})
+        }
+
+
+
     lambda_y_reg_extra = config.get('loss_weights', {}).get('lambda_y_reg_extra', 0.0)
     if lambda_y_reg_extra < 1.0e-8: 
         loss_fn_y_reg_extra = dummy
@@ -199,6 +226,8 @@ def get_loss_fn_dict(config, device="cuda"):
         "y": loss_dct_y,
         "y_delta": loss_dct_y_delta,
         "y_reg_extra": loss_dct_y_reg_extra,
+        #
+        "y_DeltaHead": loss_dct_y_DeltaHead,
         # 
         "z": loss_dct_z,
         #

@@ -106,7 +106,8 @@ def train_loop_AE_v4(
     ES_metric_direction : Literal["min", "max"] = "min", 
     extract_ES_metric_from_validation_metrics_dct_OPTION: Literal[None, "classification_report.macro avg"] = None, 
     append_BEST_VAL_as_last: bool = False,
-    task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification"
+    task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification",
+    model_delta_estimator: Optional[torch.nn.Module] = None
 ):
 
     # How to get validation metric/loss for early stopping: 
@@ -144,11 +145,12 @@ def train_loop_AE_v4(
             train_dataloaders,
             model_classifier=model_classifier,
             model_score_estimator=model_score_estimator,
+            model_delta_estimator=model_delta_estimator,
             loss_fn_dict=loss_fn_dict,
             transform=transform,
             transform_Contrastive=transform_Contrastive,
             device=device,
-            task_type_y=task_type_y
+            task_type_y=task_type_y, 
         )
         metrics_Tr.append(train_metrics_dct)
 
@@ -168,7 +170,8 @@ def train_loop_AE_v4(
             classes=classes,
             return_all_predictions=False,
             calc_ICC3=1,
-            task_type_y=task_type_y
+            task_type_y=task_type_y, 
+            model_delta_estimator=model_delta_estimator
         )
         val_loss = val_metrics_dct["L"]
         metrics_Val.append(val_metrics_dct)
@@ -336,6 +339,7 @@ def val_epoch_AE_v4(
     loss_fn_dict: dict,
     model_classifier: Optional[torch.nn.Module] = None,
     model_score_estimator:  Optional[torch.nn.Module]= None,
+    model_delta_estimator: Optional[torch.nn.Module] = None,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -400,12 +404,16 @@ def val_epoch_AE_v4(
     lambda_z_RnC_score  = loss_fn_dict["z_RnC_score"]["lambda"]
     lambda_z_RnC_score_val_multiplier = loss_fn_dict["z_RnC_score"]["options"].get("validation_multiplier", 1.0)
 
+    # TODO: Add DeltaHead loss
+    loss_fn_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["function"]
+    lambda_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["lambda"]
+
 
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer",
-                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score" ]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead"]
 
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
@@ -563,7 +571,7 @@ def val_epoch_AE_v4(
                     ids      = s_type_np,
                     return_support = True,
                 )
-                num_terms_score = float(support_dct_RnC_score.get("num_valid_anchors", 0))
+                num_terms_score = float(support_dct_RnC_score.get("num_terms_normalization", 0))
                 contr_dct["Lz_RnC_score"] = contr_dct.get("Lz_RnC_score", 0.0) + (loss_z_RnC_score.item() * num_terms_score)
                 contr_dct["Lz_RnC_score_numTerms"] = contr_dct.get("Lz_RnC_score_numTerms", 0.0) + num_terms_score
 
@@ -1309,6 +1317,7 @@ def training_epoch_AE_v4(
     optimizer,
     dataloaders: dict,
     loss_fn_dict: dict,
+    model_delta_estimator: Optional[torch.nn.Module] = None,
     model_classifier=None,
     model_score_estimator=None,
     transform=lambda x: x,
@@ -1357,11 +1366,14 @@ def training_epoch_AE_v4(
     loss_fn_z_RnC_score = loss_fn_dict["z_RnC_score"]["function"]
     lambda_z_RnC_score = loss_fn_dict["z_RnC_score"]["lambda"]
 
+    loss_fn_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["function"]
+    lambda_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["lambda"]
+
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
-                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score"]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead"]
 
     # Checks
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
@@ -1697,6 +1709,7 @@ def evaluate_and_log_testset_results_AE_v4(
     dataloaders:            Dict[str, torch.utils.data.DataLoader],
     loss_fn_dict: dict, 
     model_score_estimator:  Optional[torch.nn.Module]= None,
+    model_delta_estimator: Optional[torch.nn.Module] = None,
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -1719,6 +1732,7 @@ def evaluate_and_log_testset_results_AE_v4(
         return_all_predictions=True,
         calc_ICC3=3,
         task_type_y=task_type_y,
+        model_delta_estimator=model_delta_estimator
     )
 
     # --------------------------------------------------- 1. Global metric log

@@ -28,6 +28,7 @@ import ra_utils.utils.utils
 import ra_utils.utils.utils_torch
 from pprint import pprint
 from ra_utils.networks.architecture import ContinuesScoreEsimator
+from copy import deepcopy
 
 # ------------------------------------------------------------------
 # utility helpers ---------------------------------------------------
@@ -374,7 +375,7 @@ def run_training(config: dict,  mlflow_logging=True, verbose=VerboseLevel.CHATTY
 ############################### V2  ####################################
 ########################################################################
 
-def check_config_consistency_and_partially_make_consistent(config : dict): 
+def check_config_consistency_and_partially_make_consistent(config : dict, return_delta_head_infos=False): 
     config = deepcopy(config)
     attention_paths_dct = config["data"].get("network_score_groups")
     if attention_paths_dct is None:
@@ -388,11 +389,15 @@ def check_config_consistency_and_partially_make_consistent(config : dict):
             v = classifier_head_infos[k]["out_dim"]
             classifier_head_infos[k]["out_dim"] = v + 1
 
+    # copy before maybe changing to reg task 
+    delta_head_infos = deepcopy(classifier_head_infos)
+
     # If pure regression -> output-dim has to be 1
     classifier_name = config["model"].get("classifier", {}).get("name", "LogReg")
     print(f"{classifier_name = }")
     if classifier_name == "Reg":
         for k in classifier_head_infos.keys():
+            classifier_head_infos[k]["out_dim"] = 1
             classifier_head_infos[k]["out_dim"] = 1
         config["task_type_y"] = "regression"
     elif classifier_name == "LogReg":
@@ -405,22 +410,71 @@ def check_config_consistency_and_partially_make_consistent(config : dict):
             classifier_head_infos[k]["out_dim"] += 1 # 0 is Regression output; 1...out_dim+1 = class logits                
 
 
+    # Infos for the delta head
+    delta_head_option = config["data"].get("delta_head_option", "trinary")
+    print(f"using {delta_head_option = }")
+    if delta_head_option == "binary":  # change vs no change
+        for k in delta_head_infos.keys():
+            delta_head_infos[k]["out_dim"] = 2 
+
+    if delta_head_option == "trinary":  # change vs no change
+        for k in delta_head_infos.keys():
+            delta_head_infos[k]["out_dim"] = 3  # A<B, A=B, A>B 
+        
+    if delta_head_option == "signed_classification":  # e.g. score 0, 1,2 --> delta -2,-1,0,..,2
+        delta_head_infos = deepcopy(classifier_head_infos)
+        for k in delta_head_infos.keys():
+            v = delta_head_infos[k]["out_dim"]
+            delta_head_infos[k]["out_dim"] = 2*v - 1
+            
+    if delta_head_option == "regression":  
+        delta_head_infos = deepcopy(classifier_head_infos)
+        for k in delta_head_infos.keys():
+            v = delta_head_infos[k]["out_dim"]
+            delta_head_infos[k]["out_dim"] = 1                    
+        
+
+
+
     # Check that if label is transformed to float (in training) the 
     if config["data"].get("enable_tSLR", False):
         classifier_name = config["model"]["classifier"]["name"]
         assert classifier_name in ("MixLogAndReg", "Reg"), f"Not allowed combination with {classifier_name = } and data['enable_tSLR'] = True"
-    return classifier_head_infos, attention_paths_dct, config
 
-from copy import deepcopy
+    if return_delta_head_infos:
+        return classifier_head_infos, attention_paths_dct, config, delta_head_infos
+    else: 
+        return classifier_head_infos, attention_paths_dct, config
+
+import ra_utils.networks.delta_heads
 
 def build_models_v3(config: dict):
-    classifier_head_infos, attention_paths_dct, config_updated = check_config_consistency_and_partially_make_consistent(config)
+    classifier_head_infos, attention_paths_dct, config_updated, delta_head_infos  = (
+        check_config_consistency_and_partially_make_consistent(config, return_delta_head_infos=True))
     model_name = config_updated["model_name"]
     model_AE, model_c  = build_models_AE_v1_and2(
                                         model_name, config_updated, 
                                         classifier_head_infos = classifier_head_infos, 
                                         attention_paths_dct = attention_paths_dct
                                         )
+    
+    # model_delta_head = 
+    
+    cfg = config["model"].get("delta_heads", {"SKIP": True})
+    if cfg.get("SKIP", False):
+        model_delta_heads = None
+    else: 
+        delta_head_kwargs = ra_utils.utils.utils.model_parameter_imports_(
+            cfg["model_params"], 
+            model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=cfg.get("model_kw_requires_import", [])
+        )
+        model_delta_heads = ra_utils.networks.delta_heads.DeltaHeads(head_infos=delta_head_infos, 
+                                                                     latent_dim=model_AE.latent_dim, 
+                                                                     mlp_kwargs=delta_head_kwargs)
+
+
+    
 
     # Maybe make score_estimator    
     model_score_estimator = None
@@ -432,7 +486,8 @@ def build_models_v3(config: dict):
     models = dict(
         model_AE = model_AE, 
         model_c = model_c, 
-        model_score_estimator = model_score_estimator
+        model_score_estimator = model_score_estimator,
+        model_delta_heads = model_delta_heads
     )
     return models, config_updated
 
