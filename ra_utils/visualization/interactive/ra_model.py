@@ -238,7 +238,8 @@ def extract_embeddings_and_pngs(
     max_class_per_type: dict[str, int] | None = None,
 ):
     model_AE.eval()
-    model_c.eval()
+    if model_c is not None:
+        model_c.eval()
 
     Z_list, png_paths = [], []
     score_gt, score_pred_all = [], []
@@ -270,18 +271,22 @@ def extract_embeddings_and_pngs(
         # forward
         _, z = model_AE(X, s_type)              # (B, D)
 
-        # multi-head call (mirror training)
-        try:
-            out_dict = model_c(z, s_type, return_dict=True)
-        except TypeError:
-            # fallback: single-head legacy path
-            logits = model_c(z, s_type)         # (B, C) or (B,1) or (B,1+C)
-            out_dict = {"__single__": (torch.arange(B, device=z.device), logits)}
+        # multi-head call (mirror training) - only if model_c is not None
+        if model_c is not None:
+            try:
+                out_dict = model_c(z, s_type, return_dict=True)
+            except TypeError:
+                # fallback: single-head legacy path
+                logits = model_c(z, s_type)         # (B, C) or (B,1) or (B,1+C)
+                out_dict = {"__single__": (torch.arange(B, device=z.device), logits)}
 
-        # merge per-head predictions into per-sample arrays
-        score_pred, class_pred, class_conf, head_name_per_sample, has_logits = _merge_multihead_outputs(
-            out_dict, task_type_y, score_estimator, B, device=device, s_type_np=s_type_np
-        )
+            # merge per-head predictions into per-sample arrays
+            score_pred, class_pred, class_conf, head_name_per_sample, has_logits = _merge_multihead_outputs(
+                out_dict, task_type_y, score_estimator, B, device=device, s_type_np=s_type_np
+            )
+        else:
+            # When model_c is None, skip predictions - no predictions to make
+            head_name_per_sample = [""] * B
 
         # class ground-truth:
         if task_type_y == "classification":
@@ -296,10 +301,11 @@ def extract_embeddings_and_pngs(
 
         # scalar ground-truth
         score_gt.extend(y.tolist())
-        score_pred_all.extend(score_pred.tolist())
+        if model_c is not None:
+            score_pred_all.extend(score_pred.tolist())
+            class_pred_all.extend(class_pred.tolist())
+            class_conf_all.extend(class_conf.tolist())
         class_gt_all.extend(cls_gt.tolist())
-        class_pred_all.extend(class_pred.tolist())
-        class_conf_all.extend(class_conf.tolist())
         head_name_all.extend(head_name_per_sample)
 
         # pngs after transforms
@@ -328,18 +334,15 @@ def extract_embeddings_and_pngs(
     ps_key_array = np.array(ps_key_all)
     t_rel = compute_relative_time(years_array, ps_key_array)
 
-    return dict(
+    result_dict = dict(
         Z=Z,
         display_paths=np.array(png_paths),
 
         # scalar view
         score_gt=np.array(score_gt, dtype=float),
-        score_pred=np.array(score_pred_all, dtype=float),
 
-        # classification view
+        # classification view - ground truth is always available
         class_gt=np.array(class_gt_all, dtype=int),
-        class_pred=np.array(class_pred_all, dtype=int),
-        class_conf=np.array(class_conf_all, dtype=float),
 
         # which head produced the prediction for this sample
         head_name=np.array(head_name_all),
@@ -359,6 +362,14 @@ def extract_embeddings_and_pngs(
         date_str=np.array(date_str_all),
         t_rel=t_rel,
     )
+    
+    # Only include predictions if model_c is not None
+    if model_c is not None:
+        result_dict["score_pred"] = np.array(score_pred_all, dtype=float)
+        result_dict["class_pred"] = np.array(class_pred_all, dtype=int)
+        result_dict["class_conf"] = np.array(class_conf_all, dtype=float)
+    
+    return result_dict
 
 
 def build_fiftyone_dataset(
@@ -369,8 +380,10 @@ def build_fiftyone_dataset(
 ):
     # make default class names if not provided
     if class_names is None:
-        uniq = sorted(set(pack["class_gt"].tolist()) | set(pack["class_pred"].tolist()))
-        class_names = {int(i): str(i) for i in uniq}
+        uniq = set(pack["class_gt"].tolist())
+        if "class_pred" in pack:
+            uniq = uniq | set(pack["class_pred"].tolist())
+        class_names = {int(i): str(i) for i in sorted(uniq)}
 
     ds = fo.Dataset(name)
     samples = []
@@ -379,23 +392,30 @@ def build_fiftyone_dataset(
 
         # always store scalar view
         s["score_gt"]   = float(pack["score_gt"][i])
-        s["score_pred"] = float(pack["score_pred"][i])
+        # only store score_pred if it exists (i.e., model_c was not None)
+        if "score_pred" in pack:
+            s["score_pred"] = float(pack["score_pred"][i])
 
-        # always store classification view (using your rounding/mix)
+        # always store classification ground truth
         gt_label = class_names.get(int(pack["class_gt"][i]), str(int(pack["class_gt"][i])))
-        pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
-        conf_val = pack["class_conf"][i]
-        conf_val = None if (np.isnan(conf_val) or np.isinf(conf_val)) else np.round(float(conf_val), 2)
-
         s["class_gt"] = fol.Classification(label=gt_label)
-        s["class_pred"] = fol.Classification(label=pr_label, confidence=conf_val)
-        if conf_val != None: 
-            s["pred_confidence"] = str(conf_val)
+        
+        # only store classification predictions if they exist (i.e., model_c was not None)
+        if "class_pred" in pack and "class_conf" in pack:
+            pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
+            conf_val = pack["class_conf"][i]
+            conf_val = None if (np.isnan(conf_val) or np.isinf(conf_val)) else np.round(float(conf_val), 2)
 
-        # convenience flags
-        s["correct_cls"] = (gt_label == pr_label)
-        # absolute error on scalar scores
-        s["abs_err_score"] = float(abs(pack["score_pred"][i] - pack["score_gt"][i]))
+            s["class_pred"] = fol.Classification(label=pr_label, confidence=conf_val)
+            if conf_val != None: 
+                s["pred_confidence"] = str(conf_val)
+
+            # convenience flags - only if predictions exist
+            s["correct_cls"] = (gt_label == pr_label)
+        
+        # absolute error on scalar scores - only if score_pred exists
+        if "score_pred" in pack:
+            s["abs_err_score"] = float(abs(pack["score_pred"][i] - pack["score_gt"][i]))
 
         # meta
         s["score_type"]    = str(pack["score_type"][i])
@@ -640,7 +660,7 @@ def _merge_multihead_outputs(
 
         else:  # regression only: make a rounded proxy, no confidence
             # round the scalar score we just computed
-            class_pred[idx_cpu] = torch.rint(sc).long()
+            class_pred[idx_cpu] = sc.round().long()
             # leave class_conf as NaN
 
         for j in idx_cpu.tolist():
@@ -678,7 +698,7 @@ def save_pack(pack: dict, out_dir: str, png_root: str | None = None, save_projec
     })
 
     # 2) Save a small tabular summary (great for filtering in pandas)
-    df = pd.DataFrame({
+    df_dict = {
         "display_paths": pack["display_paths"],
         "score_type": pack["score_type"],
         "roi_name": pack["roi_name"],
@@ -686,15 +706,20 @@ def save_pack(pack: dict, out_dir: str, png_root: str | None = None, save_projec
         "extremity": pack["extremity"],
         "left_or_right": pack["left_or_right"],
         "score_gt": pack["score_gt"],
-        "score_pred": pack["score_pred"],
         "class_gt": pack["class_gt"],
-        "class_pred": pack["class_pred"],
-        "class_conf": pack["class_conf"],
         "patient_scoretype_key": pack["patient_scoretype_key"],
         "years_since_2000": pack["years_since_2000"],
         "date_str": pack["date_str"],
         "t_rel": pack["t_rel"],
-    })
+    }
+    # Only include predictions if they exist (i.e., model_c was not None)
+    if "score_pred" in pack:
+        df_dict["score_pred"] = pack["score_pred"]
+    if "class_pred" in pack:
+        df_dict["class_pred"] = pack["class_pred"]
+    if "class_conf" in pack:
+        df_dict["class_conf"] = pack["class_conf"]
+    df = pd.DataFrame(df_dict)
     df.to_parquet(out / "summary.parquet", index=False)
 
     # 3) Remember PNG root (helps when moving between machines)
@@ -766,8 +791,10 @@ def rebuild_fo_dataset_from_pack(
     persistent: bool = True,
 ):
     if class_names is None:
-        uniq = sorted(set(pack["class_gt"].tolist()) | set(pack["class_pred"].tolist()))
-        class_names = {int(i): str(i) for i in uniq}
+        uniq = set(pack["class_gt"].tolist())
+        if "class_pred" in pack:
+            uniq = uniq | set(pack["class_pred"].tolist())
+        class_names = {int(i): str(i) for i in sorted(uniq)}
 
     # If dataset exists, delete or load fresh
     if name in fo.list_datasets():
@@ -782,19 +809,23 @@ def rebuild_fo_dataset_from_pack(
 
         # scalar view
         s["score_gt"]   = float(pack["score_gt"][i])
-        s["score_pred"] = float(pack["score_pred"][i])
+        # only store score_pred if it exists (i.e., model_c was not None)
+        if "score_pred" in pack:
+            s["score_pred"] = float(pack["score_pred"][i])
 
-        # class view
+        # always store classification ground truth
         gt_label = class_names.get(int(pack["class_gt"][i]), str(int(pack["class_gt"][i])))
-        pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
-
-        conf = pack["class_conf"][i]
-        conf = None if (np.isnan(conf) or np.isinf(conf)) else float(conf)
-
         s["class_gt"]  = fol.Classification(label=gt_label)
-        s["class_pred"] = fol.Classification(label=pr_label, confidence=conf)
-        if conf is not None:
-            s["pred_confidence"] = conf
+        
+        # only store classification predictions if they exist (i.e., model_c was not None)
+        if "class_pred" in pack and "class_conf" in pack:
+            pr_label = class_names.get(int(pack["class_pred"][i]), str(int(pack["class_pred"][i])))
+            conf = pack["class_conf"][i]
+            conf = None if (np.isnan(conf) or np.isinf(conf)) else float(conf)
+
+            s["class_pred"] = fol.Classification(label=pr_label, confidence=conf)
+            if conf is not None:
+                s["pred_confidence"] = conf
 
         # meta
         for fld in ("score_type","roi_name","patient_id","extremity","left_or_right"):
@@ -838,7 +869,8 @@ def main():
     # -------------------- 0) Load config
     config = ra_utils.utils.config_parser.load_config(
         # default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_confing.yml",
-        default_config="/msc/home/cwatze93/data/mlflow/mlflow_RA/976870858386409169/49f1b8541acc4565a227c82568d8bcb1/artifacts/original_config_latentspace_visualization_dev.yml",
+        # default_config="/msc/home/cwatze93/data/mlflow/mlflow_RA/976870858386409169/49f1b8541acc4565a227c82568d8bcb1/artifacts/original_config_latentspace_visualization_dev.yml",
+        default_config="/msc/home/cwatze93/data/mlflow/mlflow_RAv2/377224905299293446/b4b349f4e5ba46658b78775246c39e84/artifacts/original_config_plotting.yml",
         debugging_in_jupyter_nb=False,
         silencium=True
     )
@@ -900,6 +932,10 @@ def main():
         models, config = ra_utils.training.scores_SHS.run_training_main_lib.build_models_v3(config)
         model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
 
+        if config.get("REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL", False):
+            print("Removing regression or classification model")
+            model_c = None
+            model_score_estimator = None
 
         task_type_y = config.get("task_type_y", "classification")
         score_estimator = make_score_estimator(config, model_score_estimator=model_score_estimator, device=device)
@@ -913,7 +949,8 @@ def main():
             strict=True
         )
         model_AE.to(device).eval()
-        model_c.to(device).eval()
+        if model_c is not None:
+            model_c.to(device).eval()
 
         # 4. Extract embeddings (+ write PNGs)
         pack = extract_embeddings_and_pngs(

@@ -107,7 +107,9 @@ def train_loop_AE_v4(
     extract_ES_metric_from_validation_metrics_dct_OPTION: Literal[None, "classification_report.macro avg"] = None, 
     append_BEST_VAL_as_last: bool = False,
     task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification",
-    model_delta_estimator: Optional[torch.nn.Module] = None
+    model_delta_estimator: Optional[torch.nn.Module] = None, 
+    save_regularly: bool = False,
+    save_regularly_freq: int = 20,
 ):
 
     # How to get validation metric/loss for early stopping: 
@@ -235,6 +237,40 @@ def train_loop_AE_v4(
         # 3) Scheduler step --------------------------------------------------
         if scheduler is not None:
             scheduler.step(val_loss)
+
+        # ------------------------------------------------------------------
+        # 3.5) Regular model saving (optional) ------------------------------
+        if save_regularly and (epoch % save_regularly_freq == 0 or epoch == 0):
+            if verbose:
+                print(f"    Saving regular checkpoint at epoch {epoch}")
+            
+            # optional MLflow model snapshot (full models)
+            if log_model_full:
+                mlflow.pytorch.log_model(model_AE, f"regular_checkpoints/epoch_{epoch}_model_AE")
+                if model_classifier is not None:
+                    mlflow.pytorch.log_model(
+                        model_classifier, f"regular_checkpoints/epoch_{epoch}_model_classifier"
+                    )
+                if model_score_estimator is not None:
+                    mlflow.pytorch.log_model(
+                        model_score_estimator, f"regular_checkpoints/epoch_{epoch}_model_score_estimator"
+                    )
+
+            # ------- race-safe, non-accumulating state_dict logging -------
+            if log_model_state_dct:
+                _log_single_state_dict_atomic(model_AE, f"epoch_{epoch}_model_AE_state_dict.pt", artifact_subdir="regular_checkpoints")
+                if model_classifier is not None:
+                    _log_single_state_dict_atomic(model_classifier, f"epoch_{epoch}_model_classifier_state_dict.pt", artifact_subdir="regular_checkpoints")
+                if model_score_estimator is not None:
+                    _log_single_state_dict_atomic(model_score_estimator, f"epoch_{epoch}_model_score_estimator_state_dict.pt", artifact_subdir="regular_checkpoints")
+
+                # Sidecar metadata
+                info_txt = (
+                    f"epoch: {epoch}\n"
+                    f"val_loss: {val_loss:.6f}\n"
+                    f"saved_at: {datetime.datetime.now().isoformat()}\n"
+                )
+                _log_text_atomic(info_txt, nice_basename=f"epoch_{epoch}_checkpoint_info.yaml", artifact_subdir="regular_checkpoints")
 
         # ------------------------------------------------------------------
         # 4) Early stopping --------------------------------------------------

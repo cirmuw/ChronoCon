@@ -66,9 +66,9 @@ training:
 
   batch_size: 100 #512
   early_stopping_tol: 10 # 5
-  early_stopping_metric_key: "mae"  # default "L" -> loss  options: ....
-  early_stopping_metric_direction: "min"   # default is min  # options:  min or max
-  extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
+  # early_stopping_metric_key: "mae"  # default "L" -> loss  options: ....
+  # early_stopping_metric_direction: "min"   # default is min  # options:  min or max
+  # extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
 
 
 
@@ -142,7 +142,7 @@ loss:
       feature_sim: "cosine"  # "cosine" or "l2"
       ignore_ids: False  # Here this might make sense. But better keep seperate
 
-REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: True 
+
 
 loss_weights:
   lambda_y: !!float 0.0 # 1e-0  
@@ -169,6 +169,8 @@ loss_weights:
 #################################################################
 
 model_name: "ResNetNoAE + MultiHeadClassifier"
+
+REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: False 
 
 model:
   autoencoder:

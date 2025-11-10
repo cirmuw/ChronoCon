@@ -49,9 +49,17 @@ SKIP_TRAINING: False
 #project: 'AutoPIX:'
 #tag: development
 training:
+
+
   USE_GROUPED_VALIDATION_LOADER: True  # "WARINING I fUSE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! And losses certainly not. "  )
 
   batch_size: 100 #512
+
+
+  save_regularly: True
+  save_regularly_freq: 10
+  run_full_epochs: False
+
   early_stopping_tol: 10 # 5
   #early_stopping_metric_key: "L"  # default "L" -> loss  options: ....
   #early_stopping_metric_direction: "min"   # default is min  # options:  min or max
@@ -65,9 +73,9 @@ training:
   # early_stopping_metric_direction: "min"   # default is min  # options:  min or max
   # extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
 
-  early_stopping_metric_key: "mae"  # default "L" -> loss  options: ....
-  early_stopping_metric_direction: "min"   # default is min  # options:  min or max
-  extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
+  # early_stopping_metric_key: "mae"  # default "L" -> loss  options: ....
+  # early_stopping_metric_direction: "min"   # default is min  # options:  min or max
+  # extract_ES_metric_from_validation_metrics_dct_OPTION: Null # "classification_report.macro avg" # None is default,   classification_report.macro avg
 
 
 
@@ -268,21 +276,24 @@ loss:
 
 
 
+
 loss_weights:
-  lambda_x: !!float 0.0 # 1e2  
   lambda_y: !!float 0.0 # 1e-0  
+  lambda_z_RnC_time: 0.0   # with old DL not allowed
+  lambda_z_RnC_score: 1.0   # with old DL not allowed
+  lambda_x: !!float 0.0 # 1e2  
+
+  # not active for now
+
   lambda_y_delta: 0.0      # Huber loss for same patient, ... 
   lambda_y_reg_extra: 0.0  # An extra MSE Loss (makes only sense on top of Classification loss)
-
   lambda_z:  0.0    
   lambda_z_triplet_classes: 0.0   
   lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
   lambda_z_score_consistency_regularizer: 0.0 
-
   lambda_z_triplet_MDP: 0.0   # with old DL not allowed
 
-  lambda_z_RnC_time: 0.01   # with old DL not allowed
-  lambda_z_RnC_score: 1.0   # with old DL not allowed
+
 
 
 
@@ -326,6 +337,8 @@ model:
   #   model_params:
   #     bias: True  
 
+
+# model_name: "ResNetAE_v2p2 + MultiHeadClassifier"
 model_name: "ResNetNoAE + MultiHeadClassifier"
 
 #################################################################
@@ -333,12 +346,12 @@ model_name: "ResNetNoAE + MultiHeadClassifier"
 #################################################################
 
 AE_transform: 
-  name: Null # GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
+  name: GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
   GaussianNoise_sigma: !!float 1.0e-05
 
 
 Contrastive_transform: 
-  name: GaussianNoiseWithClip # Null # GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
+  name: Null # GaussianNoiseWithClip #   Null   # GaussianNoiseWithClip, Null 
   GaussianNoise_sigma: !!float 1.0e-05
 
 
@@ -575,18 +588,18 @@ data:
         - CMCV
 
     # ---Hand JSN Wrist
-    # Rad_Carp:
-    #   out_dim: 5
-    #   score_types:
-    #     - Rad_Carp
-    # Sca_Cap:
-    #   out_dim: 5
-    #   score_types:
-    #     - Sca_Cap
-    # Tra_Sca:
-    #   out_dim: 5
-    #   score_types:
-    #     - Tra_Sca
+    Rad_Carp:
+      out_dim: 5
+      score_types:
+        - Rad_Carp
+    Sca_Cap:
+      out_dim: 5
+      score_types:
+        - Sca_Cap
+    Tra_Sca:
+      out_dim: 5
+      score_types:
+        - Tra_Sca
     
         
     # Foot JSN ---------------
@@ -697,30 +710,30 @@ data:
       score_types:
         - PIPVEP
     # Hand ERO wrist: 
-    # Base_MCIE:
-    #   out_dim: 6
-    #   score_types:
-    #     - Base_MCIE
-    # LunatE:
-    #   out_dim: 6
-    #   score_types:
-    #     - LunatE
-    # RadiusE:
-    #   out_dim: 6
-    #   score_types:
-    #     - RadiusE
-    # ScaphE:
-    #   out_dim: 6
-    #   score_types:
-    #     - ScaphE
-    # TrapE:
-    #   out_dim: 6
-    #   score_types:
-    #     - TrapE
-    # UlnaE:
-    #   out_dim: 6
-    #   score_types:
-    #     - UlnaE
+    Base_MCIE:
+      out_dim: 6
+      score_types:
+        - Base_MCIE
+    LunatE:
+      out_dim: 6
+      score_types:
+        - LunatE
+    RadiusE:
+      out_dim: 6
+      score_types:
+        - RadiusE
+    ScaphE:
+      out_dim: 6
+      score_types:
+        - ScaphE
+    TrapE:
+      out_dim: 6
+      score_types:
+        - TrapE
+    UlnaE:
+      out_dim: 6
+      score_types:
+        - UlnaE
 
 
 
