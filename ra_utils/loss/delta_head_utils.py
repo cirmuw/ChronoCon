@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from typing import Dict, Literal
 
-
+                
 def score_difference_prevalence_by_score_type(data):
     """
     Calculate score difference prevalence (distribution of score differences) per score_type,
@@ -17,16 +17,24 @@ def score_difference_prevalence_by_score_type(data):
     
     This function extracts all pairwise score differences from the training data,
     grouped by score_type, to understand the distribution of score changes.
+    Iterates over all keys in data and aggregates prevalences (no overlap expected).
     
     Args:
         data: Dictionary containing data loaders. Expected structure:
             {
-                "ALL": {
+                "key1": {
                     "train_loader": DataLoader with dataset.data containing:
                         - "patient_scoretype_key": Patient identifier with score type
                         - "score_type": Type of score
                         - "score": Score value
-                }
+                },
+                "key2": {
+                    "train_loader": DataLoader with dataset.data containing:
+                        - "patient_scoretype_key": Patient identifier with score type
+                        - "score_type": Type of score
+                        - "score": Score value
+                },
+                ...
             }
     
     Returns:
@@ -34,37 +42,52 @@ def score_difference_prevalence_by_score_type(data):
                              where index is score difference values and values are counts.
                              Example: {"PIPII": pd.Series({-1: 50, 0: 200, 1: 30, ...}), ...}
     """
-    # Extract relevant columns from the training set
-    part = ["patient_scoretype_key", "score_type", "score"]
-    df = pd.DataFrame(data["ALL"]["train_loader"].dataset.data)[part]
-
-    # Prepare results dict
+    # Prepare results dict to accumulate prevalences across all keys
     score_type_diffs = {}
 
-    for score_type, sdf in df.groupby("score_type"):
-        diffs = []
-        # For each patient_scoretype_key, compute all pairwise score differences (i != j)
-        for key, group in sdf.groupby("patient_scoretype_key"):
-            scores = group["score"].values
-            for i in range(len(scores)):
-                for j in range(len(scores)):
-                    if i != j:
-                        diff = scores[i] - scores[j]
-                        diffs.append(diff)
-        # Convert to pandas Series for value_counts (prevalence)
-        if diffs:
-            diffs_series = pd.Series(diffs)
-            prevalence = diffs_series.value_counts().sort_index()
-        else:
-            prevalence = pd.Series(dtype=int)
-        score_type_diffs[score_type] = prevalence
+    # Iterate over all keys in data
+    for key in data.keys():
+        # Extract relevant columns from the training set for this key
+        part = ["patient_scoretype_key", "score_type", "score"]
+        df = pd.DataFrame(data[key]["train_loader"].dataset.data)[part]
+
+        # Process each score_type for this key
+        for score_type, sdf in df.groupby("score_type"):
+            diffs = []
+            # For each patient_scoretype_key, compute all pairwise score differences (i != j)
+            for patient_key, group in sdf.groupby("patient_scoretype_key"):
+                scores = group["score"].values
+                for i in range(len(scores)):
+                    for j in range(len(scores)):
+                        if i != j:
+                            diff = scores[i] - scores[j]
+                            diffs.append(diff)
+            
+            # Convert to pandas Series for value_counts (prevalence)
+            if diffs:
+                diffs_series = pd.Series(diffs)
+                prevalence = diffs_series.value_counts().sort_index()
+                
+                # Aggregate with existing prevalences for this score_type
+                if score_type in score_type_diffs:
+                    # Combine Series by adding counts (no overlap, so safe to sum)
+                    score_type_diffs[score_type] = score_type_diffs[score_type].add(prevalence, fill_value=0).astype(int).sort_index()
+                else:
+                    score_type_diffs[score_type] = prevalence
+            # If no diffs for this score_type and key, skip (or initialize empty if first occurrence)
+            elif score_type not in score_type_diffs:
+                score_type_diffs[score_type] = pd.Series(dtype=int)
+
+    # Ensure all Series are sorted by index
+    for score_type in score_type_diffs:
+        score_type_diffs[score_type] = score_type_diffs[score_type].sort_index()
 
     return score_type_diffs
 
 
 def prevalences_weights(
     x: Dict[str, "pd.Series"], 
-    option: Literal["<_or_Same_or_greater", "regression", "classification"] = "<_or_Same_or_greater",
+    option: Literal["less_OR_same_OR_greater", "regression", "classification"] = "less_OR_same_OR_greater",
     smoothing_factor: float = 1.0e-2,
 ) -> Dict[str, np.ndarray]:
     """
@@ -76,7 +99,7 @@ def prevalences_weights(
         x: Dict where each value is a pd.Series mapping score differences to counts for a score_type.
            Typically the output of score_difference_prevalence_by_score_type().
         option: 
-            "<_or_Same_or_greater": outputs numpy array [w[<0], w[==0], w[>0]] for 3-class comparison
+            "less_OR_same_OR_greater": outputs numpy array [w[<0], w[==0], w[>0]] for 3-class comparison
             "regression": outputs weights in the order of sorted unique diff values (for regression tasks)
             "classification": same as regression (for multi-class classification)
         smoothing_factor: Add to denominator for numerical stability. Prevents division by zero
@@ -88,7 +111,7 @@ def prevalences_weights(
                               
     Example:
         >>> prevalences = {"PIPII": pd.Series({-1: 10, 0: 100, 1: 10})}
-        >>> weights = prevalences_weights(prevalences, option="<_or_Same_or_greater")
+        >>> weights = prevalences_weights(prevalences, option="less_OR_same_OR_greater")
         >>> # Returns: {"PIPII": np.array([w_neg, w_zero, w_pos])} where weights balance the classes
     """
     weights = {}
@@ -98,7 +121,7 @@ def prevalences_weights(
             weights[score_type] = np.array([])
             continue
         
-        if option == "<_or_Same_or_greater":
+        if option == "less_OR_same_OR_greater":
             # Three-class comparison: <, ==, >
             num_lt_0 = prevalence[prevalence.index < 0].sum() if any(prevalence.index < 0) else 0
             num_eq_0 = prevalence[prevalence.index == 0].sum() if any(prevalence.index == 0) else 0

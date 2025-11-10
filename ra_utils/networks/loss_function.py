@@ -10,6 +10,9 @@ import ra_utils.loss.online_mining_triplet_loss_MDP
 import ra_utils.loss.consistency_regularizer_loss
 from typing import Optional
 
+import ra_utils.loss.loss_RnC_with_ranks_and_ids
+import ra_utils.loss.loss_RnCMono
+#import ra_utils.loss.loss_DeltaHead
 
 
 def get_score_loss_function(cfg: dict):
@@ -82,9 +85,6 @@ def get_triplet_loss_fn_MDP(cfg: dict = {}):
         raise NotImplementedError(f"{name = }")
 
 
-import ra_utils.loss.loss_RnC_with_ranks_and_ids
-import ra_utils.loss.loss_RnCMono
-import ra_utils.loss.loss_DeltaHead
 
 def get_triplet_loss_RnCids(cfg: dict = {}):
     name = cfg.get("name")
@@ -99,7 +99,7 @@ def get_triplet_loss_RnCids(cfg: dict = {}):
     else: 
         raise NotImplementedError(f"{name = }")
 
-
+import ra_utils.networks.delta_heads
 
 def get_delta_head_loss(cfg: dict = {}):
     name = cfg.get("name")
@@ -107,8 +107,8 @@ def get_delta_head_loss(cfg: dict = {}):
     # print(f"loss for delta head: {name}; \n    params = {params}")
     if name == None: 
         return None
-    elif name == "DeltaHeadLoss":
-        return ra_utils.loss.loss_DeltaHead.DeltaHeadLoss(**params)
+    elif name == "DeltaHeadsLoss":
+        return ra_utils.networks.delta_heads.DeltaHeadsLoss(**params)
     else: 
         raise NotImplementedError(f"{name = }")
 

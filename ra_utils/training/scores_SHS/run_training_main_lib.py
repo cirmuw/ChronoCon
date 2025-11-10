@@ -469,7 +469,7 @@ def build_models_v3(config: dict):
             model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
             model_kw_requires_import=cfg.get("model_kw_requires_import", [])
         )
-        model_delta_heads = ra_utils.networks.delta_heads.DeltaHeads(head_infos=delta_head_infos, 
+        model_delta_heads = ra_utils.networks.delta_heads.DeltaHeads(delta_head_infos=delta_head_infos, 
                                                                      latent_dim=model_AE.latent_dim, 
                                                                      mlp_kwargs=delta_head_kwargs)
 
@@ -489,6 +489,28 @@ def build_models_v3(config: dict):
         model_score_estimator = model_score_estimator,
         model_delta_heads = model_delta_heads
     )
+
+    # Hack: store delta_head_infos in models for later use
+    models["delta_head_infos"] = delta_head_infos
+    
+    # Add delta model
+    cfg = config_updated["model"].get("delta_heads", None)
+    if cfg is not None: 
+        delta_head_mlp_kwargs = ra_utils.utils.utils.model_parameter_imports_(
+            cfg["model_params"], 
+            model_dct_keys_to_convert_to_lists=cfg.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=cfg.get("model_kw_requires_import", [])
+        )
+        delta_heads = ra_utils.networks.delta_heads.DeltaHeads(
+                            delta_head_infos=delta_head_infos,
+                            latent_dim=model_AE.latent_dim,
+                            mlp_kwargs=delta_head_mlp_kwargs
+        )
+    else: 
+        print("No delta heads model found in config file. Skipping delta heads.")
+        delta_heads = None
+    models["model_delta_heads"] = delta_heads
+    
     return models, config_updated
 
 
@@ -529,7 +551,9 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     # Load/ make model
     models, config = build_models_v3(config)
     model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
+    model_delta_heads = models["model_delta_heads"]
 
+        
     if config.get("REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL", False):
         print("Removing regression or classification model")
         model_c = None
@@ -550,9 +574,15 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         model_c.to(device)
     if model_score_estimator is not None:
         model_score_estimator.to(device)
+        
+    if model_delta_heads is not None: 
+        model_delta_heads.to(device)
 
-
+    # Get loss_fn_dict and add delta head loss function
     loss_fn_dict = ra_utils.loss.loss_fn_dict.get_loss_fn_dict(config, device=device)
+    delta_head_infos = models.pop("delta_head_infos", None)
+    loss_fn_dict["y_DeltaHead"] = ra_utils.loss.loss_fn_dict.make_loss_function_dict_delta_heads(config, data, delta_head_infos=delta_head_infos, device=device)
+    
     pprint(loss_fn_dict)
 
 
@@ -568,6 +598,8 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     models = [model_AE, model_c]
     if model_score_estimator is not None: 
         models = models + [model_score_estimator]
+    if model_delta_heads is not None: 
+        models = models + [model_delta_heads]
     optimizer, scheduler, opt_planing_report = ra_utils.utils.utils_torch.plan_optimization_v4(
         models, # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
@@ -620,6 +652,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_AE=model_AE,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
+            model_delta_heads=model_delta_heads,
             train_dataloaders=train_dataloaders,
             val_loaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
@@ -638,7 +671,6 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             extract_ES_metric_from_validation_metrics_dct_OPTION = config["training"].get("extract_ES_metric_from_validation_metrics_dct_OPTION", None), 
             append_BEST_VAL_as_last=append_BEST_VAL_as_last,
             task_type_y = config.get("task_type_y", "classification"),
-            model_delta_estimator=locals().get("model_delta_estimator", None),
             save_regularly=config["training"].get("save_regularly", False),
             save_regularly_freq=config["training"].get("save_regularly_freq", 20),
             run_full_epochs = config["training"].get("run_full_epochs", False),
@@ -659,6 +691,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_AE=model_AE,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
+            model_delta_heads=model_delta_heads,
             dataloaders=train_dataloaders_with_val_transforms,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -675,6 +708,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_AE=model_AE,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
+            model_delta_heads=model_delta_heads,
             dataloaders=test_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -689,6 +723,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_AE=model_AE,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
+            model_delta_heads=model_delta_heads,
             dataloaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,

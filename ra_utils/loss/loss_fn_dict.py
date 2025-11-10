@@ -20,7 +20,39 @@ from ra_utils.networks.architecture import (
 )
 
 import ra_utils.loss.loss_RnC_with_ranks_and_ids
+import ra_utils.loss.delta_head_utils
+import ra_utils.networks.delta_heads
 
+
+def make_loss_function_dict_delta_heads(config, data, delta_head_infos=None, device="cuda"):
+    
+    
+    lambda_ = config.get('loss_weights', {}).get('lambda_y_DeltaHead', 0.0)
+    if lambda_ < 1.0e-8: 
+        loss_fn_ = DummyReturnZeroLossAndDict(device)
+    else: 
+        prevalence_by_score_type = ra_utils.loss.delta_head_utils.score_difference_prevalence_by_score_type(data)
+
+
+        options_prevalence_weighting  = config["loss"].get("DeltaHead", {}).get("prevalence_weighting")
+        if options_prevalence_weighting: 
+            prevalences_w = ra_utils.loss.delta_head_utils.prevalences_weights(prevalence_by_score_type, **options_prevalence_weighting)
+            # Convert all class weight arrays to torch tensors on the specified device, in a new dict. 
+            # This avoids any inplace mutation or race conditions.
+            prevalences_w = {k: torch.as_tensor(v, device=device) for k, v in prevalences_w.items()}
+        else: 
+            prevalences_w = None
+            
+        loss_params = config["loss"].get("DeltaHead", {}).get("params", {})
+
+        loss_fn_ = ra_utils.networks.delta_heads.DeltaHeadsLoss(delta_head_infos=delta_head_infos, class_weights = prevalences_w, **loss_params)
+    loss_dct_y_DeltaHead = {
+            "function": loss_fn_, 
+            "lambda": lambda_, 
+            "options": config["loss"].get("delta_head_loss", {}).get("options", {})
+        }    
+        
+    return loss_dct_y_DeltaHead
 
 
 def get_loss_fn_dict(config, device="cuda"):
@@ -196,16 +228,16 @@ def get_loss_fn_dict(config, device="cuda"):
     }
 
 
-    lambda_ = config.get('loss_weights', {}).get('lambda_y_DeltaHead_loss', 0.0)
-    if lambda_ < 1.0e-8: 
-        loss_fn_ = dummy_with_dict
-    else: 
-        loss_fn_ = get_delta_head_loss(config["loss"].get("DeltaHead_loss", {}))
-    loss_dct_y_DeltaHead = {
-            "function": loss_fn_, 
-            "lambda": lambda_, 
-            "options": config["loss"].get("delta_head_loss", {}).get("options", {})
-        }
+    # lambda_ = config.get('loss_weights', {}).get('lambda_y_DeltaHead', 0.0)
+    # if lambda_ < 1.0e-8: 
+    #     loss_fn_ = dummy_with_dict
+    # else: 
+    #     loss_fn_ = get_delta_head_loss(config["loss"].get("DeltaHead", {}))
+    # loss_dct_y_DeltaHead = {
+    #         "function": loss_fn_, 
+    #         "lambda": lambda_, 
+    #         "options": config["loss"].get("delta_head_loss", {}).get("options", {})
+    #     }
 
 
 
@@ -227,7 +259,7 @@ def get_loss_fn_dict(config, device="cuda"):
         "y_delta": loss_dct_y_delta,
         "y_reg_extra": loss_dct_y_reg_extra,
         #
-        "y_DeltaHead": loss_dct_y_DeltaHead,
+        #"y_DeltaHead": loss_dct_y_DeltaHead,
         # 
         "z": loss_dct_z,
         #

@@ -369,8 +369,14 @@ class DeltaHeadsLoss(nn.Module):
     ) -> Dict[str, torch.Tensor]:
         losses = {}
         total_loss = None
+        total_num_valid_pairs = 0
         
         for head_name, head_loss in self.head_losses.items():
+            # if head_name == "PIPIII":
+            #     print(f"head_name: {head_name}")
+            #     print(f"predictions: {predictions[head_name]}")
+            #     print(f"targets: {targets[head_name]}")
+            
             if head_name not in predictions:
                 # Head not present in predictions (empty batch for this head)
                 # Get device from first non-empty head or use CPU
@@ -383,6 +389,7 @@ class DeltaHeadsLoss(nn.Module):
                 else:
                     device = total_loss.device
                 losses[head_name] = torch.tensor(0.0, device=device)
+                losses[f"{head_name}_num_valid_pairs"] = torch.tensor(0.0, dtype=torch.float32, device=device)
                 continue
             
             if head_name not in targets:
@@ -414,6 +421,15 @@ class DeltaHeadsLoss(nn.Module):
                     f"but index_pairs have {len(head_index_pairs)}"
                 )
             
+            # Early return if no pairs (empty head - no samples for this head in batch)
+            if len(head_pred) == 0:
+                # Head has no pairs - return zero loss
+                # Use device from head_target (which we know exists and has correct device)
+                device = head_target.device
+                losses[head_name] = torch.tensor(0.0, device=device)
+                losses[f"{head_name}_num_valid_pairs"] = torch.tensor(0.0, dtype=torch.float32, device=device)
+                continue
+            
             # Filter pairs based on self-comparison exclusion if no_self_difference is True
             if self.no_self_difference:
                 # Create mask for non-self comparisons (i != j)
@@ -435,6 +451,7 @@ class DeltaHeadsLoss(nn.Module):
                     else:
                         device = next(head_loss.parameters()).device if list(head_loss.parameters()) else torch.device("cpu")
                     losses[head_name] = torch.tensor(0.0, device=device)
+                    losses[f"{head_name}_num_valid_pairs"] = torch.tensor(0.0, dtype=torch.float32, device=device)
                     continue
             
             # Filter pairs based on ID matching if ids_must_match is True
@@ -442,9 +459,10 @@ class DeltaHeadsLoss(nn.Module):
                 # Create mask for pairs with matching base IDs (patient+side+ROI)
                 valid_mask = []
                 for id_i, id_j in head_ids_pairs:
-                    base_id_i = _extract_base_id(id_i)
-                    base_id_j = _extract_base_id(id_j)
-                    valid_mask.append(base_id_i == base_id_j)
+                    # base_id_i = _extract_base_id(id_i)
+                    # base_id_j = _extract_base_id(id_j)
+                    # valid_mask.append(base_id_i == base_id_j)
+                    valid_mask.append(id_i == id_j) 
                 
                 # Convert to tensor on the same device as predictions/targets
                 # Use head_pred.device as primary, but ensure compatibility
@@ -470,11 +488,23 @@ class DeltaHeadsLoss(nn.Module):
                     else:
                         device = next(head_loss.parameters()).device if list(head_loss.parameters()) else torch.device("cpu")
                     losses[head_name] = torch.tensor(0.0, device=device)
+                    losses[f"{head_name}_num_valid_pairs"] = torch.tensor(0.0, dtype=torch.float32, device=device)
                     continue
             
-            # Compute loss for this head
+            # # Compute loss for this head
+            # if head_name == "PIPIII":
+            #     print("=" * 60)
+            #     print("Computing loss for head: PIPIII after filtering")
+            #     print(f"head_name: {head_name}")
+            #     print(f"head_pred: {head_pred}")
+            #     print(f"head_target: {head_target}")
+            
             head_loss_value = head_loss(head_pred, head_target)
             losses[head_name] = head_loss_value
+            
+            # Track number of valid pairs for this head (after filtering)
+            num_valid_pairs = len(head_pred)
+            losses[f"{head_name}_num_valid_pairs"] = torch.tensor(num_valid_pairs, dtype=torch.float32, device=head_loss_value.device)
             
             # Initialize total_loss on first iteration
             if total_loss is None:
@@ -483,6 +513,7 @@ class DeltaHeadsLoss(nn.Module):
             # Add to total with weight
             weight = self.head_weights.get(head_name, 1.0)
             total_loss = total_loss + weight * head_loss_value
+            total_num_valid_pairs += num_valid_pairs
         
         # If no losses were computed, return zero loss
         if total_loss is None:
@@ -493,8 +524,10 @@ class DeltaHeadsLoss(nn.Module):
                     device = target.device
                     break
             total_loss = torch.tensor(0.0, device=device)
+            # total_num_valid_pairs already initialized to 0
         
         losses["total_loss"] = total_loss
+        losses["total_num_valid_pairs"] = torch.tensor(total_num_valid_pairs, dtype=torch.float32, device=total_loss.device)
         return losses
     
 
@@ -542,6 +575,9 @@ class DeltaHeadLoss(nn.Module):
                 raise ValueError(
                     f"class_weights length {len(class_weights)} does not match num_classes {num_classes}"
                 )
+            # Ensure class_weights are float32 to match logits dtype
+            if isinstance(class_weights, torch.Tensor):
+                class_weights = class_weights.float()
             self.register_buffer("class_weights", class_weights)
         else:
             self.class_weights = None
@@ -560,6 +596,71 @@ class DeltaHeadLoss(nn.Module):
                     f"For regression, num_classes must be 1, got {num_classes}"
                 )
             self.loss_fn = nn.MSELoss(reduction="mean")
+    
+    def set_class_weights(self, class_weights: Optional[torch.Tensor] = None):
+        """
+        Set class weights for classification task.
+        
+        This method updates the class weights buffer and recreates the loss function
+        with the new weights, just as if they were set at initialization.
+        
+        Args:
+            class_weights: Optional weights for classification classes [num_classes]
+                          If None, uses uniform weights (no weighting)
+        """
+        if self.task_type != "classification":
+            raise ValueError(
+                f"set_class_weights can only be called for classification tasks, "
+                f"but task_type is '{self.task_type}'"
+            )
+        
+        # Determine device for the weights
+        # Priority: existing buffer device > loss function weight device > CPU
+        device = torch.device("cpu")
+        if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
+            device = self.class_weights.device
+        elif hasattr(self, "loss_fn") and hasattr(self.loss_fn, "weight") and self.loss_fn.weight is not None:
+            device = self.loss_fn.weight.device
+        
+        if class_weights is not None:
+            if len(class_weights) != self.num_classes:
+                raise ValueError(
+                    f"class_weights length {len(class_weights)} does not match num_classes {self.num_classes}"
+                )
+            # Clone, convert to float32, and move to appropriate device
+            class_weights_tensor = class_weights.clone().float().to(device)
+            
+            # Update or register the buffer (matching init behavior)
+            if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
+                # Update existing buffer in-place
+                self.class_weights.data = class_weights_tensor
+            else:
+                # Register new buffer
+                self.register_buffer("class_weights", class_weights_tensor)
+            # Use the buffer for loss function
+            weights_for_loss = self.class_weights
+        else:
+            # Setting to None means no weighting (uniform weights)
+            # Match init behavior: if class_weights was None at init, no buffer was registered
+            # Since we can't easily unregister a buffer once registered, we'll:
+            # 1. Keep any existing buffer (it won't be used)
+            # 2. Set self.class_weights = None to match init behavior
+            # 3. Pass None to loss function (which uses uniform weights)
+            if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
+                # Buffer exists - we'll ignore it and pass None to loss
+                # Note: the buffer will remain in state_dict but won't be used
+                pass
+            # Set attribute to None to match init behavior when class_weights=None
+            self.class_weights = None
+            weights_for_loss = None
+        
+        # Recreate the loss function with new weights if it's the default CrossEntropyLoss
+        # Only recreate if loss_fn was created automatically (not a custom loss_fn)
+        if self.loss_fn is None or isinstance(self.loss_fn, nn.CrossEntropyLoss):
+            self.loss_fn = nn.CrossEntropyLoss(
+                weight=weights_for_loss,
+                reduction="mean"
+            )
 
     def forward(
         self,
@@ -588,13 +689,18 @@ class DeltaHeadLoss(nn.Module):
                 raise ValueError(
                     f"Expected {self.num_classes} classes for classification, got {logits_or_value.shape[1]}"
                 )
-            # Targets should be class indices
+            # Ensure logits are float32 (not double precision)
+            logits_or_value = logits_or_value.float()
+            # Targets should be class indices (long/int64)
+            # Convert to long explicitly
             targets = targets.long()
         else:  # regression
             # Squeeze if needed to get [N_pairs]
             if logits_or_value.dim() > 1:
                 logits_or_value = logits_or_value.squeeze(-1)
-            # Targets should be continuous values
+            # Ensure values are float32
+            logits_or_value = logits_or_value.float()
+            # Targets should be continuous values (float32)
             targets = targets.float()
         
         return self.loss_fn(logits_or_value, targets)

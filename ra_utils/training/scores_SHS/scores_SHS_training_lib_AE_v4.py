@@ -39,6 +39,7 @@ from ra_utils.utils.utils import datestr_to_years_since_2000
 
 import ra_utils.loss.online_mining_delta_loss
 import ra_utils.networks.score_estimator
+from ra_utils.loss.delta_head_utils import score_differences_to_class_indices
 import random
 import datetime
 
@@ -90,6 +91,7 @@ def train_loop_AE_v4(
     loss_fn_dict: dict, 
     optimizer: torch.optim.Optimizer,
     model_score_estimator : Optional[torch.nn.Module] = None, 
+    model_delta_heads: Optional[torch.nn.Module]= None,    
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
     device: str = "cuda",
     # training config
@@ -107,7 +109,6 @@ def train_loop_AE_v4(
     extract_ES_metric_from_validation_metrics_dct_OPTION: Literal[None, "classification_report.macro avg"] = None, 
     append_BEST_VAL_as_last: bool = False,
     task_type_y:  Literal['classification', 'regression', 'classification_regression_mix']="classification",
-    model_delta_estimator: Optional[torch.nn.Module] = None, 
     save_regularly: bool = False,
     save_regularly_freq: int = 20,
 ):
@@ -134,6 +135,16 @@ def train_loop_AE_v4(
         if model_classifier is not None
         else None
     )
+    best_se_state = (
+        copy.deepcopy(model_score_estimator.state_dict())
+        if model_score_estimator is not None
+        else None
+    )
+    best_dh_state = (
+        copy.deepcopy(model_delta_heads.state_dict())
+        if model_delta_heads is not None
+        else None
+    )
     epochs_no_improve = 0
     print("Starting training")
 
@@ -147,7 +158,7 @@ def train_loop_AE_v4(
             train_dataloaders,
             model_classifier=model_classifier,
             model_score_estimator=model_score_estimator,
-            model_delta_estimator=model_delta_estimator,
+            model_delta_heads=model_delta_heads,
             loss_fn_dict=loss_fn_dict,
             transform=transform,
             transform_Contrastive=transform_Contrastive,
@@ -166,6 +177,7 @@ def train_loop_AE_v4(
             val_loaders,
             model_classifier=model_classifier,
             model_score_estimator=model_score_estimator,
+            model_delta_heads=model_delta_heads,
             loss_fn_dict=loss_fn_dict,
             transform=lambda x: x,  # No denoising in val. loop
             device=device,
@@ -173,7 +185,6 @@ def train_loop_AE_v4(
             return_all_predictions=False,
             calc_ICC3=1,
             task_type_y=task_type_y, 
-            model_delta_estimator=model_delta_estimator
         )
         val_loss = val_metrics_dct["L"]
         metrics_Val.append(val_metrics_dct)
@@ -255,6 +266,10 @@ def train_loop_AE_v4(
                     mlflow.pytorch.log_model(
                         model_score_estimator, f"regular_checkpoints/epoch_{epoch}_model_score_estimator"
                     )
+                if model_delta_heads is not None:
+                    mlflow.pytorch.log_model(
+                        model_delta_heads, f"regular_checkpoints/epoch_{epoch}_model_delta_heads"
+                    )
 
             # ------- race-safe, non-accumulating state_dict logging -------
             if log_model_state_dct:
@@ -263,6 +278,8 @@ def train_loop_AE_v4(
                     _log_single_state_dict_atomic(model_classifier, f"epoch_{epoch}_model_classifier_state_dict.pt", artifact_subdir="regular_checkpoints")
                 if model_score_estimator is not None:
                     _log_single_state_dict_atomic(model_score_estimator, f"epoch_{epoch}_model_score_estimator_state_dict.pt", artifact_subdir="regular_checkpoints")
+                if model_delta_heads is not None:
+                    _log_single_state_dict_atomic(model_delta_heads, f"epoch_{epoch}_model_delta_heads_state_dict.pt", artifact_subdir="regular_checkpoints")
 
                 # Sidecar metadata
                 info_txt = (
@@ -298,6 +315,8 @@ def train_loop_AE_v4(
                     best_clf_state = copy.deepcopy(model_classifier.state_dict())
                 if model_score_estimator is not None: 
                     best_se_state = copy.deepcopy(model_score_estimator.state_dict())
+                if model_delta_heads is not None:
+                    best_dh_state = copy.deepcopy(model_delta_heads.state_dict())
 
                 epochs_no_improve = 0
 
@@ -312,6 +331,10 @@ def train_loop_AE_v4(
                         mlflow.pytorch.log_model(
                             model_score_estimator, "best_model_score_estimator"
                         )
+                    if model_delta_heads is not None:
+                        mlflow.pytorch.log_model(
+                            model_delta_heads, "best_model_delta_heads"
+                        )
                                         
 
                 # ------- race-safe, non-accumulating state_dict logging -------
@@ -322,7 +345,8 @@ def train_loop_AE_v4(
                         _log_single_state_dict_atomic(model_classifier, "model_classifier_state_dict.pt")
                     if model_score_estimator is not None:
                         _log_single_state_dict_atomic(model_score_estimator, "model_score_estimator_state_dict.pt")
-
+                    if model_delta_heads is not None:
+                        _log_single_state_dict_atomic(model_delta_heads, "model_delta_heads_state_dict.pt")
 
                     # Sidecar metadata (also overwrite same name)
                     info_txt = (
@@ -360,7 +384,8 @@ def train_loop_AE_v4(
             model_classifier.load_state_dict(best_clf_state)
         if model_score_estimator is not None and best_se_state is not None:
             model_score_estimator.load_state_dict(best_se_state)
-                
+        if model_delta_heads is not None and best_dh_state is not None:
+            model_delta_heads.load_state_dict(best_dh_state)
 
     return metrics_Tr, metrics_Val
 
@@ -375,7 +400,7 @@ def val_epoch_AE_v4(
     loss_fn_dict: dict,
     model_classifier: Optional[torch.nn.Module] = None,
     model_score_estimator:  Optional[torch.nn.Module]= None,
-    model_delta_estimator: Optional[torch.nn.Module] = None,
+    model_delta_heads: Optional[torch.nn.Module]= None,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -457,6 +482,9 @@ def val_epoch_AE_v4(
     model_AE.eval().to(device)
     if model_score_estimator is not None:
         model_score_estimator.eval().to(device)
+
+    if model_delta_heads is not None:
+        model_delta_heads.eval().to(device)
 
     if model_classifier is not None:
         model_classifier.eval().to(device)
@@ -618,6 +646,38 @@ def val_epoch_AE_v4(
                 # contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
                 # ----------------------------------------------------------
+                # 1.1.5 Delta heads (if present)
+                # ----------------------------------------------------------
+                loss_y_DeltaHead = torch.tensor(0.0, device=device)
+                num_valid_pairs_DeltaHead = 0.0
+                if model_delta_heads is not None and lambda_y_DeltaHead > 1e-8:
+                    predictions = model_delta_heads(z, s_type_np, instance_label)
+                    
+                    # Create targets from score differences
+                    targets = {}
+                    y_np = y.cpu().numpy()  # Convert scores to numpy for indexing
+                    for head_name, head_pred in predictions.items():
+                        index_pairs = head_pred["index_pairs"].cpu().numpy()
+                        if len(index_pairs) > 0:
+                            score_diffs = np.array([
+                                y_np[int(idx_i)] - y_np[int(idx_j)]
+                                for idx_i, idx_j in index_pairs
+                            ])
+                            # Get num_classes from delta_head_infos (default: 3)
+                            num_classes = model_delta_heads.delta_head_infos[head_name].get("out_dim", 3)
+                            class_indices = score_differences_to_class_indices(score_diffs, num_classes=num_classes)
+                            targets[head_name] = torch.tensor(class_indices, dtype=torch.long, device=device)
+                        else:
+                            # Head has no samples in this batch - create empty target tensor
+                            # The loss function will handle this gracefully (returns 0 loss)
+                            targets[head_name] = torch.empty((0,), dtype=torch.long, device=device)
+                    
+                    # Compute loss (loss function handles empty targets gracefully)
+                    loss_y_DeltaHead_dict = loss_fn_y_DeltaHead(predictions, targets)
+                    loss_y_DeltaHead = loss_y_DeltaHead_dict["total_loss"]
+                    num_valid_pairs_DeltaHead = loss_y_DeltaHead_dict["total_num_valid_pairs"].item()
+
+                # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
                 # ----------------------------------------------------------
                 loss_y = torch.tensor(0.0, device=device)
@@ -726,13 +786,16 @@ def val_epoch_AE_v4(
                 # ----------------------------------------------------------
                 # 1.3 Total weighted loss & running sums
                 # ----------------------------------------------------------
+                # Note: Delta head loss is tracked separately like contrastive losses
+                # (normalized per valid pair), so we don't include it in loss_total here.
+                # It will be added to running_loss["L"] after normalization.
                 loss_total = (
                     lambda_x * loss_x
                     + lambda_y * loss_y
                     + lambda_z * loss_z
                     + lambda_y_delta * loss_y_delta
                     + lambda_y_reg_extra * loss_y_reg_extra
-                    # Contrastive losses are added afterwards
+                    # Delta head and contrastive losses are added afterwards
                 )
 
                 running_loss["Lx"] += loss_x.item() * B
@@ -740,6 +803,14 @@ def val_epoch_AE_v4(
                 running_loss["Lz"] += loss_z.item() * B
                 running_loss["Ly_delta"] += loss_y_delta.item() * B
                 running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+                # Delta head loss: accumulate loss * num_valid_pairs (like contrastive losses)
+                if num_valid_pairs_DeltaHead > 0:
+                    contr_dct["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0) + (loss_y_DeltaHead.item() * num_valid_pairs_DeltaHead)
+                    contr_dct["Ly_DeltaHead_numValidPairs"] = contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0) + num_valid_pairs_DeltaHead
+                else:
+                    # Track zero loss case (ensure dict keys exist)
+                    contr_dct["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
+                    contr_dct["Ly_DeltaHead_numValidPairs"] = contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0)
                 running_loss["L"] += loss_total.item() * B
                 n_samples += B
 
@@ -814,6 +885,13 @@ def val_epoch_AE_v4(
     contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
     contr_dct["Lz_TriTimeMDP"] /= (contr_dct["Lz_TriTimeMDP_numPosTrip"]  + 1.0e-10)
     contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
+    
+    # Mean per valid pair for DeltaHead:
+    if contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0) > 0:
+        contr_dct["Ly_DeltaHead"] /= (contr_dct["Ly_DeltaHead_numValidPairs"] + 1.0e-10)
+    else:
+        contr_dct["Ly_DeltaHead"] = 0.0
+    
     # Mean per "term" for RnC:
     if contr_dct.get("Lz_RnC_time_numTerms", 0.0) > 0:
         contr_dct["Lz_RnC_time"] /= (contr_dct["Lz_RnC_time_numTerms"] + 1e-10)
@@ -824,6 +902,7 @@ def val_epoch_AE_v4(
 
     # The purpose behind the ..._val_multipliers is that the validation uses a different sampler than the training. 
     # So these can not really be compared that well and might need to be turned of 
+    # Add normalized contrastive losses and delta head loss (all normalized per valid pair/term)
     running_loss["L"] += (
               contr_dct["Lz_TriCls"]     * lambda_z_triplet_classes   * lambda_z_triplet_classes_val_multiplier
             + contr_dct["Lz_TriClsWST"]  * lambda_z_triplet_WST_score * lambda_z_triplet_WST_score_val_multiplier
@@ -832,6 +911,7 @@ def val_epoch_AE_v4(
             + contr_dct["Lz_SCR"]        * lambda_z_CR                * lambda_z_CR_val_multiplier
             + contr_dct.get("Lz_RnC_time", 0.0)  * lambda_z_RnC_time  * lambda_z_RnC_time_val_multiplier
             + contr_dct.get("Lz_RnC_score", 0.0) * lambda_z_RnC_score * lambda_z_RnC_score_val_multiplier
+            + contr_dct.get("Ly_DeltaHead", 0.0) * lambda_y_DeltaHead
     )
 
     # # Average compact support across minibatches and rename for auto-logging
@@ -849,6 +929,8 @@ def val_epoch_AE_v4(
 
 
     running_loss = {**running_loss, **contr_dct}
+    # Add normalized delta head loss to running_loss for consistency (override any per-sample average)
+    running_loss["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
 
     if model_classifier is not None:
         for head_name in model_classifier.classifier_head_infos:
@@ -1353,7 +1435,7 @@ def training_epoch_AE_v4(
     optimizer,
     dataloaders: dict,
     loss_fn_dict: dict,
-    model_delta_estimator: Optional[torch.nn.Module] = None,
+    model_delta_heads: Optional[torch.nn.Module] = None,
     model_classifier=None,
     model_score_estimator=None,
     transform=lambda x: x,
@@ -1423,6 +1505,9 @@ def training_epoch_AE_v4(
 
     if model_score_estimator is not None:
         model_score_estimator.train().to(device)
+
+    if model_delta_heads is not None:
+        model_delta_heads.train().to(device)
 
     # running sums for global losses
     running_loss = dict(L=0.0)
@@ -1553,6 +1638,36 @@ def training_epoch_AE_v4(
             
             loss_z_SCR, number_of_valid_contributions_SCR = loss_fn_z_CR(scores=y, embeddings=z, ids=instance_label)
 
+            # -- delta heads ---------------------------------------------- #
+            loss_y_DeltaHead = torch.tensor(0.0, device=device)
+            num_valid_pairs_DeltaHead = 0.0
+            if model_delta_heads is not None and lambda_y_DeltaHead > 1e-8:
+                predictions = model_delta_heads(z, s_type_np, instance_label)
+                
+                # Create targets from score differences
+                targets = {}
+                y_np = y.cpu().numpy()  # Convert scores to numpy for indexing
+                for head_name, head_pred in predictions.items():
+                    index_pairs = head_pred["index_pairs"].cpu().numpy()
+                    if len(index_pairs) > 0:
+                        score_diffs = np.array([
+                            y_np[int(idx_i)] - y_np[int(idx_j)]
+                            for idx_i, idx_j in index_pairs
+                        ])
+                        # Get num_classes from delta_head_infos (default: 3)
+                        num_classes = model_delta_heads.delta_head_infos[head_name].get("out_dim", 3)
+                        class_indices = score_differences_to_class_indices(score_diffs, num_classes=num_classes)
+                        targets[head_name] = torch.tensor(class_indices, dtype=torch.long, device=device)
+                    else:
+                        # Head has no samples in this batch - create empty target tensor
+                        # The loss function will handle this gracefully (returns 0 loss)
+                        targets[head_name] = torch.empty((0,), dtype=torch.long, device=device)
+                
+                # Compute loss (loss function handles empty targets gracefully)
+                loss_y_DeltaHead_dict = loss_fn_y_DeltaHead(predictions, targets)
+                loss_y_DeltaHead = loss_y_DeltaHead_dict["total_loss"]
+                num_valid_pairs_DeltaHead = loss_y_DeltaHead_dict["total_num_valid_pairs"].item()
+
             # -- classifier heads ---------------------------------------------- #
             loss_y = torch.tensor(0.0, device=device)
             loss_y_delta = torch.tensor(0.0, device=device)
@@ -1617,6 +1732,8 @@ def training_epoch_AE_v4(
             loss_z = loss_fn_z(z, z * 0)
 
             # -- total loss & optimisation ------------------------------------- #
+            # Note: Delta head loss is included in the total loss for backprop,
+            # but tracked separately for metrics (normalized per valid pair)
             loss = (lambda_x * loss_x + 
                     lambda_y * loss_y + 
                     lambda_z * loss_z + 
@@ -1628,7 +1745,8 @@ def training_epoch_AE_v4(
                     lambda_z_RnC_time * loss_z_RnC_time + 
                     lambda_z_RnC_score * loss_z_RnC_score + 
                     lambda_y_delta * loss_y_delta + 
-                    lambda_y_reg_extra * loss_y_reg_extra
+                    lambda_y_reg_extra * loss_y_reg_extra +
+                    lambda_y_DeltaHead * loss_y_DeltaHead
                     )
             loss.backward()
             optimizer.step()
@@ -1639,6 +1757,14 @@ def training_epoch_AE_v4(
             running_loss["Lz"] += loss_z.item() * B
             running_loss["Ly_delta"] += loss_y_delta.item() * B
             running_loss["Ly_reg_extra"] += loss_y_reg_extra.item() * B
+            # Delta head loss: accumulate loss * num_valid_pairs (like contrastive losses)
+            if num_valid_pairs_DeltaHead > 0:
+                contr_dct["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0) + (loss_y_DeltaHead.item() * num_valid_pairs_DeltaHead)
+                contr_dct["Ly_DeltaHead_numValidPairs"] = contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0) + num_valid_pairs_DeltaHead
+            else:
+                # Track zero loss case
+                contr_dct["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
+                contr_dct["Ly_DeltaHead_numValidPairs"] = contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0)
 
             # Add fraction of positive triplets and number of valid triplets to running loss
             N_pos = number_of_valid_triplets__classes.item() * fraction_positive_triplets__classes.item()
@@ -1698,6 +1824,12 @@ def training_epoch_AE_v4(
     contr_dct["Lz_TriTimeMDP"] /= (contr_dct["Lz_TriTimeMDP_numPosTrip"]  + 1.0e-10)
     contr_dct["Lz_TriTimeWST"] /= (contr_dct["Lz_TriTimeWST_numPosTrip"] + 1.0e-10)
     contr_dct["Lz_SCR"] /= (contr_dct["Lz_SCR_numPos"]  + 1.0e-10)
+    
+    # Mean per valid pair for DeltaHead:
+    if contr_dct.get("Ly_DeltaHead_numValidPairs", 0.0) > 0:
+        contr_dct["Ly_DeltaHead"] /= (contr_dct["Ly_DeltaHead_numValidPairs"] + 1.0e-10)
+    else:
+        contr_dct["Ly_DeltaHead"] = 0.0
 
     # Mean per "term" for RnC:
     if contr_dct.get("Lz_RnC_time_numTerms", 0.0) > 0:
@@ -1723,6 +1855,8 @@ def training_epoch_AE_v4(
 
 
     running_loss = {**running_loss, **contr_dct}
+    # Add normalized delta head loss to running_loss for consistency (override the per-sample average)
+    running_loss["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
 
     # per-head means
     if model_classifier is not None:
@@ -1745,7 +1879,7 @@ def evaluate_and_log_testset_results_AE_v4(
     dataloaders:            Dict[str, torch.utils.data.DataLoader],
     loss_fn_dict: dict, 
     model_score_estimator:  Optional[torch.nn.Module]= None,
-    model_delta_estimator: Optional[torch.nn.Module] = None,
+    model_delta_heads: Optional[torch.nn.Module]= None,
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -1768,7 +1902,6 @@ def evaluate_and_log_testset_results_AE_v4(
         return_all_predictions=True,
         calc_ICC3=3,
         task_type_y=task_type_y,
-        model_delta_estimator=model_delta_estimator
     )
 
     # --------------------------------------------------- 1. Global metric log
