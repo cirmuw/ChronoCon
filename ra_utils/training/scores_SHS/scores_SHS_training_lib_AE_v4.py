@@ -520,6 +520,10 @@ def val_epoch_AE_v4(
     # collect logits for classification AND mix (in mix: first col is regression, rest are class logits)
     all_logits: list[np.ndarray] | None = [] if task_type_y in ("classification", "classification_regression_mix") else None
 
+    # containers for delta head predictions
+    all_delta_predictions: Dict[str, Dict[str, list]] = {}  # {head_name: {"logits_or_value": [], "index_pairs": [], "ids_pairs": []}}
+    batch_offset = 0  # Track global batch offset for index_pairs
+
     extra_keys = ["file_name", "score_type", "JSN_or_ERO", "extremity", "patient_id"]
     extra_keys2 = ['image_path', 'score',
         'roi_name', #'image_instance_id', 
@@ -650,32 +654,18 @@ def val_epoch_AE_v4(
                 # ----------------------------------------------------------
                 loss_y_DeltaHead = torch.tensor(0.0, device=device)
                 num_valid_pairs_DeltaHead = 0.0
-                if model_delta_heads is not None and lambda_y_DeltaHead > 1e-8:
+                delta_predictions_batch = None
+                if model_delta_heads is not None:
                     predictions = model_delta_heads(z, s_type_np, instance_label)
+                    # Store predictions for later if return_all_predictions is True
+                    if return_all_predictions:
+                        delta_predictions_batch = predictions
                     
-                    # Create targets from score differences
-                    targets = {}
-                    y_np = y.cpu().numpy()  # Convert scores to numpy for indexing
-                    for head_name, head_pred in predictions.items():
-                        index_pairs = head_pred["index_pairs"].cpu().numpy()
-                        if len(index_pairs) > 0:
-                            score_diffs = np.array([
-                                y_np[int(idx_i)] - y_np[int(idx_j)]
-                                for idx_i, idx_j in index_pairs
-                            ])
-                            # Get num_classes from delta_head_infos (default: 3)
-                            num_classes = model_delta_heads.delta_head_infos[head_name].get("out_dim", 3)
-                            class_indices = score_differences_to_class_indices(score_diffs, num_classes=num_classes)
-                            targets[head_name] = torch.tensor(class_indices, dtype=torch.long, device=device)
-                        else:
-                            # Head has no samples in this batch - create empty target tensor
-                            # The loss function will handle this gracefully (returns 0 loss)
-                            targets[head_name] = torch.empty((0,), dtype=torch.long, device=device)
-                    
-                    # Compute loss (loss function handles empty targets gracefully)
-                    loss_y_DeltaHead_dict = loss_fn_y_DeltaHead(predictions, targets)
-                    loss_y_DeltaHead = loss_y_DeltaHead_dict["total_loss"]
-                    num_valid_pairs_DeltaHead = loss_y_DeltaHead_dict["total_num_valid_pairs"].item()
+                    if lambda_y_DeltaHead > 1e-8:
+                        targets = loss_fn_y_DeltaHead.create_targets(predictions, y, device) # Needs predictions for index pairs
+                        loss_y_DeltaHead_dict = loss_fn_y_DeltaHead(predictions, targets)
+                        loss_y_DeltaHead = loss_y_DeltaHead_dict["total_loss"]
+                        num_valid_pairs_DeltaHead = loss_y_DeltaHead_dict["total_num_valid_pairs"].item()
 
                 # ----------------------------------------------------------
                 # 1.2 Classification path (if present)
@@ -872,6 +862,32 @@ def val_epoch_AE_v4(
                 for k in extra_keys:
                     if k in batch:
                         all_extras[k].extend(batch[k])
+                
+                # ----------------------------------------------------------
+                # 1.5 Collect delta head predictions (if present and return_all_predictions)
+                # ----------------------------------------------------------
+                if return_all_predictions and delta_predictions_batch is not None:
+                    for head_name, head_pred in delta_predictions_batch.items():
+                        if head_name not in all_delta_predictions:
+                            all_delta_predictions[head_name] = {
+                                "logits_or_value": [],
+                                "index_pairs": [],
+                                "ids_pairs": []
+                            }
+                        
+                        # Only collect if there are predictions for this head in this batch
+                        if len(head_pred["logits_or_value"]) > 0:
+                            # Convert tensors to numpy and adjust index_pairs for global batch offset
+                            logits_or_value = head_pred["logits_or_value"].detach().cpu().numpy()
+                            index_pairs = head_pred["index_pairs"].detach().cpu().numpy() + batch_offset
+                            ids_pairs = head_pred["ids_pairs"]  # Already a list of tuples
+                            
+                            all_delta_predictions[head_name]["logits_or_value"].append(logits_or_value)
+                            all_delta_predictions[head_name]["index_pairs"].append(index_pairs)
+                            all_delta_predictions[head_name]["ids_pairs"].extend(ids_pairs)
+                
+                # Update batch offset for next batch
+                batch_offset += B
 
     # ------------------------------------------------------------------
     # 2) Aggregate scalar losses
@@ -1024,6 +1040,38 @@ def val_epoch_AE_v4(
         if task_type_y in ("classification", "classification_regression_mix"):
             outputs_all_samples["logits"] = all_logits_np  # in mix: includes regression in col0
             outputs_all_samples["probs"] = all_probs_np    # in mix: probs from class logits only
+        
+        # Add delta head predictions if available
+        # Flatten structure for np.savez_compressed (doesn't handle nested dicts well)
+        if model_delta_heads is not None and all_delta_predictions:
+            # Concatenate predictions across batches for each head
+            for head_name, head_data in all_delta_predictions.items():
+                if len(head_data["logits_or_value"]) > 0:
+                    # Concatenate all batches
+                    logits_or_value_concat = np.concatenate(head_data["logits_or_value"], axis=0)
+                    index_pairs_concat = np.concatenate(head_data["index_pairs"], axis=0)
+                    ids_pairs_list = head_data["ids_pairs"]  # List of tuples
+                    
+                    # Flatten structure: use prefixed keys for each head
+                    # Convert ids_pairs to separate arrays for id_i and id_j for easier saving/loading
+                    ids_pairs_array = np.array(ids_pairs_list, dtype=object)  # Object array of tuples
+                    # Also save as separate arrays for easier access
+                    ids_i = np.array([pair[0] for pair in ids_pairs_list])
+                    ids_j = np.array([pair[1] for pair in ids_pairs_list])
+                    
+                    outputs_all_samples[f"delta_{head_name}_logits_or_value"] = logits_or_value_concat
+                    outputs_all_samples[f"delta_{head_name}_index_pairs"] = index_pairs_concat
+                    outputs_all_samples[f"delta_{head_name}_ids_pairs"] = ids_pairs_array
+                    outputs_all_samples[f"delta_{head_name}_ids_i"] = ids_i
+                    outputs_all_samples[f"delta_{head_name}_ids_j"] = ids_j
+                    outputs_all_samples[f"delta_{head_name}_num_pairs"] = len(logits_or_value_concat)
+            
+            # Store list of head names that have predictions
+            delta_head_names = [head_name for head_name in all_delta_predictions.keys() 
+                              if len(all_delta_predictions[head_name]["logits_or_value"]) > 0]
+            if delta_head_names:
+                outputs_all_samples["delta_head_names"] = np.array(delta_head_names, dtype=object)
+        
         return metrics, outputs_all_samples
 
     return metrics
@@ -1642,28 +1690,8 @@ def training_epoch_AE_v4(
             loss_y_DeltaHead = torch.tensor(0.0, device=device)
             num_valid_pairs_DeltaHead = 0.0
             if model_delta_heads is not None and lambda_y_DeltaHead > 1e-8:
-                predictions = model_delta_heads(z, s_type_np, instance_label)
-                
-                # Create targets from score differences
-                targets = {}
-                y_np = y.cpu().numpy()  # Convert scores to numpy for indexing
-                for head_name, head_pred in predictions.items():
-                    index_pairs = head_pred["index_pairs"].cpu().numpy()
-                    if len(index_pairs) > 0:
-                        score_diffs = np.array([
-                            y_np[int(idx_i)] - y_np[int(idx_j)]
-                            for idx_i, idx_j in index_pairs
-                        ])
-                        # Get num_classes from delta_head_infos (default: 3)
-                        num_classes = model_delta_heads.delta_head_infos[head_name].get("out_dim", 3)
-                        class_indices = score_differences_to_class_indices(score_diffs, num_classes=num_classes)
-                        targets[head_name] = torch.tensor(class_indices, dtype=torch.long, device=device)
-                    else:
-                        # Head has no samples in this batch - create empty target tensor
-                        # The loss function will handle this gracefully (returns 0 loss)
-                        targets[head_name] = torch.empty((0,), dtype=torch.long, device=device)
-                
-                # Compute loss (loss function handles empty targets gracefully)
+                predictions = model_delta_heads(z, s_type_np, instance_label)                
+                targets = loss_fn_y_DeltaHead.create_targets(predictions, y, device) # Needs predictions for index pairs
                 loss_y_DeltaHead_dict = loss_fn_y_DeltaHead(predictions, targets)
                 loss_y_DeltaHead = loss_y_DeltaHead_dict["total_loss"]
                 num_valid_pairs_DeltaHead = loss_y_DeltaHead_dict["total_num_valid_pairs"].item()

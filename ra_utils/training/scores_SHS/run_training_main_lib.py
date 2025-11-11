@@ -411,7 +411,7 @@ def check_config_consistency_and_partially_make_consistent(config : dict, return
 
 
     # Infos for the delta head
-    delta_head_option = config["data"].get("delta_head_option", "trinary")
+    delta_head_option = config["loss"].get("DeltaHead", {}).get("delta_head_option", "trinary")
     print(f"using {delta_head_option = }")
     if delta_head_option == "binary":  # change vs no change
         for k in delta_head_infos.keys():

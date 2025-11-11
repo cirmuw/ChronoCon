@@ -11,7 +11,72 @@ from  ra_utils.networks.architecture import make_score_type_2_head_name_dct
 
 from typing import Optional, Literal, List, Dict, Tuple, Union
 from ra_utils.networks.architecture import make_mlp
+import numpy as np
+from ra_utils.loss.delta_head_utils import score_differences_to_class_indices
 
+
+def _interpolate_weights_pytorch(
+    targets: torch.Tensor,  # [N] score differences
+    diff_values: torch.Tensor,  # [M] sorted unique diff values from training data
+    weights: torch.Tensor,  # [M] weights corresponding to diff_values
+) -> torch.Tensor:
+    """
+    Interpolate weights for target score differences using linear interpolation.
+    
+    Args:
+        targets: Score differences to get weights for [N]
+        diff_values: Sorted unique diff values from training data [M]
+        weights: Weights corresponding to diff_values [M]
+    
+    Returns:
+        Interpolated weights for targets [N]
+    
+    Uses linear interpolation. For values outside the range [min(diff_values), max(diff_values)],
+    uses the boundary weights (clamping).
+    """
+    if len(diff_values) == 1:
+        # Single point: return constant weight
+        return torch.full_like(targets, weights[0])
+    
+    # Ensure diff_values are sorted (they should be, but check to be safe)
+    if not torch.all(diff_values[:-1] <= diff_values[1:]):
+        # Sort if not already sorted
+        sort_indices = torch.argsort(diff_values)
+        diff_values = diff_values[sort_indices]
+        weights = weights[sort_indices]
+    
+    # Clamp targets to the range of diff_values for extrapolation
+    min_diff = diff_values[0]
+    max_diff = diff_values[-1]
+    targets_clamped = torch.clamp(targets, min=min_diff, max=max_diff)
+    
+    # Find the right insertion index for each target
+    # searchsorted returns the index where target would be inserted to maintain sorted order
+    # For interpolation, we need the index of the element that is <= target
+    indices_right = torch.searchsorted(diff_values, targets_clamped, right=True)
+    
+    # Handle edge cases: clamp indices to valid range
+    indices_right = torch.clamp(indices_right, 1, len(diff_values) - 1)
+    indices_left = indices_right - 1
+    
+    # Get the two diff_values and weights that bracket each target
+    diff_low = diff_values[indices_left]
+    diff_high = diff_values[indices_right]
+    weight_low = weights[indices_left]
+    weight_high = weights[indices_right]
+    
+    # Calculate interpolation factor
+    # When diff_low == diff_high (exact match), t will be 0, so we use weight_low
+    diff_range = diff_high - diff_low
+    # Avoid division by zero for exact matches
+    safe_range = torch.where(diff_range < 1e-8, torch.ones_like(diff_range), diff_range)
+    t = (targets_clamped - diff_low) / safe_range
+    
+    # Linear interpolation: weight = weight_low * (1 - t) + weight_high * t
+    # For exact matches (t=0), this gives weight_low
+    interpolated_weights = weight_low * (1 - t) + weight_high * t
+    
+    return interpolated_weights
 
 class DeltaHead(nn.Module):
     """
@@ -308,6 +373,7 @@ class DeltaHeadsLoss(nn.Module):
         task_type: Optional[Literal["classification", "regression"]] = None,
         ids_must_match: bool = False,
         no_self_difference: bool = True,
+        prevalence_data: Optional[Dict] = None,  # For regression sample weighting
     ):
         super().__init__()
         self.ids_must_match = ids_must_match
@@ -327,7 +393,13 @@ class DeltaHeadsLoss(nn.Module):
                         f"delta_head_infos['{head_name}'] must contain 'out_dim'"
                     )
                 
-                # Get class weights for this head if provided
+                # Determine task_type for this head: if out_dim == 1, it's regression; otherwise classification
+                # Use explicit task_type if provided, otherwise infer from out_dim
+                head_task_type = task_type
+                if head_task_type is None:
+                    head_task_type = "regression" if out_dim == 1 else "classification"
+                
+                # Get class weights or sample weights for this head if provided
                 head_class_weights = None
                 if class_weights is not None and head_name in class_weights:
                     head_class_weights = class_weights[head_name]
@@ -335,11 +407,42 @@ class DeltaHeadsLoss(nn.Module):
                 # Create DeltaHeadLoss for this head
                 head_losses[head_name] = DeltaHeadLoss(
                     num_classes=out_dim,
-                    task_type=task_type,
+                    task_type=head_task_type,
                     class_weights=head_class_weights,
                 )
         
         self.head_losses = nn.ModuleDict(head_losses)
+        
+        # Store delta_head_infos and task_type for create_targets
+        # If delta_head_infos was not provided, try to infer from head_losses
+        if delta_head_infos is not None:
+            self.delta_head_infos = delta_head_infos.copy()
+        else:
+            # Try to reconstruct delta_head_infos from head_losses
+            self.delta_head_infos = {}
+            for head_name, head_loss in self.head_losses.items():
+                self.delta_head_infos[head_name] = {
+                    "out_dim": head_loss.num_classes
+                }
+        self.task_type = task_type
+        
+        # Store prevalence weights and data for regression sample weighting
+        # class_weights can contain either class weights (for classification) or 
+        # prevalence-based weights (for regression). For regression, we need to map
+        # score difference values to weights. This will be handled in create_targets.
+        self.prevalence_weights = class_weights  # Store for potential use in create_targets
+        self.prevalence_data = prevalence_data  # Store prevalence data for regression (score_type -> {diff_values, weights})
+        
+        # Create mapping from head_name to score_type for regression sample weighting
+        # We need to map head names to score types to look up prevalence data
+        if delta_head_infos is not None and prevalence_data is not None:
+            # Create reverse mapping: score_type -> head_name using make_score_type_2_head_name_dct
+            from ra_utils.networks.architecture import make_score_type_2_head_name_dct
+            score_type_2_head_name = make_score_type_2_head_name_dct(delta_head_infos)
+            # Create head_name -> score_type mapping
+            self.head_name_2_score_type = {head_name: score_type for score_type, head_name in score_type_2_head_name.items()}
+        else:
+            self.head_name_2_score_type = {}
         
         # Set head weights
         if head_weights is None:
@@ -499,7 +602,27 @@ class DeltaHeadsLoss(nn.Module):
             #     print(f"head_pred: {head_pred}")
             #     print(f"head_target: {head_target}")
             
-            head_loss_value = head_loss(head_pred, head_target)
+            # Create sample weights for regression if prevalence data is available
+            sample_weights = None
+            if head_loss.task_type == "regression" and self.prevalence_data is not None:
+                score_type = self.head_name_2_score_type.get(head_name)
+                if score_type and score_type in self.prevalence_data:
+                    # Get diff_values and weights for this score_type
+                    prev_data = self.prevalence_data[score_type]
+                    diff_values = prev_data["diff_values"]  # [N_unique_diffs]
+                    weights = prev_data["weights"]  # [N_unique_diffs]
+                    
+                    if diff_values is not None and weights is not None and len(diff_values) > 0:
+                        # Use smooth interpolation to map score differences to weights
+                        # This creates a continuous function for regression instead of discrete nearest neighbor
+                        # Use PyTorch-based interpolation for efficiency and GPU support
+                        sample_weights = _interpolate_weights_pytorch(
+                            head_target.flatten(),  # [N_pairs] score differences
+                            diff_values,  # [M] sorted diff values from training data
+                            weights  # [M] weights corresponding to diff values
+                        )
+            
+            head_loss_value = head_loss(head_pred, head_target, sample_weights=sample_weights)
             losses[head_name] = head_loss_value
             
             # Track number of valid pairs for this head (after filtering)
@@ -531,7 +654,60 @@ class DeltaHeadsLoss(nn.Module):
         return losses
     
 
+    
+    def create_targets(self, predictions, y: torch.Tensor, device: torch.device) -> Dict[str, torch.Tensor]:
+        """
+        Create targets from score differences for both classification and regression.
+        
+        For classification (out_dim > 1): Returns class indices (long tensor)
+        For regression (out_dim == 1): Returns continuous score differences (float tensor)
+        """
+        targets = {}
+        y_np = y.cpu().numpy()  # Convert scores to numpy for indexing
+        
+        if self.delta_head_infos is None:
+            raise ValueError("delta_head_infos must be available to create targets")
+        
+        for head_name, head_pred in predictions.items():
+            index_pairs = head_pred["index_pairs"].cpu().numpy()
+            if len(index_pairs) > 0:
+                score_diffs = np.array([
+                    y_np[int(idx_i)] - y_np[int(idx_j)]
+                    for idx_i, idx_j in index_pairs
+                ])
+                
+                # Get out_dim from delta_head_infos to determine task type
+                out_dim = self.delta_head_infos[head_name].get("out_dim", 3)
+                
+                # Determine task type: if out_dim == 1, it's regression; otherwise classification
+                # Use explicit task_type if available, otherwise infer from out_dim
+                head_task_type = self.task_type
+                if head_task_type is None:
+                    head_task_type = "regression" if out_dim == 1 else "classification"
+                
+                if head_task_type == "regression":
+                    # For regression: return continuous score differences as float tensor
+                    targets[head_name] = torch.tensor(score_diffs, dtype=torch.float32, device=device)
+                else:
+                    # For classification: convert score differences to class indices
+                    num_classes = out_dim
+                    class_indices = score_differences_to_class_indices(score_diffs, num_classes=num_classes)
+                    targets[head_name] = torch.tensor(class_indices, dtype=torch.long, device=device)
+            else:
+                # Head has no samples in this batch - create empty target tensor
+                # Determine dtype based on task type
+                out_dim = self.delta_head_infos.get(head_name, {}).get("out_dim", 3)
+                head_task_type = self.task_type
+                if head_task_type is None:
+                    head_task_type = "regression" if out_dim == 1 else "classification"
+                
+                if head_task_type == "regression":
+                    targets[head_name] = torch.empty((0,), dtype=torch.float32, device=device)
+                else:
+                    targets[head_name] = torch.empty((0,), dtype=torch.long, device=device)
 
+        return targets
+    
 
 
 class DeltaHeadLoss(nn.Module):
@@ -541,6 +717,7 @@ class DeltaHeadLoss(nn.Module):
     Computes loss for pairwise comparisons. Supports both classification and regression.
     For classification: predicts one of num_classes classes (typically: score1 < score2, score1 == score2, score1 > score2).
     For regression: predicts the difference (score1 - score2).
+    Supports sample weights for regression to handle imbalanced score difference distributions.
     """
     def __init__(
         self,
@@ -555,7 +732,8 @@ class DeltaHeadLoss(nn.Module):
                         or 1 for regression. If task_type is None, inferred from num_classes (1 -> regression, >1 -> classification).
             task_type: "classification" or "regression". If None, inferred from num_classes.
             class_weights: Optional weights for classification classes [num_classes]
-                          If None, uses uniform weights
+                          For regression, if provided, these are sample weights (though sample weights
+                          should be passed directly in forward() for flexibility)
             loss_fn: Optional custom loss function. If None, uses default (CE for classification, MSE for regression)
         """
         super().__init__()
@@ -595,77 +773,16 @@ class DeltaHeadLoss(nn.Module):
                 raise ValueError(
                     f"For regression, num_classes must be 1, got {num_classes}"
                 )
-            self.loss_fn = nn.MSELoss(reduction="mean")
-    
-    def set_class_weights(self, class_weights: Optional[torch.Tensor] = None):
-        """
-        Set class weights for classification task.
-        
-        This method updates the class weights buffer and recreates the loss function
-        with the new weights, just as if they were set at initialization.
-        
-        Args:
-            class_weights: Optional weights for classification classes [num_classes]
-                          If None, uses uniform weights (no weighting)
-        """
-        if self.task_type != "classification":
-            raise ValueError(
-                f"set_class_weights can only be called for classification tasks, "
-                f"but task_type is '{self.task_type}'"
-            )
-        
-        # Determine device for the weights
-        # Priority: existing buffer device > loss function weight device > CPU
-        device = torch.device("cpu")
-        if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
-            device = self.class_weights.device
-        elif hasattr(self, "loss_fn") and hasattr(self.loss_fn, "weight") and self.loss_fn.weight is not None:
-            device = self.loss_fn.weight.device
-        
-        if class_weights is not None:
-            if len(class_weights) != self.num_classes:
-                raise ValueError(
-                    f"class_weights length {len(class_weights)} does not match num_classes {self.num_classes}"
-                )
-            # Clone, convert to float32, and move to appropriate device
-            class_weights_tensor = class_weights.clone().float().to(device)
-            
-            # Update or register the buffer (matching init behavior)
-            if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
-                # Update existing buffer in-place
-                self.class_weights.data = class_weights_tensor
-            else:
-                # Register new buffer
-                self.register_buffer("class_weights", class_weights_tensor)
-            # Use the buffer for loss function
-            weights_for_loss = self.class_weights
-        else:
-            # Setting to None means no weighting (uniform weights)
-            # Match init behavior: if class_weights was None at init, no buffer was registered
-            # Since we can't easily unregister a buffer once registered, we'll:
-            # 1. Keep any existing buffer (it won't be used)
-            # 2. Set self.class_weights = None to match init behavior
-            # 3. Pass None to loss function (which uses uniform weights)
-            if hasattr(self, "class_weights") and isinstance(self.class_weights, torch.Tensor):
-                # Buffer exists - we'll ignore it and pass None to loss
-                # Note: the buffer will remain in state_dict but won't be used
-                pass
-            # Set attribute to None to match init behavior when class_weights=None
-            self.class_weights = None
-            weights_for_loss = None
-        
-        # Recreate the loss function with new weights if it's the default CrossEntropyLoss
-        # Only recreate if loss_fn was created automatically (not a custom loss_fn)
-        if self.loss_fn is None or isinstance(self.loss_fn, nn.CrossEntropyLoss):
-            self.loss_fn = nn.CrossEntropyLoss(
-                weight=weights_for_loss,
-                reduction="mean"
-            )
+            # For regression, we'll use weighted MSE when sample weights are provided
+            # Store base MSE loss for unweighted case
+            self.loss_fn = nn.MSELoss(reduction="none")  # Use "none" to apply weights manually
+
 
     def forward(
         self,
         logits_or_value: torch.Tensor,  # [N_pairs, out_dim]
         targets: torch.Tensor,           # [N_pairs] for classification (class indices), [N_pairs] for regression (differences)
+        sample_weights: Optional[torch.Tensor] = None,  # [N_pairs] optional sample weights for regression
     ) -> torch.Tensor:
         """
         Compute loss for a single head.
@@ -677,6 +794,8 @@ class DeltaHeadLoss(nn.Module):
             targets: Ground truth targets [N_pairs]
                     - For classification: class indices (0 to num_classes-1)
                     - For regression: score differences (score_i - score_j)
+            sample_weights: Optional sample weights [N_pairs] for regression.
+                          If provided, applies weighted MSE. Ignored for classification.
         
         Returns:
             Scalar loss value
@@ -694,6 +813,8 @@ class DeltaHeadLoss(nn.Module):
             # Targets should be class indices (long/int64)
             # Convert to long explicitly
             targets = targets.long()
+            # Sample weights are not used for classification
+            return self.loss_fn(logits_or_value, targets)
         else:  # regression
             # Squeeze if needed to get [N_pairs]
             if logits_or_value.dim() > 1:
@@ -702,6 +823,22 @@ class DeltaHeadLoss(nn.Module):
             logits_or_value = logits_or_value.float()
             # Targets should be continuous values (float32)
             targets = targets.float()
-        
-        return self.loss_fn(logits_or_value, targets)
+            
+            # Compute MSE loss (reduction="none" gives per-sample losses)
+            losses = self.loss_fn(logits_or_value, targets)  # [N_pairs]
+            
+            # Apply sample weights if provided
+            if sample_weights is not None:
+                if len(sample_weights) != len(losses):
+                    raise ValueError(
+                        f"sample_weights length {len(sample_weights)} does not match predictions length {len(losses)}"
+                    )
+                # Ensure sample_weights are on the same device and dtype
+                sample_weights = sample_weights.to(losses.device).float()
+                # Weighted mean: sum(weights * losses) / sum(weights)
+                weighted_loss = (sample_weights * losses).sum() / (sample_weights.sum() + 1e-8)
+                return weighted_loss
+            else:
+                # Unweighted mean
+                return losses.mean()
     

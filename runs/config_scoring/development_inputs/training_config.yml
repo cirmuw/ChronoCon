@@ -276,16 +276,17 @@ loss:
 
   DeltaHead:
     name: "DeltaHeadsLoss"
+    delta_head_option: "regression" # "signed_classification", "regression", "binary", "trinary"
     params: 
       ids_must_match: True   
       no_self_difference: True
-      task_type: "classification"    
+      # task_type: "regression"    
       #delta_head_infos=delta_head_infos,
       #class_weights=class_weights_tensors if class_weights_tensors else None,
 
     # Comment if no prevalence weighting is desired   
-    prevalence_weighting:
-      option: "less_OR_same_OR_greater"  # "<_or_Same_or_greater", "regression", "classification"
+    prevalence_weighting:  #
+      option: "regression" # "less_OR_same_OR_greater"  # "<_or_Same_or_greater", "regression", "classification"
       smoothing_factor: 0.01
 
 

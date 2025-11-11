@@ -1,6 +1,7 @@
 import torch
 import torch
 import torch.nn as nn
+import numpy as np
 
 
 from ra_utils.networks.loss_function import (
@@ -25,15 +26,27 @@ import ra_utils.networks.delta_heads
 
 
 def make_loss_function_dict_delta_heads(config, data, delta_head_infos=None, device="cuda"):
+    """
+    Create loss function dictionary for delta heads.
     
-    
+    Infers task_type from delta_head_option to avoid duplication in config.
+    - delta_head_option == "regression" -> task_type = "regression"
+    - Otherwise -> task_type = "classification"
+    """
     lambda_ = config.get('loss_weights', {}).get('lambda_y_DeltaHead', 0.0)
     if lambda_ < 1.0e-8: 
         loss_fn_ = DummyReturnZeroLossAndDict(device)
     else: 
         prevalence_by_score_type = ra_utils.loss.delta_head_utils.score_difference_prevalence_by_score_type(data)
 
-
+        # Get delta_head_option and infer task_type
+        delta_head_option = config["loss"].get("DeltaHead", {}).get("delta_head_option", "trinary")
+        # Infer task_type from delta_head_option
+        if delta_head_option == "regression":
+            inferred_task_type = "regression"
+        else:
+            inferred_task_type = "classification"  # binary, trinary, signed_classification are all classification
+        
         options_prevalence_weighting  = config["loss"].get("DeltaHead", {}).get("prevalence_weighting")
         if options_prevalence_weighting: 
             prevalences_w = ra_utils.loss.delta_head_utils.prevalences_weights(prevalence_by_score_type, **options_prevalence_weighting)
@@ -44,8 +57,64 @@ def make_loss_function_dict_delta_heads(config, data, delta_head_infos=None, dev
             prevalences_w = None
             
         loss_params = config["loss"].get("DeltaHead", {}).get("params", {})
+        
+        # Override task_type in params with inferred value (unless explicitly set and different)
+        # This ensures consistency: if delta_head_option is set, task_type is automatically set
+        if "task_type" not in loss_params:
+            loss_params["task_type"] = inferred_task_type
+        else:
+            # Warn if there's a mismatch, but use the inferred value for consistency
+            if loss_params["task_type"] != inferred_task_type:
+                import warnings
+                warnings.warn(
+                    f"task_type in params ({loss_params['task_type']}) doesn't match "
+                    f"delta_head_option ({delta_head_option} -> {inferred_task_type}). "
+                    f"Using inferred task_type: {inferred_task_type}"
+                )
+                loss_params["task_type"] = inferred_task_type
+        
+        # For regression, prevalence weights have different semantics:
+        # - They represent weights for each unique score difference value (e.g., -3 to +3 = 7 values)
+        # - They are NOT class weights (regression has num_classes=1)
+        # - They should be used as sample weights via prevalence_data, not as class_weights
+        # For classification, prevalences_w can be used as class_weights (e.g., 3 classes for trinary)
+        if inferred_task_type == "regression":
+            # For regression: don't pass class_weights (they have wrong dimension)
+            # Instead, use prevalence_data for sample weighting
+            class_weights_for_loss = None
+            
+            # Store prevalence data for regression sample weighting with smooth interpolation
+            if options_prevalence_weighting and options_prevalence_weighting.get("option") == "regression":
+                # Store prevalence data for regression sample weighting with smooth interpolation
+                # Note: prevalences_weights sorts the diff values, so we need to match that order
+                prevalence_data = {}
+                for score_type, prevalence in prevalence_by_score_type.items():
+                    if score_type in prevalences_w and len(prevalence) > 0:
+                        # Sort diff values to match the order in prevalences_weights
+                        # prevalences_weights does: diffs = np.array(sorted(prevalence.index))
+                        sorted_diffs = np.array(sorted(prevalence.index))
+                        weights = prevalences_w[score_type]
+                        # Ensure weights and diffs have same length
+                        if len(weights) == len(sorted_diffs):
+                            prevalence_data[score_type] = {
+                                "diff_values": torch.tensor(sorted_diffs, dtype=torch.float32, device=device),
+                                "weights": weights  # Already a torch tensor on the correct device
+                            }
+                loss_params["prevalence_data"] = prevalence_data if prevalence_data else None
+            else:
+                loss_params["prevalence_data"] = None
+        else:
+            # For classification: prevalences_w can be used as class_weights
+            # (e.g., for trinary classification: 3 weights for <, ==, >)
+            class_weights_for_loss = prevalences_w
+            # No prevalence_data needed for classification (uses class_weights directly)
+            loss_params["prevalence_data"] = None
 
-        loss_fn_ = ra_utils.networks.delta_heads.DeltaHeadsLoss(delta_head_infos=delta_head_infos, class_weights = prevalences_w, **loss_params)
+        loss_fn_ = ra_utils.networks.delta_heads.DeltaHeadsLoss(
+            delta_head_infos=delta_head_infos, 
+            class_weights=class_weights_for_loss,  # None for regression, prevalences_w for classification
+            **loss_params
+        )
     loss_dct_y_DeltaHead = {
             "function": loss_fn_, 
             "lambda": lambda_, 
