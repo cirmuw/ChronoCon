@@ -149,6 +149,9 @@ def train_loop_AE_v4(
     print("Starting training")
 
     metrics_Tr, metrics_Val = [], []
+    # Initialize BEST metrics to None - will be set in first epoch or when improved
+    train_metrics_dct_BEST = None
+    val_metrics_dct_BEST = None
     for epoch in range(epochs):
         # ------------------------------------------------------------------
         # 1) Train one epoch -------------------------------------------------
@@ -248,6 +251,14 @@ def train_loop_AE_v4(
         # 3) Scheduler step --------------------------------------------------
         if scheduler is not None:
             scheduler.step(val_loss)
+
+        # ------------------------------------------------------------------
+        # 3.25) Update BEST metrics when run_full_epochs=True ----------------
+        # When running full epochs, update BEST metrics on every epoch
+        # so they contain the last epoch's metrics at the end
+        if run_full_epochs:
+            train_metrics_dct_BEST = train_metrics_dct.copy()
+            val_metrics_dct_BEST = val_metrics_dct.copy()
 
         # ------------------------------------------------------------------
         # 3.5) Regular model saving (optional) ------------------------------
@@ -373,6 +384,12 @@ def train_loop_AE_v4(
                     break
 
     if append_BEST_VAL_as_last: 
+        # Safety check: ensure BEST metrics are set (should always be the case)
+        if train_metrics_dct_BEST is None or val_metrics_dct_BEST is None:
+            raise ValueError(
+                "BEST metrics not initialized. This should not happen - "
+                "check that at least one epoch completed successfully."
+            )
         metrics_Tr.append(train_metrics_dct_BEST)
         metrics_Val.append(val_metrics_dct_BEST)
 

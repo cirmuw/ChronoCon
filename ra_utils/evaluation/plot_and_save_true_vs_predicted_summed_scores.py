@@ -252,7 +252,7 @@ def main():
     )
     parser.add_argument(
         '--limit_treatment_ED', type=str, default="E_D_mean",
-        help='How to handle ED score pairs. Options: "cap E_D sum to 5" or "E_D_mean"'
+        help='How to handle ED score pairs. Options: "cap E_D sum to 5" or "E_D_mean  default: "E_D_mean" '
     )
 
     args = parser.parse_args()
