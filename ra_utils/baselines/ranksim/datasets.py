@@ -18,11 +18,12 @@ print = logging.info
 
 class AgeDB(data.Dataset):
     def __init__(self, df, data_dir, img_size, split='train', reweight='none',
-                 lds=False, lds_kernel='gaussian', lds_ks=5, lds_sigma=2):
+                 lds=False, lds_kernel='gaussian', lds_ks=5, lds_sigma=2, path_to_data_table=None):
         self.df = df
         self.data_dir = data_dir
         self.img_size = img_size
         self.split = split
+        self.path_to_data_table = path_to_data_table
 
         self.weights = self._prepare_weights(reweight=reweight, lds=lds, lds_kernel=lds_kernel, lds_ks=lds_ks, lds_sigma=lds_sigma)
 
@@ -37,8 +38,16 @@ class AgeDB(data.Dataset):
         img = transform(img)
         label = np.asarray([row['age']]).astype('float32')
         weight = np.asarray([self.weights[index]]).astype('float32') if self.weights is not None else np.asarray([np.float32(1.)])
-
-        return img, label, weight
+        sex = row['sex']
+        # Return dictionary format for grouped sampler compatibility
+        sample = {
+            'image': img,
+            'y_true': label,
+            'weight': weight,
+            'name': row.get('name', f'unknown_{index}') if 'name' in row else f'unknown_{index}',
+            'sex': sex
+        }
+        return sample
 
     def get_transform(self):
         if self.split == 'train':

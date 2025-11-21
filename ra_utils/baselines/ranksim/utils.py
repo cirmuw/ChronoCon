@@ -125,3 +125,85 @@ def get_lds_kernel_window(kernel, ks, sigma):
         kernel_window = list(map(laplace, np.arange(-half_ks, half_ks + 1))) / max(map(laplace, np.arange(-half_ks, half_ks + 1)))
 
     return kernel_window
+
+
+def create_dataloader_with_sampler(dataset, args, split='train', drop_last=False, use_grouped_override=None):
+    """
+    Create a DataLoader with optional grouped sampling support.
+    
+    Args:
+        dataset: PyTorch Dataset
+        args: Arguments object with sampler configuration
+        split: 'train', 'val', or 'test'
+        drop_last: Whether to drop the last incomplete batch
+        use_grouped_override: If provided, overrides the grouped sampler setting
+                             (useful for test set which may have different behavior)
+        
+    Returns:
+        DataLoader with appropriate sampler
+    """
+    from torch.utils.data import DataLoader
+    from samplers import GroupedBatchSampler, GroupedRandomSampler
+    
+    # Determine if we should use grouped sampler
+    if use_grouped_override is not None:
+        use_grouped = use_grouped_override
+    else:
+        use_grouped = args.use_grouped_sampler if split == 'train' else getattr(args, 'use_grouped_sampler_val', False)
+    
+    if use_grouped:
+        if split == 'train':
+            logging.info(f"\nUsing Grouped Sampler for {split} (type: {args.sampler_type})")
+        else:
+            logging.info(f"\nUsing Grouped Sampler for {split} (deterministic, no shuffling)")
+        
+        if args.sampler_type == 'batch':
+            sampler = GroupedBatchSampler(
+                dataset=dataset,
+                batch_size=args.batch_size,
+                drop_last=drop_last,
+                shuffle=(split == 'train')
+            )
+            loader = DataLoader(
+                dataset,
+                batch_sampler=sampler,
+                num_workers=args.workers,
+                pin_memory=True
+            )
+        else:  # 'random'
+            sampler = GroupedRandomSampler(
+                dataset=dataset,
+                shuffle=(split == 'train')
+            )
+            loader = DataLoader(
+                dataset,
+                batch_size=args.batch_size,
+                sampler=sampler,
+                num_workers=args.workers,
+                pin_memory=True,
+                drop_last=drop_last
+            )
+        
+        # Print sampler statistics
+        if hasattr(sampler, 'name_to_indices'):
+            num_groups = len(sampler.name_to_indices)
+            group_sizes = [len(indices) for indices in sampler.name_to_indices.values()]
+            logging.info(f"{split.capitalize()} - Number of name groups: {num_groups}")
+            logging.info(f"{split.capitalize()} - Average samples per name: {sum(group_sizes) / num_groups:.2f}")
+            logging.info(f"{split.capitalize()} - Min/Max samples per name: {min(group_sizes)}/{max(group_sizes)}")
+    else:
+        if split == 'train':
+            logging.info(f"\nUsing Standard Random Sampler for {split}")
+        else:
+            logging.info(f"\nUsing Standard Sampler for {split}")
+        
+        loader = DataLoader(
+            dataset,
+            batch_size=args.batch_size,
+            shuffle=(split == 'train'),
+            num_workers=args.workers,
+            pin_memory=True,
+            drop_last=drop_last
+        )
+    
+    return loader

@@ -13,10 +13,12 @@ import argparse
 import logging
 from tqdm import tqdm
 import pandas as pd
+import numpy as np
 from scipy.stats import gmean
 from collections import defaultdict
 import datetime
 
+import torch
 import torch.nn as nn
 import torch.backends.cudnn as cudnn
 from torch.utils.data import DataLoader
@@ -24,7 +26,7 @@ from torch.utils.data import DataLoader
 from loss import *
 from utils import *
 from datasets import AgeDB
-from resnet import resnet50
+from resnet import resnet18, resnet50
 
 from ranksim import batchwise_ranking_regularizer
 
@@ -62,11 +64,21 @@ parser.add_argument('--retrain_fc', action='store_true', default=False, help='wh
 parser.add_argument('--regularization_weight', type=float, default=0, help='weight of the regularization term')
 parser.add_argument('--interpolation_lambda', type=float, default=1.0, help='interpolation strength')
 
+# grouped sampling
+parser.add_argument('--use_grouped_sampler', action='store_true', 
+                    help='Use GroupedBatchSampler to keep samples with same name in same batch')
+parser.add_argument('--sampler_type', type=str, default='batch', choices=['batch', 'random'],
+                    help='Type of grouped sampler: "batch" uses GroupedBatchSampler, "random" uses GroupedRandomSampler')
+parser.add_argument('--use_grouped_sampler_val', action='store_true',
+                    help='Use GroupedBatchSampler for validation/test (deterministic, no shuffling)')
+parser.add_argument('--path_to_data_table', type=str, default='/home/cwatzenboeck/data/public/agedb/tabular/03_agedb_splits_stratified_new.csv', 
+                    help='Path to CSV file with data splits (alternative to --data_dir/{dataset}.csv)')
+
 # training/optimization related
 parser.add_argument('--dataset', type=str, default='agedb', choices=['imdb_wiki', 'agedb'], help='dataset name')
-parser.add_argument('--data_dir', type=str, default='./data', help='data directory')
-parser.add_argument('--model', type=str, default='resnet50', help='model name')
-parser.add_argument('--store_root', type=str, default='checkpoint', help='root path for storing checkpoints, logs')
+parser.add_argument('--data_dir', type=str, default='/home/cwatzenboeck/data/public/agedb/', help='data directory')
+parser.add_argument('--model', type=str, default='resnet50', choices=['resnet18', 'resnet50'], help='model name')
+parser.add_argument('--store_root', type=str, default='/home/cwatzenboeck/data/mlflow_cirpc_tmp/age_db/basic/rankSIM', help='root path for storing checkpoints, logs')
 parser.add_argument('--store_name', type=str, default='', help='experiment store name')
 parser.add_argument('--gpu', type=int, default=None)
 parser.add_argument('--optimizer', type=str, default='adam', choices=['adam', 'sgd'], help='optimizer type')
@@ -79,7 +91,7 @@ parser.add_argument('--schedule', type=int, nargs='*', default=[60, 80], help='l
 parser.add_argument('--batch_size', type=int, default=256, help='batch size')
 parser.add_argument('--print_freq', type=int, default=10, help='logging frequency')
 parser.add_argument('--img_size', type=int, default=224, help='image size used in training')
-parser.add_argument('--workers', type=int, default=32, help='number of workers used in data loading')
+parser.add_argument('--workers', type=int, default=12, help='number of workers used in data loading')  # Used to be 32
 # checkpoints
 parser.add_argument('--resume', type=str, default='', help='checkpoint file path to resume training')
 parser.add_argument('--pretrained', type=str, default='', help='checkpoint file path to load backbone weights')
@@ -110,6 +122,10 @@ if args.retrain_fc:
     args.store_name += f'_retrain_fc'
 if args.regularization_weight > 0:
     args.store_name += f'_reg{args.regularization_weight}_il{args.interpolation_lambda}'
+if args.use_grouped_sampler:
+    args.store_name += f'_grouped_{args.sampler_type}'
+if args.use_grouped_sampler_val:
+    args.store_name += f'_val_grouped'
 args.store_name = f"{args.dataset}_{args.model}{args.store_name}_{args.optimizer}_{args.loss}_{args.lr}_{args.batch_size}"
 
 timestamp = str(datetime.datetime.now())
@@ -127,7 +143,9 @@ logging.basicConfig(
         logging.StreamHandler()
     ])
 print = logging.info
-print(f"Args: {args}")
+print("Options:")
+for key, value in vars(args).items():
+    print(f"  {key:25s}: {value}")
 print(f"Store name: {args.store_name}")
 
 
@@ -137,29 +155,45 @@ def main():
 
     # Data
     print('=====> Preparing data...')
-    print(f"File (.csv): {args.dataset}.csv")
-    df = pd.read_csv(os.path.join(args.data_dir, f"{args.dataset}.csv"))
+    # Support both path_to_data_table and data_dir/{dataset}.csv
+    if args.path_to_data_table:
+        csv_path = args.path_to_data_table
+        print(f"File (.csv): {args.path_to_data_table}")
+    else:
+        csv_path = os.path.join(args.data_dir, f"{args.dataset}.csv")
+        print(f"File (.csv): {args.dataset}.csv")
+    
+    df = pd.read_csv(csv_path)
     df_train, df_val, df_test = df[df['split'] == 'train'], df[df['split'] == 'val'], df[df['split'] == 'test']
     train_labels = df_train['age']
+    
+    # Check if 'name' column exists for grouped sampling
+    if args.use_grouped_sampler or args.use_grouped_sampler_val:
+        if 'name' not in df.columns:
+            raise ValueError("Grouped sampling requires 'name' column in CSV. Please provide a CSV with 'name' column or disable grouped sampling.")
 
     train_dataset = AgeDB(data_dir=args.data_dir, df=df_train, img_size=args.img_size, split='train',
-                          reweight=args.reweight, lds=args.lds, lds_kernel=args.lds_kernel, lds_ks=args.lds_ks, lds_sigma=args.lds_sigma)
-    val_dataset = AgeDB(data_dir=args.data_dir, df=df_val, img_size=args.img_size, split='val')
-    test_dataset = AgeDB(data_dir=args.data_dir, df=df_test, img_size=args.img_size, split='test')
+                          reweight=args.reweight, lds=args.lds, lds_kernel=args.lds_kernel, lds_ks=args.lds_ks, lds_sigma=args.lds_sigma,
+                          path_to_data_table=args.path_to_data_table if args.path_to_data_table else None)
+    val_dataset = AgeDB(data_dir=args.data_dir, df=df_val, img_size=args.img_size, split='val',
+                        path_to_data_table=args.path_to_data_table if args.path_to_data_table else None)
+    test_dataset = AgeDB(data_dir=args.data_dir, df=df_test, img_size=args.img_size, split='test',
+                         path_to_data_table=args.path_to_data_table if args.path_to_data_table else None)
 
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
-                              num_workers=args.workers, pin_memory=True, drop_last=False)
-    val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False,
-                            num_workers=args.workers, pin_memory=True, drop_last=False)
-    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False,
-                             num_workers=args.workers, pin_memory=True, drop_last=False)
+    from utils import create_dataloader_with_sampler
+    train_loader = create_dataloader_with_sampler(train_dataset, args, split='train', drop_last=False)
+    val_loader = create_dataloader_with_sampler(val_dataset, args, split='val', drop_last=False)
+    # Test loader always uses standard sampler (no grouped sampling) unless explicitly enabled
+    test_loader = create_dataloader_with_sampler(test_dataset, args, split='test', drop_last=False, use_grouped_override=False)
     print(f"Training data size: {len(train_dataset)}")
     print(f"Validation data size: {len(val_dataset)}")
     print(f"Test data size: {len(test_dataset)}")
 
     # Model
     print('=====> Building model...')
-    model = resnet50(fds=args.fds, bucket_num=args.bucket_num, bucket_start=args.bucket_start,
+    model_dict = {'resnet18': resnet18, 'resnet50': resnet50}
+    model_fn = model_dict[args.model]
+    model = model_fn(fds=args.fds, bucket_num=args.bucket_num, bucket_start=args.bucket_start,
                      start_update=args.start_update, start_smooth=args.start_smooth,
                      kernel=args.fds_kernel, ks=args.fds_ks, sigma=args.fds_sigma, momentum=args.fds_mmt,
                      return_features=(args.regularization_weight > 0))
@@ -262,10 +296,12 @@ def train(train_loader, model, optimizer, epoch):
 
     model.train()
     end = time.time()
-    for idx, (inputs, targets, weights) in enumerate(train_loader):
+    for idx, batch in enumerate(train_loader):
         data_time.update(time.time() - end)
-        inputs, targets, weights = \
-            inputs.cuda(non_blocking=True), targets.cuda(non_blocking=True), weights.cuda(non_blocking=True)
+        # Handle dictionary batch format
+        inputs = batch['image'].cuda(non_blocking=True)
+        targets = batch['y_true'].cuda(non_blocking=True)
+        weights = batch['weight'].cuda(non_blocking=True)
 
         if args.regularization_weight > 0:
             outputs, features = model(inputs, targets, epoch)
@@ -297,8 +333,9 @@ def train(train_loader, model, optimizer, epoch):
         print(f"Create Epoch [{epoch}] features of all training data...")
         encodings, labels = [], []
         with torch.no_grad():
-            for (inputs, targets, _) in tqdm(train_loader):
-                inputs = inputs.cuda(non_blocking=True)
+            for batch in tqdm(train_loader):
+                inputs = batch['image'].cuda(non_blocking=True)
+                targets = batch['y_true'].cuda(non_blocking=True)
                 outputs, feature = model(inputs, targets, epoch)
                 encodings.extend(feature.data.squeeze().cpu().numpy())
                 labels.extend(targets.data.squeeze().cpu().numpy())
@@ -329,8 +366,9 @@ def validate(val_loader, model, train_labels=None, prefix='Val'):
     preds, labels = [], []
     with torch.no_grad():
         end = time.time()
-        for idx, (inputs, targets, _) in enumerate(val_loader):
-            inputs, targets = inputs.cuda(non_blocking=True), targets.cuda(non_blocking=True)
+        for idx, batch in enumerate(val_loader):
+            inputs = batch['image'].cuda(non_blocking=True)
+            targets = batch['y_true'].cuda(non_blocking=True)
             outputs = model(inputs)
 
             preds.extend(outputs.data.cpu().numpy())
