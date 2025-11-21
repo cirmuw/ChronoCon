@@ -94,8 +94,9 @@ def joint_hist_scatter(
 
     Returns
     -------
-    (fig, (ax_histx, ax_scatter, ax_histy))
+    (fig, (ax_histx, ax_scatter, ax_histy), metrics)
       - ax_histx or ax_histy may be None if plot_histograms=False or ax_scatter is provided.
+      - metrics: dict with computed metrics, or None if calculate_and_add_metrics=False
     """
     # Ensure numeric and drop NaNs
     x_raw = df[true_col]
@@ -107,6 +108,7 @@ def joint_hist_scatter(
     y = y[mask]
 
     # Compute metrics text
+    m = None
     if calculate_and_add_metrics:
         m = calculate_some_classification_metrics(
             all_labels=x.values.astype(float),
@@ -147,7 +149,7 @@ def joint_hist_scatter(
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
             )
         # No new figure created
-        return None, (None, ax_scatter, None)
+        return None, (None, ax_scatter, None), m
 
     # If no histograms requested, fall back to simple scatter layout
     if not plot_histograms:
@@ -173,7 +175,7 @@ def joint_hist_scatter(
                 ha='left', va='top', fontsize=12,
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
             )
-        return fig, (None, ax, None)
+        return fig, (None, ax, None), m
 
     # Joint histogram + scatter layout
     fig = plt.figure(figsize=figsize)
@@ -225,7 +227,7 @@ def joint_hist_scatter(
                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
             )
 
-    return fig, (ax_histx, ax_sc, ax_histy)
+    return fig, (ax_histx, ax_sc, ax_histy), m
 
 
 
@@ -233,7 +235,13 @@ def joint_hist_scatter(
 # # convenience wrappers for your two tables
 # # ------------------------------------------------------------
 def plot_SHS_deltas(df_delta, *, name: str = "ERO F", **kwargs):
-    """Joint plot for df_delta."""
+    """
+    Joint plot for df_delta.
+    
+    Returns
+    -------
+    (fig, (ax_histx, ax_scatter, ax_histy), metrics)
+    """
     return joint_hist_scatter(
         df_delta,
         true_col="labels_summed_extrapolated_delta",
@@ -243,7 +251,13 @@ def plot_SHS_deltas(df_delta, *, name: str = "ERO F", **kwargs):
     )
 
 def plot_SHS_sums(df_summed, name: str = "ERO F", regplot=False, **kwargs):
-    """Joint plot for df_summed."""
+    """
+    Joint plot for df_summed.
+    
+    Returns
+    -------
+    (fig, (ax_histx, ax_scatter, ax_histy), metrics)
+    """
     return joint_hist_scatter(
         df_summed,
         true_col="labels_summed_extrapolated",

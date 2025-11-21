@@ -232,17 +232,17 @@ def main():
 
     parser = argparse.ArgumentParser(description='Plot and save true vs predicted summed scores')
     parser.add_argument(
-        '--run_path', type=str, 
+        '--run_path', '-r', type=str, 
         required=False,  # <<<<
         default="/msc/home/cwatze93/data/mlflow/mlflow_RA/844424495910332051/07e62b6853554a9a911d916113bcd168",
         help='Path to the MLflow run directory'
     )
     # soft_prediction becomes a simple flag: absent=False, present=True
     parser.add_argument(
-        '--soft-prediction', dest='soft_prediction',
+        '--no-soft-prediction', dest='no_soft_prediction',
         action='store_true', 
         default=False,
-        help='Use the soft sum Σ_c p̂_c * c label (default: False)'
+        help='Use "preds" instead of "preds_float" (used to be for classifcation sort of sum Σ_c p̂_c * c label) (default: False)'
     )
     # strict supports --strict / --no-strict
     parser.add_argument(
@@ -251,15 +251,21 @@ def main():
         help='Assert output folder does not exist (default: True). Use --no-strict to allow overwrite.'
     )
     parser.add_argument(
-        '--limit_treatment_ED', type=str, default="E_D_mean",
-        help='How to handle ED score pairs. Options: "cap E_D sum to 5" or "E_D_mean  default: "E_D_mean" '
+        '--limit_treatment_ED', type=str, default="cap E_D sum to 5",
+        help='How to handle ED score pairs for hands. Options: "cap E_D sum to 5" or "E_D_mean  default: "cap E_D sum to 5" '
     )
-
+    
+    parser.add_argument('--data_partition', type=str, default="valFinal",
+                        help='Data partition to use. Options: "valFinal" or "test" (default: "valFinal")')
+    
+    #--data_partition  valFinal  test
+ 
     args = parser.parse_args()
     run_path = args.run_path
-    soft_prediction = args.soft_prediction
+    soft_prediction = not args.no_soft_prediction
     limit_treatment_ED = args.limit_treatment_ED
     strict = args.strict
+    data_partition = args.data_partition
 
     
 
@@ -268,19 +274,19 @@ def main():
     print(args)
     
     run_path = args.run_path
-    soft_prediction = args.soft_prediction
+
     
 
 
     # Locate predictions
-    preds = f"{run_path}/artifacts/predictions/valFinal_/*.npz"
+    preds = f"{run_path}/artifacts/predictions/{data_partition}_/*.npz"
     npz_files = glob.glob(preds)
     assert len(npz_files) == 1, f"Expected exactly one npz file, found {len(npz_files)}"
     npz_file = npz_files[0]
 
 
     # Create the output folder
-    output_folder = f"{run_path}/artifacts/plots/00_summed_scores/valFinal/"
+    output_folder = f"{run_path}/artifacts/plots/00_summed_scores/{data_partition}/"
     if strict: 
         assert not os.path.exists(output_folder), f"Output folder already exists: {output_folder}"
     os.makedirs(output_folder, exist_ok=True)
@@ -477,8 +483,14 @@ def main():
     # plt.show()
 
     df_delta_SvH = generate_score_differences(df_summed_SvH)
-    fig, axis_tuple = plot_SHS_deltas(df_delta_SvH.dropna(), figsize=(5,5), name="ΔSvH H+F", regplot=True)
+    fig, axis_tuple, metrics_delta_SvH = plot_SHS_deltas(df_delta_SvH.dropna(), figsize=(5,5), name="ΔSvH H+F", regplot=True)
 
+    # Save metrics for delta SvH
+    if metrics_delta_SvH is not None:
+        metrics_delta_path = os.path.join(os.path.dirname(dst_score_progression), 'metrics_delta_SvH.yaml')
+        with open(metrics_delta_path, 'w') as f:
+            yaml.dump(metrics_delta_SvH, f, default_flow_style=False, sort_keys=False)
+        print(f" Saved metrics to {metrics_delta_path}")
 
     fig.savefig(dst_score_progression)
     print(f" Saved figure to {dst_score_progression}")
@@ -501,28 +513,46 @@ def main():
 
     # Save individual 1x1 plots
     fig1, ax1 = plt.subplots(1, 1, figsize=(5, 5))
-    plot_SHS_sums(df_summed_SvH.dropna(), ax_scatter=ax1, name="SvH H+F", plot_histograms=False, regplot=True)
+    _, _, metrics_SvH = plot_SHS_sums(df_summed_SvH.dropna(), ax_scatter=ax1, name="SvH H+F", plot_histograms=False, regplot=True)
     fig1.tight_layout()
     suffix = "_EV_SvH_H+F.png" if soft_prediction else "_SvH_H+F.png"
     dst_svH_individual = dst_sums_plot.replace('.png', suffix)
     fig1.savefig(dst_svH_individual)
     print(f" Saved figure to {dst_svH_individual}")
+    # Save metrics for SvH
+    if metrics_SvH is not None:
+        metrics_svH_path = os.path.join(os.path.dirname(dst_sums_plot), 'metrics_SvH_H+F.yaml')
+        with open(metrics_svH_path, 'w') as f:
+            yaml.dump(metrics_SvH, f, default_flow_style=False, sort_keys=False)
+        print(f" Saved metrics to {metrics_svH_path}")
 
     fig2, ax2 = plt.subplots(1, 1, figsize=(5, 5))
-    plot_SHS_sums(df_summed_H_F_JSN.dropna(), ax_scatter=ax2, name="JSN H+F", plot_histograms=False, regplot=True)
+    _, _, metrics_JSN = plot_SHS_sums(df_summed_H_F_JSN.dropna(), ax_scatter=ax2, name="JSN H+F", plot_histograms=False, regplot=True)
     fig2.tight_layout()
     suffix = "_EV_JSN_H+F.png" if soft_prediction else "_JSN_H+F.png"
     dst_jsn_individual = dst_sums_plot.replace('.png', suffix)
     fig2.savefig(dst_jsn_individual)
     print(f" Saved figure to {dst_jsn_individual}")
+    # Save metrics for JSN
+    if metrics_JSN is not None:
+        metrics_jsn_path = os.path.join(os.path.dirname(dst_sums_plot), 'metrics_JSN_H+F.yaml')
+        with open(metrics_jsn_path, 'w') as f:
+            yaml.dump(metrics_JSN, f, default_flow_style=False, sort_keys=False)
+        print(f" Saved metrics to {metrics_jsn_path}")
 
     fig3, ax3 = plt.subplots(1, 1, figsize=(5, 5))
-    plot_SHS_sums(df_summed_ERO_H_F.dropna(), ax_scatter=ax3, name="ERO H+F", plot_histograms=False, regplot=True)
+    _, _, metrics_ERO = plot_SHS_sums(df_summed_ERO_H_F.dropna(), ax_scatter=ax3, name="ERO H+F", plot_histograms=False, regplot=True)
     fig3.tight_layout()
     suffix = "_EV_ERO_H+F.png" if soft_prediction else "_ERO_H+F.png"
     dst_ero_individual = dst_sums_plot.replace('.png', suffix)
     fig3.savefig(dst_ero_individual)
     print(f" Saved figure to {dst_ero_individual}")
+    # Save metrics for ERO
+    if metrics_ERO is not None:
+        metrics_ero_path = os.path.join(os.path.dirname(dst_sums_plot), 'metrics_ERO_H+F.yaml')
+        with open(metrics_ero_path, 'w') as f:
+            yaml.dump(metrics_ERO, f, default_flow_style=False, sort_keys=False)
+        print(f" Saved metrics to {metrics_ero_path}")
 
 
     #plt.show()

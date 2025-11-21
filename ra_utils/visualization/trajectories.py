@@ -53,6 +53,7 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
                                   figsize=(5, 4), 
                                   no_legend=True, 
                                   background_color_key=None, 
+                                  background_color_key_title=None, 
                                   background_colormap="viridis",
                                   traj_colors_columns="t_rel",
                                   traj_colors_colorbar=False):
@@ -110,7 +111,10 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
                                    label='All other samples')
                 
                 # Add colorbar for background
-                cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}')
+                if background_color_key_title is not None:
+                    cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key_title}')
+                else:
+                    cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}')
                 
             except (ValueError, TypeError):
                 # Non-numeric values, treat as categorical

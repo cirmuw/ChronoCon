@@ -100,7 +100,7 @@ def random_split_bucket(bucket: List["str"], fraction = 0.5, num_splits = 6, see
     r = {}
     indices_part = indices
     for i_split in range(num_splits):
-        len_new = int(len(indices_part) * (fraction**i_split))
+        len_new = int(len(indices_part) * (fraction))
         indices_part = indices_part[:len_new]
         r[i_split] = bucket[indices_part]
     return r
@@ -273,7 +273,13 @@ def main():
     parser.add_argument("--seed", type=int, default=42,
                        help="Random seed for reproducibility (default: 42)")
     
+
+    from pprint import pprint
     args = parser.parse_args()
+    
+    print(f"Configuration:")
+    pprint(args)
+    
     
     # Step 1 & 2: Get patient ids and num_visits for training set
     print("Step 1-2: Processing data and obtaining patient info...")
@@ -300,6 +306,10 @@ def main():
         print(f"  Bucket {i_bucket}: {len(patient_list)} patients, "
               f"num_visits range: [{num_visits_in_bucket.min()}, {num_visits_in_bucket.max()}]")
     
+    print(f"\nInitial bucket sizes:")
+    for i_bucket, patient_list in buckets.items():
+        print(f"  Bucket {i_bucket}: {len(patient_list)} patients")
+    
     # Step 5: Create splits according to fraction recursively for each bucket
     print(f"Step 5: Creating subsplits with fraction={args.fraction}, num_splits={args.num_splits}, seed={args.seed}...")
     all_bucket_splits = {}
@@ -315,6 +325,18 @@ def main():
         # Print sizes for debugging
         for i_split, patients in bucket_splits.items():
             print(f"    Split {i_split}: {len(patients)} patients")
+    
+    # Print summary: patients per bucket at each subsplit iteration
+    print(f"\nPatients per bucket at each subsplit iteration:")
+    print(f"{'Subsplit':<10} " + " ".join([f"Bucket {i:<6}" for i in range(args.num_buckets)]) + " Total")
+    print("-" * (10 + (args.num_buckets + 1) * 12))
+    for i_split in range(args.num_splits):
+        bucket_counts = []
+        for i_bucket in range(args.num_buckets):
+            count = len(all_bucket_splits[i_bucket][i_split])
+            bucket_counts.append(count)
+        total = sum(bucket_counts)
+        print(f"{i_split:<10} " + " ".join([f"{count:<12}" for count in bucket_counts]) + f"{total}")
     
     # Step 6: Merge together again
     print("Step 6: Merging subsplits from all buckets...")
