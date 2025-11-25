@@ -4,7 +4,7 @@ from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import umap
 import numpy as np
-from collections import defaultdict
+from collections import defaultdict, Counter
 from pathlib import Path
 from typing import Tuple, Optional
 
@@ -48,18 +48,24 @@ def compute_2d_projection(pack, reduction_method="tsne", seed=43):
     print(f"2D projection completed. Shape: {coords_2d.shape}")
     return coords_2d, reducer
 
-def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect, 
-                                  reduction_method="tsne", 
-                                  figsize=(5, 4), 
-                                  no_legend=True, 
-                                  background_color_key=None, 
-                                  background_color_key_title=None, 
-                                  background_colormap="viridis",
-                                  traj_colors_columns="t_rel",
-                                  traj_colors_colorbar=False):
+def plot_trajectories_from_coords(
+    coords_2d,
+    pack,
+    trajectories_to_connect,
+    reduction_method="tsne",
+    figsize=(5, 4),
+    no_legend=True,
+    background_color_key=None,
+    background_color_key_title=None,
+    background_colormap="viridis",
+    traj_colors_columns="t_rel",
+    traj_colors_colorbar=False,
+    axis=None,
+    traj_line_color=None,  # <-- NEW KEYWORD
+):
     """
     Plot trajectories from pre-computed 2D coordinates.
-    
+
     Args:
         coords_2d: Pre-computed 2D coordinates (N, 2)
         pack: The data pack containing metadata
@@ -68,65 +74,83 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
         figsize: Figure size
         no_legend: If True, hide the legend (default: True)
         background_color_key: Key in pack to use for background coloring (default: None = gray)
+        background_color_key_title: Title for background colorbar (default: None)
         background_colormap: Colormap for numeric background coloring (default: "viridis")
         traj_colors_columns: Key in pack to use for trajectory point coloring (default: "t_rel")
         traj_colors_colorbar: If True, show colorbar for trajectory point colors (default: False)
-        
+        axis: Optional matplotlib axes. If provided, plot on this axis and do not create a new figure.
+        traj_line_color: Color to use for connecting lines between markers for all trajectories (default: None = color per trajectory).
+                         If set, all lines will be plotted with the same color.
+
     Returns:
-        fig, ax: Matplotlib figure and axis objects
+        fig, ax: Matplotlib figure and axis objects (so you can save the plot later)
     """
     print(f"Plotting {len(trajectories_to_connect)} trajectories...")
-    
-    # Create the plot
-    fig, ax = plt.subplots(figsize=figsize)
-    
+
+    # Define a marker cycle for up to 10 unique marker styles, then cycle through if more needed
+    marker_cycle = ['o',  '^', 'D', 'v', 'P', 'X', '*', 'h', 'p', 's']
+
+    # Handle figure and axis creation
+    if axis is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        ax = axis
+        fig = ax.figure
+
     # Group data by patient_scoretype_key
     groups = defaultdict(list)
     for i, key in enumerate(pack['patient_scoretype_key']):
         groups[key].append(i)
-    
+
     # Sort each group by years_since_2000
     for key in groups:
         groups[key].sort(key=lambda i: pack['years_since_2000'][i])
-    
-    # Define colors for the trajectories to connect
+
+    # Define colors for the trajectories to connect (for markers and edges)
     if len(trajectories_to_connect) > 0:
         colors = plt.cm.Set1(np.linspace(0, 1, len(trajectories_to_connect)))
         patient_colors = {patient: colors[i] for i, patient in enumerate(trajectories_to_connect)}
-    
+
     # Plot ALL points (background) with optional coloring
     if background_color_key is not None:
         if background_color_key in pack:
             background_values = pack[background_color_key]
             print(f"Using '{background_color_key}' for background coloring with colormap '{background_colormap}'")
-            
+
             # Check if values are numeric
             try:
                 background_values = np.asarray(background_values, dtype=float)
                 print(f"Background values range: {background_values.min():.3f} to {background_values.max():.3f}")
-                
+
                 # Use colormap for numeric values
-                scatter = ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
-                                   c=background_values, cmap=background_colormap, s=20, alpha=0.3, 
-                                   label='All other samples')
-                
-                # Add colorbar for background
-                if background_color_key_title is not None:
-                    cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key_title}')
-                else:
-                    cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}')
-                
+                scatter = ax.scatter(
+                    coords_2d[:, 0],
+                    coords_2d[:, 1],
+                    c=background_values,
+                    cmap=background_colormap,
+                    s=20,
+                    alpha=0.3,
+                    label='All other samples'
+                )
+
+                # Add colorbar for background if axis was not provided
+                if axis is None:
+                    if background_color_key_title is not None:
+                        cbar = plt.colorbar(scatter, ax=ax, label=f'{background_color_key_title}')
+                    else:
+                        cbar = plt.colorbar(scatter, ax=ax, label=f'{background_color_key}')
+
             except (ValueError, TypeError):
                 # Non-numeric values, treat as categorical
                 print(f"Non-numeric values detected, using categorical coloring")
-                
+
                 # Convert categorical values to numeric indices
                 unique_categories = np.unique(background_values)
                 category_to_idx = {cat: idx for idx, cat in enumerate(unique_categories)}
                 numeric_categories = np.array([category_to_idx[val] for val in background_values])
-                
+
                 print(f"Found {len(unique_categories)} unique categories: {unique_categories}")
-                
+
                 # Use a discrete colormap
                 n_categories = len(unique_categories)
                 if n_categories <= 10:
@@ -135,53 +159,116 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
                     cmap = plt.cm.get_cmap('tab20', n_categories)
                 else:
                     cmap = plt.cm.get_cmap(background_colormap, n_categories)
-                
-                scatter = ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
-                                   c=numeric_categories, cmap=cmap, s=20, alpha=0.3, 
-                                   vmin=-0.5, vmax=n_categories-0.5)
-                
-                # Add colorbar with category labels
-                cbar = plt.colorbar(scatter, ax=ax, label=f'Background: {background_color_key}', 
-                                   ticks=np.arange(n_categories))
-                cbar.ax.set_yticklabels(unique_categories)
-                
+
+                scatter = ax.scatter(
+                    coords_2d[:, 0],
+                    coords_2d[:, 1],
+                    c=numeric_categories,
+                    cmap=cmap,
+                    s=20,
+                    alpha=0.3,
+                    vmin=-0.5,
+                    vmax=n_categories - 0.5
+                )
+
+                # Add colorbar with category labels if axis is None (no custom axis)
+                if axis is None:
+                    cbar = plt.colorbar(
+                        scatter,
+                        ax=ax,
+                        label=f'Background: {background_color_key}',
+                        ticks=np.arange(n_categories)
+                    )
+                    cbar.ax.set_yticklabels(unique_categories)
+
         else:
             print(f"Warning: '{background_color_key}' not found in pack!")
             print(f"Available keys in pack: {list(pack.keys())}")
             print("Using default gray background")
-            ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
-                      c='lightgray', s=20, alpha=0.3, label='All other samples')
+            ax.scatter(
+                coords_2d[:, 0],
+                coords_2d[:, 1],
+                c='lightgray',
+                s=20,
+                alpha=0.3,
+                label='All other samples'
+            )
     else:
-        ax.scatter(coords_2d[:, 0], coords_2d[:, 1], 
-                  c='lightgray', s=20, alpha=0.3, label='All other samples')
-    
+        ax.scatter(
+            coords_2d[:, 0],
+            coords_2d[:, 1],
+            c='lightgray',
+            s=20,
+            alpha=0.3,
+            label='All other samples'
+        )
+
+    last_scatter = None  # For colorbar
+
     # Plot trajectories for specified patients
-    for patient_key in trajectories_to_connect:
+    for idx, patient_key in enumerate(trajectories_to_connect):
         if patient_key not in groups or len(groups[patient_key]) < 2:
             print(f"Warning: {patient_key} has less than 2 points, skipping trajectory")
             continue
-        
+
         indices = groups[patient_key]
         patient_coords = coords_2d[indices]
-        
-        # Plot trajectory line
-        ax.plot(patient_coords[:, 0], patient_coords[:, 1], 
-                color=patient_colors[patient_key], linewidth=3, alpha=0.8, 
-                label=f'{patient_key} ({len(indices)} points)')
-        
-        # Plot points for this patient
-        if traj_colors_columns == None: 
+
+        # Plot trajectory line -- color determined by new keyword
+        if traj_line_color is not None:
+            line_color = traj_line_color
+        else:
+            line_color = patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None
+
+        ax.plot(
+            patient_coords[:, 0],
+            patient_coords[:, 1],
+            color=line_color,
+            linewidth=3,
+            alpha=0.8,
+            label=f'{patient_key} ({len(indices)} points)'
+        )
+
+        # Determine marker style (cycle if more patients than markers)
+        marker = marker_cycle[idx % len(marker_cycle)]
+
+        # Plot points for this patient (smaller and with distinct style)
+        if traj_colors_columns is None:
             patient_t_rel = "gray"
-        else: 
-            patient_t_rel = pack[traj_colors_columns][indices] if traj_colors_columns in pack else np.linspace(0, 1, len(indices))
-        scatter = ax.scatter(patient_coords[:, 0], patient_coords[:, 1], 
-                           c=patient_t_rel, cmap='viridis', s=100, 
-                           edgecolors=patient_colors[patient_key], linewidth=2,
-                           alpha=0.9, zorder=5)
-    
+            last_scatter = ax.scatter(
+                patient_coords[:, 0],
+                patient_coords[:, 1],
+                c=patient_t_rel,
+                cmap=None,
+                s=30,  # Smaller size!
+                marker=marker,
+                edgecolors=patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None,
+                linewidth=1.5,
+                alpha=0.95,
+                zorder=5
+            )
+        else:
+            patient_t_rel = (
+                pack[traj_colors_columns][indices]
+                if traj_colors_columns in pack
+                else np.linspace(0, 1, len(indices))
+            )
+            last_scatter = ax.scatter(
+                patient_coords[:, 0],
+                patient_coords[:, 1],
+                c=patient_t_rel,
+                cmap='viridis',
+                s=30,         # Smaller size!
+                marker=marker, # Distinct style for each trajectory
+                edgecolors=patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None,
+                linewidth=1.5,
+                alpha=0.95,
+                zorder=5
+            )
+
     # Add colorbar for trajectory colors if requested
-    if traj_colors_colorbar and len(trajectories_to_connect) > 0:
-        cbar = plt.colorbar(scatter, ax=ax, label=f'Trajectory: {traj_colors_columns}')
+    if traj_colors_colorbar and len(trajectories_to_connect) > 0 and last_scatter is not None and axis is None:
+        cbar = plt.colorbar(last_scatter, ax=ax, label=f'Trajectory: {traj_colors_columns}')
         # Set appropriate ticks based on the data range
         if traj_colors_columns in pack:
             values = pack[traj_colors_columns]
@@ -190,22 +277,27 @@ def plot_trajectories_from_coords(coords_2d, pack, trajectories_to_connect,
                 if max_val - min_val <= 1.0:  # Likely 0-1 range
                     cbar.set_ticks([0, 0.25, 0.5, 0.75, 1.0])
                 else:  # Other numeric ranges
-                    cbar.set_ticks([min_val, (min_val + max_val)/2, max_val])
-    
+                    cbar.set_ticks([min_val, (min_val + max_val) / 2, max_val])
+
     ax.set_xlabel(f'{reduction_method.upper()} Dimension 1')
     ax.set_ylabel(f'{reduction_method.upper()} Dimension 2')
     #ax.set_title(f'All Embeddings with {len(trajectories_to_connect)} Connected Trajectories ({reduction_method.upper()})\n(Gray: all samples, Colored lines: specified trajectories)')
-    
+
     # Add legend only if no_legend is False
     if not no_legend:
         ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
+
+    # Remove the grid and set ticks to face inwards
+    ax.grid(False)
+    ax.tick_params(axis='both', direction='in')
+
+    # Only use tight_layout if figure was created here
+    if axis is None:
+        plt.tight_layout()
+
+    # Do NOT plt.show(); the user will save/plot explicitly.
     return fig, ax
+
 
 # Combined function for backward compatibility
 def plot_embeddings_with_trajectories_v3(pack, trajectories_to_connect, n_most_common=None, reduction_method="tsne", seed=43, figsize=(15, 12), no_legend=True, background_color_key=None, background_colormap="viridis", traj_colors_columns="t_rel", traj_colors_colorbar=False):

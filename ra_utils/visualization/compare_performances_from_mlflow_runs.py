@@ -79,6 +79,7 @@ from sklearn.metrics.pairwise import cosine_similarity, euclidean_distances
 import numpy as np
 from pathlib import Path 
 import yaml
+import json
 
 import ra_utils.visualization.feature_similarity_vs_delta_SvH
 from ra_utils.visualization.feature_similarity_vs_delta_SvH import ( 
@@ -169,7 +170,33 @@ def get_run_id_from_name(run_name: str, artifact_path = "/msc/home/cwatze93/data
 
 
 
+def get_runs_by_name_from_meta(experiment_path, run_names):
+    """
+    experiment_path = "/msc/home/.../mlflow_RAv2/<experiment_id>"
+    run_names = ["001_L2_d2_w128_466Patients", ...]
+    """
+    rows = []
+    run_names_set = set(run_names)
 
+    for run_id in os.listdir(experiment_path):
+        meta_file = os.path.join(experiment_path, run_id, "meta.yaml")
+        if not os.path.isfile(meta_file):
+            continue
+
+        with open(meta_file, "r") as f:
+            meta = yaml.safe_load(f)
+
+        name = meta.get("run_name")
+        if name in run_names_set:
+            rows.append({
+                "run_name": name,
+                "run_id": meta["run_id"],
+                "artifact_uri": meta["artifact_uri"],
+                "experiment_id": meta["experiment_id"],
+                "path": os.path.join(experiment_path, run_id),
+            })
+
+    return pd.DataFrame(rows)
 
 
 
@@ -228,6 +255,121 @@ def load_run_paths_as_df(runs: List[str], experiment_name: str, artifact_path: s
     df = pd.DataFrame(data)
     
     return df
+
+import os
+from collections import defaultdict
+from typing import Optional
+
+def load_run_paths_as_df_v2(
+    runs: List[str],
+    experiment_name: str,
+    artifact_path: str,
+    lifecycle_stage: Optional[List[str]] = ["active"],
+) -> pd.DataFrame:
+    """
+    Load MLflow run metadata directly from the filesystem by parsing meta.yaml,
+    with support for lifecycle_stage filtering ('active', 'deleted'), duplicate
+    detection, and clear warnings.
+
+    Parameters:
+    - runs (List[str]): Run names to load (matched against meta.yaml run_name)
+    - experiment_name (str): Name of the MLflow experiment
+    - artifact_path (str): Root MLflow tracking directory (file backend)
+    - lifecycle_stage (List[str], optional):
+          Which lifecycle stages to include.
+          Example: ["active"] or ["active", "deleted"]
+          If None, includes all.
+
+    Returns:
+    - pd.DataFrame with:
+        experiment_name, experiment_id, run_name, run_id, run_artifacts_paths
+    """
+
+    # Normalize lifecycle filter
+    if lifecycle_stage is not None:
+        lifecycle_stage = set(lifecycle_stage)
+
+    # -------------------------------------------------------------------------
+    # 1) FIND experiment_id
+    # -------------------------------------------------------------------------
+    experiment_id = None
+
+    for item in os.listdir(artifact_path):
+        meta_file = os.path.join(artifact_path, item, "meta.yaml")
+        if not os.path.isfile(meta_file):
+            continue
+
+        with open(meta_file, "r") as f:
+            meta = yaml.safe_load(f)
+
+        if meta.get("name") == experiment_name:
+            experiment_id = meta["experiment_id"]
+            break
+
+    if experiment_id is None:
+        raise ValueError(f"Experiment '{experiment_name}' not found in {artifact_path}")
+
+    experiment_dir = os.path.join(artifact_path, experiment_id)
+
+    # -------------------------------------------------------------------------
+    # 2) SCAN runs & parse metadata
+    # -------------------------------------------------------------------------
+    target_names = set(runs)
+    rows = []
+    found_names = defaultdict(list)
+
+    for run_id in os.listdir(experiment_dir):
+        meta_file = os.path.join(experiment_dir, run_id, "meta.yaml")
+        if not os.path.isfile(meta_file):
+            continue
+
+        with open(meta_file, "r") as f:
+            meta = yaml.safe_load(f)
+
+        # -------- lifecycle filtering --------
+        stage = meta.get("lifecycle_stage", "active")
+        if lifecycle_stage is not None and stage not in lifecycle_stage:
+            continue
+
+        # -------- run_name matching ----------
+        run_name = meta.get("run_name")
+        if run_name not in target_names:
+            continue
+
+        found_names[run_name].append(run_id)
+
+        rows.append({
+            "experiment_name": experiment_name,
+            "experiment_id": experiment_id,
+            "run_name": run_name,
+            "run_id": meta["run_id"],
+            "lifecycle_stage": stage,
+            "run_artifacts_paths": os.path.join(experiment_dir, run_id),
+        })
+
+    # -------------------------------------------------------------------------
+    # 3) WARN ABOUT missing runs
+    # -------------------------------------------------------------------------
+    missing = target_names - set(found_names.keys())
+    for m in missing:
+        print(f"Warning: Could not find run '{m}' (matching lifecycle={lifecycle_stage}).")
+
+    # -------------------------------------------------------------------------
+    # 4) WARN ABOUT duplicates after filtering
+    # -------------------------------------------------------------------------
+    for name, run_ids in found_names.items():
+        if len(run_ids) > 1:
+            print(
+                f"Warning: Duplicate run_name '{name}' found "
+                f"in experiment '{experiment_name}' "
+                f"with lifecycle_stage={list(lifecycle_stage)}. "
+                f"{len(run_ids)} runs share this name: {run_ids}"
+            )
+
+    # -------------------------------------------------------------------------
+    # 5) Return DataFrame
+    # -------------------------------------------------------------------------
+    return pd.DataFrame(rows)
 
 
 def load_mlflow_metrics_from_filesystem(df: pd.DataFrame, metric_names: List[str], run_artifacts_paths_column: str = "run_artifacts_paths") -> pd.DataFrame:
@@ -291,18 +433,53 @@ def load_mlflow_metrics_from_filesystem(df: pd.DataFrame, metric_names: List[str
     return df
 
 
+def _flatten_dict(d, parent_key='', sep=':'):
+    """
+    Flatten a nested dictionary.
+    
+    Parameters:
+    - d: Dictionary to flatten (can be nested)
+    - parent_key: Key prefix for nested items
+    - sep: Separator for nested keys
+    
+    Returns:
+    - Flattened dictionary
+    """
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(_flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
 def read_yaml_metrics(base_path, middle, file):
     base_path = Path(base_path)
 
     file_stump = Path(file).with_suffix('').as_posix()
     src = base_path / middle / file 
+    
+    # Determine file type by extension
+    file_ext = Path(file).suffix.lower()
+    
     with open(src, 'r') as f:
-        metrics = yaml.safe_load(f)
-    metrics
+        if file_ext == '.json':
+            metrics = json.load(f)
+        else:
+            # Default to YAML for .yaml, .yml, or any other extension
+            metrics = yaml.safe_load(f)
+    
+    # Flatten nested dictionaries if needed
+    if isinstance(metrics, dict):
+        metrics_flat = _flatten_dict(metrics)
+    else:
+        # If not a dict, wrap it
+        metrics_flat = {"value": metrics}
 
-    metrics_mod = {f"{file_stump}: {k}":v for k,v in metrics.items()}
+    metrics_mod = {f"{file_stump}: {k}": v for k, v in metrics_flat.items()}
     return metrics_mod
-
 
 def add_metrics_to_df(df, file: str, middle: str = ""): 
     for i, row in df.iterrows():
@@ -311,6 +488,66 @@ def add_metrics_to_df(df, file: str, middle: str = ""):
         for k,v in metrics_mod.items():
             df.loc[i, k] = v
     return pd.DataFrame(df)
+
+
+
+def check_file_exists(df, file: str, middle: str = "", verbose=False): 
+    df_out = df.copy()
+    df_out["file_exists"] = False
+    for i, row in df.iterrows():
+        base_path = row["run_artifacts_paths"]
+        src = Path(base_path) / middle / file
+        if not src.exists():
+            if verbose:
+                print(f"File {src} does not exist")
+            df_out.loc[i, "file_exists"] = False
+        else:
+            df_out.loc[i, "file_exists"] = True
+    return df_out
+
+
+
+
+import re
+
+def make_patient_map(run_list):
+    out = {}
+    for r in run_list:
+        m = re.search(r"_(\d{2,3})Patients", r)
+        if m:
+            out[r] = int(m.group(1))
+        else:
+            print(f"WARNING: Could not extract patient number from '{r}'")
+    return out
+
+#--------------------------------
+
+
+def print_script_for_sum_and_plot_SvH(df):
+    l_paths = list(df["run_artifacts_paths"])
+    for data_partition in ["test", "valFinal"]:
+        script = [f"ra_utils__sum_and_plot_SvH  --run_path '{p}' --data_partition '{data_partition}'" for p in l_paths]
+
+        print() 
+        print(f"echo {data_partition = }")
+        for s in script: 
+            print(s)
+        print()
+        print()
+    return None
+
+def print_script_for_compute_progression_classification_metrics(df):
+    l_paths = list(df["run_artifacts_paths"])
+    for data_partition in ["test", "valFinal"]:
+        script = [f"ra_utils__compute_progression_classification_metrics  --run_path '{p}' --data_partition '{data_partition}' # --skip_ERO_ED_combination" for p in l_paths]
+
+        print() 
+        print(f"echo {data_partition = }")
+        for s in script: 
+            print(s)
+        print()
+        print()
+    return None
 
 
 

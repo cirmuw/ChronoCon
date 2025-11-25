@@ -6,6 +6,143 @@ from typing import Literal, List
 
 
 
+
+def combine_ERO_ED(df) -> pd.DataFrame: 
+    """
+    Combine hand ED and EP scores into _ERO scores.
+    
+    For each hand joint with both ED and EP scores:
+    - Sums ED + EP scores (capped at 5) for the same patient_id and side
+    - Creates new rows with score_type ending in "_ERO"
+    - Removes original ED/EP rows
+    - Keeps all other scores untouched
+    - If one of ED or EP is missing for a patient/side, sets combined value to NA
+    """
+    df = df.copy()
+    
+    # Define hand joints that have ED/EP pairs
+    hand_joints = [
+        "IPI", "PIPII", "PIPIII", "PIPIV", "PIPV",
+        "MCPI", "MCPII", "MCPIII", "MCPIV", "MCPV"
+    ]
+    
+    # Identify rows with hand ED/EP scores
+    ed_ep_scores = []
+    for joint in hand_joints:
+        ed_ep_scores.extend([f"{joint}ED", f"{joint}EP"])
+    
+    # Filter rows: those with ED/EP scores vs. others
+    mask_ed_ep = df["score_type"].isin(ed_ep_scores)
+    df_ed_ep = df[mask_ed_ep].copy()
+    df_other = df[~mask_ed_ep].copy()
+    
+    # If no ED/EP scores found, return original dataframe
+    if len(df_ed_ep) == 0:
+        return df
+    
+    # Group by patient_id, left_or_right (side), and date
+    # Scores are combined only for the same patient_id and side (and same date)
+    group_keys = ["patient_id", "left_or_right"]
+    # Also include date to match ED and EP from the same visit
+    if "years_since_2000" in df.columns:
+        group_keys.append("years_since_2000")
+    elif "date_str" in df.columns:
+        group_keys.append("date_str")
+    
+    # Process each joint
+    new_rows = []
+    
+    for joint in hand_joints:
+        ed_score = f"{joint}ED"
+        ep_score = f"{joint}EP"
+        joint_ero = f"{joint}_ERO"
+        
+        # Get rows for this joint's ED and EP scores
+        df_ed = df_ed_ep[df_ed_ep["score_type"] == ed_score].copy()
+        df_ep = df_ed_ep[df_ed_ep["score_type"] == ep_score].copy()
+        
+        # Merge ED and EP dataframes on group keys
+        if len(df_ed) == 0 and len(df_ep) == 0:
+            continue
+        
+        # Merge on group keys
+        df_merged = df_ed.merge(
+            df_ep,
+            on=group_keys,
+            suffixes=("_ed", "_ep"),
+            how="outer"
+        )
+        
+        # Process each merged row
+        for idx, row in df_merged.iterrows():
+            # Get values from merged row (after merge with suffixes, columns are y_true_ed, y_true_ep, etc.)
+            # Use .get() with default None, then check for NA
+            y_true_ed = row.get("y_true_ed", None)
+            y_true_ep = row.get("y_true_ep", None)
+            y_pred_ed = row.get("y_pred_ed", None)
+            y_pred_ep = row.get("y_pred_ep", None)
+            
+            # Check if values exist and are not NA
+            # If column doesn't exist or is NA, consider it missing
+            has_y_true_ed = y_true_ed is not None and not pd.isna(y_true_ed)
+            has_y_true_ep = y_true_ep is not None and not pd.isna(y_true_ep)
+            has_y_pred_ed = y_pred_ed is not None and not pd.isna(y_pred_ed)
+            has_y_pred_ep = y_pred_ep is not None and not pd.isna(y_pred_ep)
+            
+            # If both ED and EP are present, sum and cap at 5
+            # If one is missing, set to NA
+            if has_y_true_ed and has_y_true_ep:
+                y_true_combined = min(float(y_true_ed) + float(y_true_ep), 5)
+            else:
+                y_true_combined = pd.NA
+            
+            if has_y_pred_ed and has_y_pred_ep:
+                y_pred_combined = min(float(y_pred_ed) + float(y_pred_ep), 5)
+            else:
+                y_pred_combined = pd.NA
+            
+            # Create new row from merged row, preferring _ed columns, then _ep, then base
+            new_row = {}
+            for col in df.columns:
+                if col in group_keys:
+                    # Use the base column (should be same in both)
+                    new_row[col] = row.get(col + "_ed") if col + "_ed" in row.index else row.get(col + "_ep", row.get(col))
+                elif col == "score_type":
+                    new_row[col] = joint_ero
+                elif col == "y_true":
+                    new_row[col] = y_true_combined
+                elif col == "y_pred":
+                    new_row[col] = y_pred_combined
+                else:
+                    # Prefer _ed, then _ep, then base column
+                    val = row.get(col + "_ed")
+                    if pd.isna(val) or val is None:
+                        val = row.get(col + "_ep")
+                    if pd.isna(val) or val is None:
+                        val = row.get(col)
+                    new_row[col] = val
+            
+            new_rows.append(new_row)
+    
+    # Create dataframe from new rows
+    if new_rows:
+        df_new = pd.DataFrame(new_rows)
+        # Ensure column order matches original
+        df_new = df_new[[col for col in df.columns if col in df_new.columns]]
+        
+        # Combine with untouched scores
+        df_result = pd.concat([df_other, df_new], ignore_index=True)
+    else:
+        df_result = df_other.copy()
+    
+    return df_result
+
+
+
+
+
+
+
 def filter_valid_extrapolated_SHS_sums(df_summed: pd.DataFrame, scores: List[str]) -> pd.DataFrame:
     """
     Motivation: 
