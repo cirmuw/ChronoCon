@@ -1,0 +1,43 @@
+# INPUT
+extremity: "hand" # hand or foot 
+
+
+image_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/autoscoRA_images/H_images_of_interest_2_renamed_mirrored_inverted_dicoms"
+img_format_input: ".dcm" # .dcm or .npy
+landmarks_csv: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/landmark_data/output/H_coordinates__580Tr_26bcf8c226ae4c35b96ff9f9b7150797_with_lm_names.csv"
+
+
+
+# OUTPUT for patches
+#output_dir: "/home/cwatzenboeck/data/tmp/dev_autoscora/H_patches_dev/"
+# output_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/ds_100/H_patches_size1.5/"
+# output_dir: "/home/cwatzenboeck/data/AutoPIX_cirdata/projects__autoscora/dev_cw/ds_100/H_patches_size1.0/"
+output_dir: "/home/cwatzenboeck/data/AutoPIX_local_data/dev_cw/ds_480/H_patches_size1.5"
+
+
+#resize_UR_by: 0.0   # 0.1 = 110% of the original size
+#out_dim: [128, 128]  #[192, 192]  # default = [128, 128]
+
+resize_UR_by: 0.5   # 0.1 = 110% of the original size
+out_dim: [192, 192]  #[192, 192]  # default = [128, 128]
+
+seperate_output_folder_structure_by_roi: True
+plot: False
+matplotlib_backend: "agg" # "agg" for no display, "tkagg" for display
+#matplotlib_backend: "tkagg" # "agg" for no display, "tkagg" for display
+
+plot_type: "show_input_and_output" # "show_steps" or "show_input_and_output" or "show_only_output"
+#plot_show_steps: True
+plot_other_corners_as_well: True
+
+# just process some: 
+image_index_start: 0
+#image_index_end: 3
+#
+
+crop_back_border: False # Had really strange effects!!!   Keep at False!!
+
+#roi_indexes_to_use: [0,1,2,3,4]
+
+
+
