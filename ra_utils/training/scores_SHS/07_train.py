@@ -47,8 +47,9 @@ def main():
 
     # Load the configuration
     config, config_name, config_originals, raw_config_content = ra_utils.utils.config_parser.load_config(
+        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config_cleaned_reply_RnC_t.yml",
         #
-        default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config.yml",
+        #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config.yml",
         #
         #default_config="/home/cwatzenboeck/code/RA/ra_utils/runs/config_scoring/development_inputs/training_config_cleaned.yml",
         #

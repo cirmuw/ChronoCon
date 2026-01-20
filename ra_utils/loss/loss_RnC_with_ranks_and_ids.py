@@ -319,7 +319,6 @@ class RnCIdLossV2(nn.Module):
         support = {
             "B": int(B),
             "n": int(n),
-            "num_terms_normalization": int(valid_anchor.sum().item()),  # what makes the most sense to accumulate over batches for full validation loss.  
             "num_valid_anchors": int(valid_anchor.sum().item()),
             "frac_valid_anchors": float((valid_anchor.float().mean()).item()),
             "total_pos_pairs": int(N_id.sum().item()),
@@ -331,6 +330,12 @@ class RnCIdLossV2(nn.Module):
             "per_j_pos_counts": per_j_pos_counts,           # tensor [n]
             "per_j_nontrivial_counts": per_j_nontrivial_counts,  # tensor [n]
         }
+        
+        #support["num_terms_normalization"] = support["num_valid_anchors"] 
+        ### Not sure.... Maybe this would also make sense
+        # The question is basically how to sum over batches lateron. 
+        # Maybe it would make the most sense to sum total valid terms = (a,p) pairs instead of anchors
+        support["num_terms_normalization"] = support["total_valid_terms"]  # This is basically sum of pairs (equivalent to N*(N-1)  in RnC paper)
         if len(denom_sizes) > 0:
             ds = torch.tensor(denom_sizes, dtype=torch.float32)
             support.update({

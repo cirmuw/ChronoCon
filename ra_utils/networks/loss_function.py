@@ -91,6 +91,7 @@ def get_triplet_loss_RnCids(cfg: dict = {}):
     params = cfg.get("params", {})
     # print(f"loss for triplets (score): {name}; \n    params = {params}")
     if ((name == "RnC_time") or (name == "RnC_score")):
+        # Note that RnC_time is not advised! Only for ablation study (E.g. MIDL Reply)
         return ra_utils.loss.loss_RnC_with_ranks_and_ids.RnCIdLossV2(**params)
     
     if (name == "RnC_mono"):
