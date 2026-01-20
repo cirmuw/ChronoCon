@@ -58,6 +58,7 @@ def maybe_partially_init_model_from_state_dict(config: dict,
                                                 model_AE: nn.Module, 
                                                 model_c: nn.Module, 
                                                 model_score_estimator = None,
+                                                model_simclr_projector = None,
                                                 verbose=2, 
                                                 strict=False):
 
@@ -119,6 +120,21 @@ def maybe_partially_init_model_from_state_dict(config: dict,
                             prefix="",                         # whole ckpt *is* the classifier
                             strict=strict,
                             msg="score estimator", 
+                            verbose=verbose)
+
+    # ------------------------------------------------------------------
+    # 4) SIMCLR PROJECTOR ------------------------------------------------------
+    if config.get("model_initialization", {}).get("load_simclr_projector", False):
+        if model_simclr_projector is not None:
+            uri = config["model_initialization"]["pth_src_simclr_projector"]
+            if verbose:
+                print(f"→ Loading SimCLR projector from {uri}")
+            ckpt_sd = _state_dict_from_uri(uri)
+
+            _load_submodule(model_simclr_projector, ckpt_sd,
+                            prefix="",                         # whole ckpt *is* the projector
+                            strict=strict,
+                            msg="SimCLR projector",
                             verbose=verbose)
 
     return None
@@ -585,6 +601,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         strict_model_load = False
     maybe_partially_init_model_from_state_dict(config, model_AE, model_c, 
                                                model_score_estimator=model_score_estimator,
+                                               model_simclr_projector=model_simclr_projector,
                                                verbose=config.get("model_initialization", {}).get("verbosity_level", 3), 
                                                strict = strict_model_load
                                                )
