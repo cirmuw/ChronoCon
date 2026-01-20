@@ -529,7 +529,8 @@ def _plot_multiple_boxplots(ax, model_data, unified_dmin, unified_dmax, unified_
 
 
 def plot_single_roi_several_models(ROI, data_similarities_per_model, plot_hist=True, 
-                                    hist_y_log=True, colors=None, hist_model=None, hide_hist_legend=True   ):
+                                    hist_y_log=True, colors=None, hist_model=None, hide_hist_legend=True,
+                                    show_legend=True):
     """
     Plot similarity boxplots for a single ROI comparing multiple models side-by-side.
     
@@ -553,6 +554,8 @@ def plot_single_roi_several_models(ROI, data_similarities_per_model, plot_hist=T
         Should have same length as number of models.
     hist_model : str, optional
         Model name to use for histogram data. If None, uses the first model.
+    show_legend : bool, default=True
+        Whether to show the legend on the plot.
     
     Returns:
     --------
@@ -594,7 +597,7 @@ def plot_single_roi_several_models(ROI, data_similarities_per_model, plot_hist=T
     
     # Plot multiple boxplots
     _plot_multiple_boxplots(ax_boxplot, model_data, unified_dmin, unified_dmax, unified_x_ticks,
-                           model_names, colors=colors, show_x_ticks=not plot_hist)
+                           model_names, colors=colors, show_x_ticks=not plot_hist, show_legend=show_legend)
     
     # Set title
     ax_boxplot.set_title(f"{ROI = }", fontsize=13)
@@ -948,3 +951,84 @@ def plot_all_rois_similarity_boxplots_several_models(data_similarities_per_model
     else:
         return None, axes
 
+
+
+
+def save_all_rois_as_pdfs(data_similarities_per_model, output_folder, plot_hist=True, 
+                           hist_y_log=True, colors=None, hist_model=None):
+    """
+    Save all ROI subplots as separate PDF files in the specified folder.
+    Each ROI is saved as an individual PDF without a legend, suitable for combining later in Inkscape.
+    
+    Parameters:
+    -----------
+    data_similarities_per_model : dict
+        Dictionary with model names as keys and data_similarities dicts as values.
+        Each data_similarities dict should have the same structure as used in plot_single_roi,
+        i.e., it should contain ROI keys with sub-dicts containing:
+        - "scores": array of scores
+        - "patient_scoretype_keys": array of patient identifiers
+        - "sim": similarity matrix
+    output_folder : str or Path
+        Path to the folder where PDF files will be saved. Will be created if it doesn't exist.
+    plot_hist : bool, default=True
+        Whether to plot the histogram below the boxplots
+    hist_y_log : bool, default=True
+        Whether to use log scale for histogram y-axis
+    colors : list, optional
+        List of colors for each model. If None, uses matplotlib default color cycle.
+        Should have same length as number of models.
+    hist_model : str, optional
+        Model name to use for histogram data. If None, uses the first model.
+    
+    Returns:
+    --------
+    saved_files : list
+        List of paths to the saved PDF files
+    """
+    from pathlib import Path
+    
+    # Convert to Path object and create directory if needed
+    output_folder = Path(output_folder)
+    output_folder.mkdir(parents=True, exist_ok=True)
+    
+    # Get all ROIs from the first model (assuming all models have the same ROIs)
+    model_names = list(data_similarities_per_model.keys())
+    if not model_names:
+        raise ValueError("data_similarities_per_model cannot be empty")
+    
+    first_model_name = model_names[0]
+    all_rois = sorted(list(data_similarities_per_model[first_model_name].keys()))
+    
+    saved_files = []
+    
+    # Loop through each ROI and save as PDF
+    for ROI in all_rois:
+        try:
+            # Create plot for this ROI without legend
+            fig, axs = plot_single_roi_several_models(
+                ROI, data_similarities_per_model, 
+                plot_hist=plot_hist, 
+                hist_y_log=hist_y_log, 
+                colors=colors, 
+                hist_model=hist_model,
+                show_legend=False  # No legend for individual PDFs
+            )
+            
+            # Create filename (sanitize ROI name for filesystem)
+            safe_roi_name = ROI.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            pdf_path = output_folder / f"{safe_roi_name}.pdf"
+            
+            # Save as PDF
+            fig.savefig(pdf_path, format='pdf', bbox_inches='tight', dpi=300)
+            saved_files.append(pdf_path)
+            
+            # Close figure to free memory
+            plt.close(fig)
+            
+        except Exception as e:
+            print(f"Warning: Failed to save plot for ROI '{ROI}': {e}")
+            continue
+    
+    print(f"Saved {len(saved_files)} PDF files to {output_folder}")
+    return saved_files 

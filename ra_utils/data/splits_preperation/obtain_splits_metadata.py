@@ -26,6 +26,14 @@ from importlib import resources
 from ra_utils.data.dataloader_CR_patches import (
     process_several_score_groups,
 )
+from ra_utils.data.shap_sums import (
+    sum_and_extrapolate_scores_df_ERO_H,
+    sum_and_extrapolate_scores_df_ERO_F,
+    sum_and_extrapolate_scores_df_JSN_H,
+    sum_and_extrapolate_scores_df_JSN_F,
+    generate_score_differences,
+)
+import numpy as np
 
 
 
@@ -51,6 +59,238 @@ def load_score_groupings() -> Dict[str, List[str]]:
         "ERO_F": F_ERO_scores,
         "JSN_H": H_JSN_scores,
         "JSN_F": F_JSN_scores
+    }
+
+
+def prepare_df_for_svh_calculation(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Transform dataframe to format needed for SvH score calculation.
+    
+    Args:
+        df: DataFrame with columns 'patient_id', 'chosen_score', 'score', 'date_str', 
+            'left_or_right', 'extremity' (or 'region')
+    
+    Returns:
+        DataFrame with columns 'labels', 'preds', 'score_type', 'JSN_or_ERO', 
+        'extremity', 'patientId_date'
+    """
+    df = df.copy()
+    
+    # Load score metadata to determine JSN_or_ERO
+    with resources.files("ra_utils.resources.scores_metadata").joinpath("roi_scores_matching.csv") as f:
+        df_scores_meta = pd.read_csv(f)
+    
+    # Create mapping from score_name to ERO_or_JSN and region
+    score_to_jsn_ero = df_scores_meta.set_index("score_name")["ERO_or_JSN"].to_dict()
+    score_to_region = df_scores_meta.set_index("score_name")["region"].to_dict()
+    
+    # Map chosen_score to JSN_or_ERO
+    df["JSN_or_ERO"] = df["chosen_score"].map(score_to_jsn_ero)
+    
+    # Use 'extremity' if available, otherwise use 'region'
+    if "extremity" not in df.columns:
+        if "region" in df.columns:
+            df["extremity"] = df["region"]
+        else:
+            # Try to infer from score metadata
+            df["extremity"] = df["chosen_score"].map(score_to_region)
+    
+    # Create patientId_date: patient_id_date_str
+    df["patientId_date"] = df["patient_id"].astype(str) + "_" + df["date_str"].astype(str)
+    
+    # Rename columns to match expected format
+    df["labels"] = df["score"]  # Use score as labels (ground truth)
+    df["preds"] = df["score"]    # Use score as preds (since we're working with ground truth)
+    df["score_type"] = df["chosen_score"]
+    
+    # Select and return only the columns needed for summation
+    return df[["patientId_date", "score_type", "JSN_or_ERO", "extremity", "labels", "preds"]].copy()
+
+
+def calculate_svh_scores(df: pd.DataFrame, 
+                        fraction_required_valid_scores: float = 0.75,
+                        limit_treatment_ED: str = "cap E_D sum to 5") -> pd.DataFrame:
+    """
+    Calculate SvH (Sharp/van der Heijde) scores from dataframe.
+    
+    Uses the same logic as plot_and_save_true_vs_predicted_summed_scores.py:
+    1. Calculate ERO_H, ERO_F, JSN_H, JSN_F separately
+    2. Combine to get ERO_H+F, JSN_H+F
+    3. Combine to get SvH (ERO + JSN, H+F)
+    
+    Args:
+        df: DataFrame prepared by prepare_df_for_svh_calculation
+        fraction_required_valid_scores: Minimum fraction of valid scores required
+        limit_treatment_ED: How to handle ED scores for hands
+    
+    Returns:
+        DataFrame with SvH scores per patientId_date
+    """
+    # Calculate max possible scores
+    from ra_utils.data.shap_sums import max_possible_score
+    
+    # Get score types present in the data
+    m_F_ERO = (df["extremity"] == "F") & (df["JSN_or_ERO"] == "ERO")
+    m_F_JSN = (df["extremity"] == "F") & (df["JSN_or_ERO"] == "JSN")
+    m_H_ERO = (df["extremity"] == "H") & (df["JSN_or_ERO"] == "ERO")
+    m_H_JSN = (df["extremity"] == "H") & (df["JSN_or_ERO"] == "JSN")
+    
+    F_ERO_scores = list(set(df[m_F_ERO]["score_type"])) if m_F_ERO.any() else []
+    F_JSN_scores = list(set(df[m_F_JSN]["score_type"])) if m_F_JSN.any() else []
+    H_ERO_scores = list(set(df[m_H_ERO]["score_type"])) if m_H_ERO.any() else []
+    H_JSN_scores = list(set(df[m_H_JSN]["score_type"])) if m_H_JSN.any() else []
+    
+    # Calculate max possible scores
+    max_summed_score_F_ERO = max_possible_score(F_ERO_scores, collapse_ED_EP_pairs=False) if F_ERO_scores else 120
+    max_summed_score_F_JSN = max_possible_score(F_JSN_scores, collapse_ED_EP_pairs=True) if F_JSN_scores else 48
+    max_summed_score_H_ERO = max_possible_score(H_ERO_scores, collapse_ED_EP_pairs=True) if H_ERO_scores else 160
+    max_summed_score_H_JSN = max_possible_score(H_JSN_scores, collapse_ED_EP_pairs=True) if H_JSN_scores else 120
+    
+    # Calculate summed scores for each component
+    if len(H_ERO_scores) > 0:
+        df_summed_H_ERO = sum_and_extrapolate_scores_df_ERO_H(
+            df, 
+            fraction_required_valid_scores=fraction_required_valid_scores,
+            limit_treatment_ED=limit_treatment_ED,
+            max_total=max_summed_score_H_ERO
+        )
+    else:
+        df_summed_H_ERO = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    if len(F_ERO_scores) > 0:
+        df_summed_F_ERO = sum_and_extrapolate_scores_df_ERO_F(
+            df,
+            fraction_required_valid_scores=fraction_required_valid_scores,
+            max_total=max_summed_score_F_ERO
+        )
+    else:
+        df_summed_F_ERO = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    if len(H_JSN_scores) > 0:
+        df_summed_JSN_H = sum_and_extrapolate_scores_df_JSN_H(
+            df,
+            fraction_required_valid_scores=fraction_required_valid_scores,
+            max_total=max_summed_score_H_JSN
+        )
+    else:
+        df_summed_JSN_H = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    if len(F_JSN_scores) > 0:
+        df_summed_JSN_F = sum_and_extrapolate_scores_df_JSN_F(
+            df,
+            fraction_required_valid_scores=fraction_required_valid_scores,
+            max_total=max_summed_score_F_JSN
+        )
+    else:
+        df_summed_JSN_F = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    # Combine ERO H+F
+    if len(df_summed_H_ERO) > 0 and len(df_summed_F_ERO) > 0:
+        df_summed_ERO_H_F = (
+            df_summed_H_ERO.set_index('patientId_date')
+            .add(df_summed_F_ERO.set_index('patientId_date'), fill_value=0)
+            .reset_index()
+        )
+    elif len(df_summed_H_ERO) > 0:
+        df_summed_ERO_H_F = df_summed_H_ERO.copy()
+    elif len(df_summed_F_ERO) > 0:
+        df_summed_ERO_H_F = df_summed_F_ERO.copy()
+    else:
+        df_summed_ERO_H_F = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    # Combine JSN H+F
+    if len(df_summed_JSN_H) > 0 and len(df_summed_JSN_F) > 0:
+        df_summed_JSN_H_F = (
+            df_summed_JSN_H.set_index('patientId_date')
+            .add(df_summed_JSN_F.set_index('patientId_date'), fill_value=0)
+            .reset_index()
+        )
+    elif len(df_summed_JSN_H) > 0:
+        df_summed_JSN_H_F = df_summed_JSN_H.copy()
+    elif len(df_summed_JSN_F) > 0:
+        df_summed_JSN_H_F = df_summed_JSN_F.copy()
+    else:
+        df_summed_JSN_H_F = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    # Combine ERO + JSN to get SvH
+    if len(df_summed_ERO_H_F) > 0 and len(df_summed_JSN_H_F) > 0:
+        df_summed_SvH = (
+            df_summed_ERO_H_F.set_index('patientId_date')
+            .add(df_summed_JSN_H_F.set_index('patientId_date'), fill_value=0)
+            .reset_index()
+        )
+    elif len(df_summed_ERO_H_F) > 0:
+        df_summed_SvH = df_summed_ERO_H_F.copy()
+    elif len(df_summed_JSN_H_F) > 0:
+        df_summed_SvH = df_summed_JSN_H_F.copy()
+    else:
+        df_summed_SvH = pd.DataFrame(columns=["patientId_date", "labels_summed_extrapolated"])
+    
+    # Ensure the column exists
+    if "labels_summed_extrapolated" not in df_summed_SvH.columns and len(df_summed_SvH) > 0:
+        # If we have data but no column, something went wrong
+        df_summed_SvH["labels_summed_extrapolated"] = 0.0
+    
+    return df_summed_SvH
+
+
+def calculate_delta_svh(df_svh: pd.DataFrame) -> pd.DataFrame:
+    """
+    Calculate intra-patient differences (delta_SvH) sorted by time.
+    
+    Args:
+        df_svh: DataFrame with SvH scores per patientId_date
+    
+    Returns:
+        DataFrame with delta_SvH values (sorted by time to avoid double counting)
+    """
+    if len(df_svh) == 0:
+        return pd.DataFrame(columns=["labels_summed_extrapolated_delta"])
+    
+    # Ensure we have the right column name
+    if "SvH" in df_svh.columns:
+        df_svh = df_svh.rename(columns={"SvH": "labels_summed_extrapolated"})
+    
+    # Generate score differences (this function handles time sorting)
+    df_delta = generate_score_differences(df_svh)
+    
+    return df_delta
+
+
+def calculate_summary_statistics(values: pd.Series) -> Dict[str, float]:
+    """
+    Calculate summary statistics: mean, std, median, IQR.
+    
+    Args:
+        values: Series of numeric values
+    
+    Returns:
+        Dictionary with mean, std, median, IQR (q25, q75)
+    """
+    values_clean = values.dropna()
+    
+    if len(values_clean) == 0:
+        return {
+            "mean": float('nan'),
+            "std": float('nan'),
+            "median": float('nan'),
+            "q25": float('nan'),
+            "q75": float('nan'),
+            "iqr": float('nan'),
+            "n": 0
+        }
+    
+    q25 = float(values_clean.quantile(0.25))
+    q75 = float(values_clean.quantile(0.75))
+    
+    return {
+        "mean": float(values_clean.mean()),
+        "std": float(values_clean.std()),
+        "median": float(values_clean.median()),
+        "q25": q25,
+        "q75": q75,
+        "iqr": q75 - q25,
+        "n": int(len(values_clean))
     }
 
 
@@ -253,6 +493,36 @@ def calculate_split_metadata(df: pd.DataFrame, score_groupings: Dict[str, List[s
         for group_name, group_score_types in score_groupings.items():
             aggregated[group_name] = calculate_aggregated_score_distribution(df, group_score_types)
     
+    # Calculate SvH and delta_SvH statistics
+    svh_stats = {}
+    try:
+        # Prepare dataframe for SvH calculation
+        df_for_svh = prepare_df_for_svh_calculation(df)
+        
+        if len(df_for_svh) > 0:
+            # Calculate SvH scores
+            df_svh = calculate_svh_scores(df_for_svh, 
+                                         fraction_required_valid_scores=0.75,
+                                         limit_treatment_ED="cap E_D sum to 5")
+            
+            if len(df_svh) > 0 and "labels_summed_extrapolated" in df_svh.columns:
+                svh_values = df_svh["labels_summed_extrapolated"].dropna()
+                svh_stats["SvH"] = calculate_summary_statistics(svh_values)
+                
+                # Calculate delta_SvH
+                df_delta = calculate_delta_svh(df_svh)
+                if len(df_delta) > 0 and "labels_summed_extrapolated_delta" in df_delta.columns:
+                    delta_values = df_delta["labels_summed_extrapolated_delta"].dropna()
+                    svh_stats["delta_SvH"] = calculate_summary_statistics(delta_values)
+    except Exception as e:
+        print(f"Warning: Could not calculate SvH statistics: {e}")
+        import traceback
+        traceback.print_exc()
+        svh_stats = {
+            "SvH": {"error": str(e)},
+            "delta_SvH": {"error": str(e)}
+        }
+    
     result = {
         "num_patients": int(num_patients),
         "num_ROIs": int(num_ROIs),
@@ -265,6 +535,9 @@ def calculate_split_metadata(df: pd.DataFrame, score_groupings: Dict[str, List[s
     
     if aggregated:
         result["aggregated"] = aggregated
+    
+    if svh_stats:
+        result["svh_statistics"] = svh_stats
     
     return result
 

@@ -227,6 +227,547 @@ print("Done loading")
 import ra_utils.data.shap_sums
 
 
+def metrics_to_text_no_CI(m):
+    """
+    Generate metrics text without confidence intervals and without N.
+    
+    Parameters
+    ----------
+    m : dict
+        Metrics dictionary from calculate_some_classification_metrics
+        
+    Returns
+    -------
+    str
+        Formatted metrics text
+    """
+    # --- RMSE (no CI)
+    rmse_txt = f"$\\mathrm{{RMSE}}= {m['rmse']:2.2f}$"
+    
+    # --- Prefer Pearson r; fallback to Spearman rho (no CI)
+    corr_key, corr_label = None, None
+    if "pearson_corr" in m:
+        corr_key, corr_label = "pearson_corr", "\\rho   "
+    elif "spearman_corr" in m:
+        corr_key, corr_label = "spearman_corr", "\\rho   "
+    
+    corr_txt = ""
+    if corr_key is not None:
+        corr_txt = f"${corr_label}= {m[corr_key]:2.2f}$"
+    
+    # --- ICC (psych) (no CI, no N)
+    txt_ICC_psych = ""
+    if "ICC_psych" in m:
+        txt_ICC_psych = f"\n$\\mathrm{{ICC}} = {m['ICC_psych']:2.2f}$"
+    
+    return rmse_txt + txt_ICC_psych + "\n" + corr_txt
+
+
+def plot_comparison_two_models(
+    df_model1: pd.DataFrame,
+    df_model2: pd.DataFrame,
+    plot_type: str = "sums",
+    *,
+    model1_name: str = "Model 1",
+    model2_name: str = "Model 2",
+    plot_name: str = "Comparison",
+    figsize=(5, 5),
+    regplot: bool = True,
+    icc: str = "ICC3",
+    metrics_loc: tuple[float, float] = (0.05, 0.95),
+    model1_color: str = 'C0',
+    model2_color: str = 'C1',
+    ax=None,
+    show_legend: bool = True,
+    show_CI: bool = False,
+    font_size: int = 10,
+    text_box_permutation: list = [0, 1]
+):
+    """
+    Plot scatter plots for two models on the same axes with different colors.
+
+    Parameters
+    ----------
+    df_model1 : pd.DataFrame
+        First model's dataframe (should have columns for true and predicted values)
+    df_model2 : pd.DataFrame
+        Second model's dataframe (should have columns for true and predicted values)
+    plot_type : str, default "sums"
+        Type of plot: "sums" or "deltas"
+        - "sums": uses "labels_summed_extrapolated" and "preds_summed_extrapolated"
+        - "deltas": uses "labels_summed_extrapolated_delta" and "preds_summed_extrapolated_delta"
+    model1_name : str, default "Model 1"
+        Name for first model (used in legend and metrics)
+    model2_name : str, default "Model 2"
+        Name for second model (used in legend and metrics)
+    plot_name : str, default "Comparison"
+        Name for the plot (used in axis labels)
+    figsize : tuple, default (5, 5)
+        Figure size
+    regplot : bool, default True
+        Whether to overlay regression lines
+    icc : str, default "ICC3"
+        ICC type to compute
+    metrics_loc : tuple, default (0.05, 0.95)
+        Location for metrics text (x, y) in axes coordinates
+    model1_color : str, default 'C0'
+        Color for model 1
+    model2_color : str, default 'C1'
+        Color for model 2
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates new figure.
+    show_legend : bool, default True
+        Whether to display the legend.
+    show_CI : bool, default False
+        Whether to show confidence intervals in metrics.
+    font_size : int, default 10
+        Font size for axis labels and metrics text.
+    text_box_permutation : list, default [0, 1]
+        Order in which to display metrics text boxes for the two models. Permute [0, 1] as desired.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure object (None if ax was provided)
+    ax : matplotlib.axes.Axes
+        Axes object
+    metrics_dict : dict
+        Dictionary with keys 'model1' and 'model2', each containing metrics dict
+    """
+    import seaborn as sns
+    from ra_utils.training.scores_SHS.scores_SHS_training_lib import (
+        calculate_some_classification_metrics
+    )
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    # Determine column names based on plot type
+    if plot_type == "sums":
+        true_col = "labels_summed_extrapolated"
+        pred_col = "preds_summed_extrapolated"
+    elif plot_type == "deltas":
+        true_col = "labels_summed_extrapolated_delta"
+        pred_col = "preds_summed_extrapolated_delta"
+    else:
+        raise ValueError(f"plot_type must be 'sums' or 'deltas', got '{plot_type}'")
+
+    # Prepare data for both models
+    def prepare_data(df):
+        x_raw = df[true_col]
+        y_raw = df[pred_col]
+        x = pd.to_numeric(x_raw, errors='coerce')
+        y = pd.to_numeric(y_raw, errors='coerce')
+        mask = x.notna() & y.notna()
+        return x[mask], y[mask]
+
+    x1, y1 = prepare_data(df_model1)
+    x2, y2 = prepare_data(df_model2)
+
+    # Compute metrics for both models
+    metrics1 = calculate_some_classification_metrics(
+        all_labels=x1.values.astype(float),
+        all_preds=y1.values.astype(float),
+        calc_ICC3=2,
+        add_classification_metrics=False,
+        add_spearman=False,
+        add_pearson=True,
+        add_kappa=True,
+        calc_psych_ICC=2,
+        icc=icc,
+        calculate_CI=show_CI  # Control CI via kwarg
+    )
+
+    metrics2 = calculate_some_classification_metrics(
+        all_labels=x2.values.astype(float),
+        all_preds=y2.values.astype(float),
+        calc_ICC3=2,
+        add_classification_metrics=False,
+        add_spearman=False,
+        add_pearson=True,
+        add_kappa=True,
+        calc_psych_ICC=2,
+        icc=icc,
+        calculate_CI=show_CI
+    )
+
+    # Create or use existing axes
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = None
+
+    # Plot model 1
+    if regplot:
+        sns.regplot(
+            x=x1, y=y1, ax=ax,
+            scatter_kws={'color': model1_color, 'alpha': 0.3, 's': 8},
+            line_kws={'color': model1_color, 'lw': 1},
+            truncate=False
+        )
+        # Manually add legend entry for model 1
+        line1 = Line2D([0], [0], color=model1_color, lw=1, label=model1_name)
+    else:
+        ax.scatter(x1, y1, c=model1_color, alpha=0.3, s=8, label=model1_name)
+        line1 = None
+
+    # Plot model 2
+    if regplot:
+        sns.regplot(
+            x=x2, y=y2, ax=ax,
+            scatter_kws={'color': model2_color, 'alpha': 0.3, 's': 8},
+            line_kws={'color': model2_color, 'lw': 1},
+            truncate=False
+        )
+        # Manually add legend entry for model 2
+        line2 = Line2D([0], [0], color=model2_color, lw=1, label=model2_name)
+    else:
+        ax.scatter(x2, y2, c=model2_color, alpha=0.3, s=8, label=model2_name)
+        line2 = None
+
+    # Diagonal reference line
+    all_x = pd.concat([x1, x2])
+    all_y = pd.concat([y1, y2])
+    D=30
+    lims = [min(all_x.min()-D, all_y.min())-D, max(all_x.max()+D, all_y.max())+D]
+    ax.plot(lims, lims, '--', color='gray', lw=1, alpha=0.7)
+
+    # Set labels with custom font size
+    ax.set_xlabel(f"Ground-truth scores ({plot_name})", fontsize=font_size)
+    ax.set_ylabel(f"Predicted scores ({plot_name})", fontsize=font_size)
+    ax.tick_params(axis='both', labelsize=font_size)
+    ax.grid()
+
+    # Add legend if requested
+    if show_legend:
+        if regplot and line1 is not None and line2 is not None:
+            ax.legend(handles=[line1, line2], loc='lower right', fontsize=font_size)
+        else:
+            ax.legend(loc='lower right', fontsize=font_size)
+    else:
+        ax.legend_.remove() if ax.get_legend() is not None else None
+
+    # Add metrics text in two separate vertically-aligned boxes, second one shifted right of the first
+    if show_CI:
+        txt1 = metrics_to_text_no_CI(metrics1)  # Replace with metrics_to_text_with_CI if available
+        txt2 = metrics_to_text_no_CI(metrics2)
+    else:
+        txt1 = metrics_to_text_no_CI(metrics1)
+        txt2 = metrics_to_text_no_CI(metrics2)
+        
+    box_props = dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
+
+    x0, y0 = metrics_loc
+
+    # Default right shift in axis coordinates, adjust for font size
+    x_shift = 0.32 * (font_size / 10)  # This should work well for two 2-3 line metrics boxes at fontsize=10
+
+    # Prepare model data for permutation
+    models_data = [
+        (model1_name, txt1),
+        (model2_name, txt2)
+    ]
+
+    # Validate text_box_permutation
+    if set(text_box_permutation) != {0, 1}:
+        raise ValueError(f"text_box_permutation must be a permutation of [0, 1], got {text_box_permutation}")
+    if len(text_box_permutation) != 2:
+        raise ValueError(f"text_box_permutation must have length 2, got {len(text_box_permutation)}")
+
+    # Place metrics boxes according to permutation order
+    # The x-position is based on the position in the permutation, not the model index
+    for i, model_idx in enumerate(text_box_permutation):
+        model_name, model_txt = models_data[model_idx]
+        x_pos = x0 + i * x_shift
+        if x_pos > 0.98:
+            x_pos = 0.98
+        ax.text(
+            x_pos, y0,
+            f"{model_name}:\n{model_txt}",
+            transform=ax.transAxes,
+            ha='left', va='top', fontsize=font_size,
+            bbox=box_props
+        )
+
+    metrics_dict = {
+        'model1': metrics1,
+        'model2': metrics2
+    }
+
+    return fig, ax, metrics_dict
+
+
+def plot_comparison_three_models(
+    df_model1: pd.DataFrame,
+    df_model2: pd.DataFrame,
+    df_model3: pd.DataFrame,
+    plot_type: str = "sums",
+    *,
+    model1_name: str = "Model 1",
+    model2_name: str = "Model 2",
+    model3_name: str = "Model 3",
+    plot_name: str = "Comparison",
+    figsize=(5, 5),
+    regplot: bool = True,
+    icc: str = "ICC3",
+    metrics_loc: tuple[float, float] = (0.05, 0.95),
+    model1_color: str = 'C0',
+    model2_color: str = 'C1',
+    model3_color: str = 'C2',
+    ax=None,
+    show_legend: bool = True,
+    show_CI: bool = False,
+    font_size: int = 10,
+    text_box_permutation: list = [0, 1, 2]
+):
+    """
+    Plot scatter plots for three models on the same axes with different colors.
+
+    Parameters
+    ----------
+    df_model1 : pd.DataFrame
+        First model's dataframe (should have columns for true and predicted values)
+    df_model2 : pd.DataFrame
+        Second model's dataframe (should have columns for true and predicted values)
+    df_model3 : pd.DataFrame
+        Third model's dataframe (should have columns for true and predicted values)
+    plot_type : str, default "sums"
+        Type of plot: "sums" or "deltas"
+        - "sums": uses "labels_summed_extrapolated" and "preds_summed_extrapolated"
+        - "deltas": uses "labels_summed_extrapolated_delta" and "preds_summed_extrapolated_delta"
+    model1_name : str, default "Model 1"
+        Name for first model (used in legend and metrics)
+    model2_name : str, default "Model 2"
+        Name for second model (used in legend and metrics)
+    model3_name : str, default "Model 3"
+        Name for third model (used in legend and metrics)
+    plot_name : str, default "Comparison"
+        Name for the plot (used in axis labels)
+    figsize : tuple, default (5, 5)
+        Figure size
+    regplot : bool, default True
+        Whether to overlay regression lines
+    icc : str, default "ICC3"
+        ICC type to compute
+    metrics_loc : tuple, default (0.05, 0.95)
+        Location for metrics text (x, y) in axes coordinates (top-left corner of first box)
+    model1_color : str, default 'C0'
+        Color for model 1
+    model2_color : str, default 'C1'
+        Color for model 2
+    model3_color : str, default 'C2'
+        Color for model 3
+    ax : matplotlib.axes.Axes, optional
+        Existing axes to plot on. If None, creates new figure.
+    show_legend : bool, default True
+        Whether to display the legend.
+    show_CI : bool, default False
+        Whether to show confidence intervals in metrics.
+    font_size : int, default 10
+        Font size for axis labels and metrics text.
+    text_box_permutation : list, default [0, 1, 2]
+        Permutation of [0, 1, 2] to reorder the metrics boxes.
+        Indices refer to model1 (0), model2 (1), model3 (2).
+        Example: [2, 0, 1] displays model3, model1, model2 from left to right.
+
+    Returns
+    -------
+    fig : matplotlib.figure.Figure
+        Figure object (None if ax was provided)
+    ax : matplotlib.axes.Axes
+        Axes object
+    metrics_dict : dict
+        Dictionary with keys 'model1', 'model2', and 'model3', each containing metrics dict
+    """
+    import seaborn as sns
+    from ra_utils.training.scores_SHS.scores_SHS_training_lib import (
+        calculate_some_classification_metrics
+    )
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+
+    # Validate text_box_permutation
+    if set(text_box_permutation) != {0, 1, 2}:
+        raise ValueError(f"text_box_permutation must be a permutation of [0, 1, 2], got {text_box_permutation}")
+    if len(text_box_permutation) != 3:
+        raise ValueError(f"text_box_permutation must have length 3, got {len(text_box_permutation)}")
+
+    # Determine column names based on plot type
+    if plot_type == "sums":
+        true_col = "labels_summed_extrapolated"
+        pred_col = "preds_summed_extrapolated"
+    elif plot_type == "deltas":
+        true_col = "labels_summed_extrapolated_delta"
+        pred_col = "preds_summed_extrapolated_delta"
+    else:
+        raise ValueError(f"plot_type must be 'sums' or 'deltas', got '{plot_type}'")
+
+    # Prepare data for all three models
+    def prepare_data(df):
+        x_raw = df[true_col]
+        y_raw = df[pred_col]
+        x = pd.to_numeric(x_raw, errors='coerce')
+        y = pd.to_numeric(y_raw, errors='coerce')
+        mask = x.notna() & y.notna()
+        return x[mask], y[mask]
+
+    x1, y1 = prepare_data(df_model1)
+    x2, y2 = prepare_data(df_model2)
+    x3, y3 = prepare_data(df_model3)
+
+    # Compute metrics for all three models
+    metrics1 = calculate_some_classification_metrics(
+        all_labels=x1.values.astype(float),
+        all_preds=y1.values.astype(float),
+        calc_ICC3=2,
+        add_classification_metrics=False,
+        add_spearman=False,
+        add_pearson=True,
+        add_kappa=True,
+        calc_psych_ICC=2,
+        icc=icc,
+        calculate_CI=show_CI
+    )
+
+    metrics2 = calculate_some_classification_metrics(
+        all_labels=x2.values.astype(float),
+        all_preds=y2.values.astype(float),
+        calc_ICC3=2,
+        add_classification_metrics=False,
+        add_spearman=False,
+        add_pearson=True,
+        add_kappa=True,
+        calc_psych_ICC=2,
+        icc=icc,
+        calculate_CI=show_CI
+    )
+
+    metrics3 = calculate_some_classification_metrics(
+        all_labels=x3.values.astype(float),
+        all_preds=y3.values.astype(float),
+        calc_ICC3=2,
+        add_classification_metrics=False,
+        add_spearman=False,
+        add_pearson=True,
+        add_kappa=True,
+        calc_psych_ICC=2,
+        icc=icc,
+        calculate_CI=show_CI
+    )
+
+    # Create or use existing axes
+    if ax is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        fig = None
+
+    # Plot model 1
+    if regplot:
+        sns.regplot(
+            x=x1, y=y1, ax=ax,
+            scatter_kws={'color': model1_color, 'alpha': 0.3, 's': 8},
+            line_kws={'color': model1_color, 'lw': 1},
+            truncate=False
+        )
+        line1 = Line2D([0], [0], color=model1_color, lw=1, label=model1_name)
+    else:
+        ax.scatter(x1, y1, c=model1_color, alpha=0.3, s=8, label=model1_name)
+        line1 = None
+
+    # Plot model 2
+    if regplot:
+        sns.regplot(
+            x=x2, y=y2, ax=ax,
+            scatter_kws={'color': model2_color, 'alpha': 0.3, 's': 8},
+            line_kws={'color': model2_color, 'lw': 1},
+            truncate=False
+        )
+        line2 = Line2D([0], [0], color=model2_color, lw=1, label=model2_name)
+    else:
+        ax.scatter(x2, y2, c=model2_color, alpha=0.3, s=8, label=model2_name)
+        line2 = None
+
+    # Plot model 3
+    if regplot:
+        sns.regplot(
+            x=x3, y=y3, ax=ax,
+            scatter_kws={'color': model3_color, 'alpha': 0.3, 's': 8},
+            line_kws={'color': model3_color, 'lw': 1},
+            truncate=False
+        )
+        line3 = Line2D([0], [0], color=model3_color, lw=1, label=model3_name)
+    else:
+        ax.scatter(x3, y3, c=model3_color, alpha=0.3, s=8, label=model3_name)
+        line3 = None
+
+    # Diagonal reference line
+    all_x = pd.concat([x1, x2, x3])
+    all_y = pd.concat([y1, y2, y3])
+    lims = [min(all_x.min(), all_y.min()), max(all_x.max(), all_y.max())]
+    ax.plot(lims, lims, '--', color='gray', lw=1, alpha=0.7)
+
+    # Set labels with custom font size
+    ax.set_xlabel(f"Ground-truth scores ({plot_name})", fontsize=font_size)
+    ax.set_ylabel(f"Predicted scores ({plot_name})", fontsize=font_size)
+    ax.tick_params(axis='both', labelsize=font_size)
+    ax.grid()
+
+    # Add legend if requested
+    if show_legend:
+        if regplot and line1 is not None and line2 is not None and line3 is not None:
+            ax.legend(handles=[line1, line2, line3], loc='lower right', fontsize=font_size)
+        else:
+            ax.legend(loc='lower right', fontsize=font_size)
+    else:
+        if ax.get_legend() is not None:
+            ax.legend_.remove()
+
+    # Add metrics text in three separate boxes, arranged horizontally
+    if show_CI:
+        txt1 = metrics_to_text_no_CI(metrics1)  # Replace with metrics_to_text_with_CI if available
+        txt2 = metrics_to_text_no_CI(metrics2)
+        txt3 = metrics_to_text_no_CI(metrics3)
+    else:
+        txt1 = metrics_to_text_no_CI(metrics1)
+        txt2 = metrics_to_text_no_CI(metrics2)
+        txt3 = metrics_to_text_no_CI(metrics3)
+        
+    # Prepare model data for permutation
+    models_data = [
+        (model1_name, txt1),
+        (model2_name, txt2),
+        (model3_name, txt3)
+    ]
+    
+    box_props = dict(facecolor='white', alpha=0.7, edgecolor='none', pad=3)
+
+    x0, y0 = metrics_loc
+
+    # Calculate spacing for three boxes horizontally, adjust for font size
+    x_shift = 0.28 * (font_size / 10)  # Slightly tighter spacing for three boxes
+
+    # Place metrics boxes according to permutation
+    for i, model_idx in enumerate(text_box_permutation):
+        model_name, model_txt = models_data[model_idx]
+        x_pos = x0 + i * x_shift
+        if x_pos > 0.98:
+            x_pos = 0.98
+        ax.text(
+            x_pos, y0,
+            f"{model_name}:\n{model_txt}",
+            transform=ax.transAxes,
+            ha='left', va='top', fontsize=font_size,
+            bbox=box_props
+        )
+
+    metrics_dict = {
+        'model1': metrics1,
+        'model2': metrics2,
+        'model3': metrics3
+    }
+
+    return fig, ax, metrics_dict
+
+
 def main():
     FRACTION_REQUIRED_VALID_SCORES = 0.75
 
@@ -483,6 +1024,15 @@ def main():
     # plt.show()
 
     df_delta_SvH = generate_score_differences(df_summed_SvH)
+    
+    # Save dataframes
+    df_delta_SvH_path = os.path.join(output_folder, 'df_delta_SvH.csv')
+    df_summed_SvH_path = os.path.join(output_folder, 'df_summed_SvH.csv')
+    df_delta_SvH.to_csv(df_delta_SvH_path, index=False)
+    df_summed_SvH.to_csv(df_summed_SvH_path, index=False)
+    print(f" Saved df_delta_SvH to {df_delta_SvH_path}")
+    print(f" Saved df_summed_SvH to {df_summed_SvH_path}")
+    
     fig, axis_tuple, metrics_delta_SvH = plot_SHS_deltas(df_delta_SvH.dropna(), figsize=(5,5), name="ΔSvH H+F", regplot=True)
 
     # Save metrics for delta SvH

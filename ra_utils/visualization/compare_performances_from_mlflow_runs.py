@@ -523,10 +523,15 @@ def make_patient_map(run_list):
 #--------------------------------
 
 
-def print_script_for_sum_and_plot_SvH(df):
+def print_script_for_sum_and_plot_SvH(df, print_run_name=True):
     l_paths = list(df["run_artifacts_paths"])
+    if print_run_name: 
+        names = list(df["run_name"])
     for data_partition in ["test", "valFinal"]:
-        script = [f"ra_utils__sum_and_plot_SvH  --run_path '{p}' --data_partition '{data_partition}'" for p in l_paths]
+        if print_run_name: 
+            script = [f"echo 'run = {n}'\n  ra_utils__sum_and_plot_SvH  --run_path '{p}' --data_partition '{data_partition}'" for p, n in zip(l_paths, names)]
+        else: 
+            script = [f"ra_utils__sum_and_plot_SvH  --run_path '{p}' --data_partition '{data_partition}'" for p in l_paths]
 
         print() 
         print(f"echo {data_partition = }")
@@ -729,3 +734,236 @@ def bar_plot_performances(
     plt.tight_layout()
 
     return fig, ax
+
+
+def line_plot_performances(
+    df_dct, 
+    x_column="num_patients",
+    y_column="valFinal/metrics_SvH_H+F: mae",
+    y_column_upper="valFinal/metrics_SvH_H+F: mae_CI95_upper",
+    y_column_lower="valFinal/metrics_SvH_H+F: mae_CI95_lower",
+    axis=None,
+    title=None,
+    xlabel="Number of Patients (log scale)",
+    ylabel="MAE (SvH H+F)",
+    extra_info_column_x_axis=None,
+    legend=True, 
+    colors=None, 
+    no_x_ticks_base_label=True,
+    figsize=(10, 6), 
+    linewidth=2.5,
+    alpha_fill=0.3,
+    alpha_line=1.0,
+    marker='+',
+    markersize=8,
+    fontsize_title=16,
+    fontsize_labels=20,
+    fontsize_legend=16,
+    fontsize_ticks=16,
+    grid=True,  # This argument has no effect below; kept for API compatibility.
+    grid_alpha=0.3,
+    shaded_error_bands=False,
+    errorbar_capsize=5,
+    errorbar_capthick=2,
+    errorbar_elinewidth=1.5,
+    y_min=None,
+    y_max=None,
+    **kwargs
+):
+    """
+    Create a line plot comparing multiple models with error bars and optional shaded error bands on log scale x-axis.
+    Designed for publication-quality figures.
+
+    Parameters:
+    - df_dct: Dictionary with model names as keys and DataFrames as values
+    - x_column: Column name for x-axis values
+    - y_column: Column name for y-axis values (mean)
+    - y_column_upper: Column name for upper error bound
+    - y_column_lower: Column name for lower error bound
+    - axis: Optional matplotlib axis to plot on (if None, creates new figure)
+    - title: Plot title
+    - xlabel: X-axis label
+    - ylabel: Y-axis label
+    - extra_info_column_x_axis: Optional column name containing strings to display below x-axis ticks
+    - legend: Whether to show a legend (default True)
+    - colors: List of colors for each model (if None, uses default color cycle)
+    - no_x_ticks_base_label: If True, only show extra_info in x-axis labels (default True)
+    - figsize: Tuple for figure size (width, height) in inches (default (10, 6))
+    - linewidth: Width of the lines (default 2.5)
+    - alpha_fill: Transparency of the error band fill (default 0.3)
+    - alpha_line: Transparency of the lines (default 1.0)
+    - marker: Marker style for data points (default 'o')
+    - markersize: Size of markers (default 8)
+    - fontsize_title: Font size for title (default 16)
+    - fontsize_labels: Font size for axis labels (default 14)
+    - fontsize_legend: Font size for legend (default 12)
+    - fontsize_ticks: Font size for tick labels (default 12)
+    - grid: Whether to show grid (default True) [Ignored in this function]
+    - grid_alpha: Transparency of grid lines (default 0.3) [Ignored in this function]
+    - shaded_error_bands: Whether to show shaded error bands in addition to error bars (default False)
+    - errorbar_capsize: Size of error bar caps (default 5)
+    - errorbar_capthick: Thickness of error bar caps (default 2)
+    - errorbar_elinewidth: Width of error bar lines (default 1.5)
+    - y_min: Optional minimum value for y-axis (default None, uses automatic scaling)
+    - y_max: Optional maximum value for y-axis (default None, uses automatic scaling)
+    - **kwargs: Additional keyword arguments passed to plt.plot()
+
+    Returns:
+    - fig, ax: matplotlib figure and axis objects
+    """
+
+    num_models = len(df_dct)
+
+    if colors is None:
+        # Use matplotlib's default color cycle
+        prop_cycle = plt.rcParams['axes.prop_cycle']
+        colors = [prop_cycle.by_key()['color'][i % len(prop_cycle.by_key()['color'])] 
+                 for i in range(len(df_dct))]
+
+    # Create figure/axis if not provided
+    if axis is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        ax = axis
+        fig = ax.figure
+
+    # Get all unique x values from all dataframes to determine spacing
+    all_x_values = set()
+    for df_part_to_plot in df_dct.values():
+        all_x_values.update(df_part_to_plot[x_column].values)
+    all_x_values = np.sort(np.array(list(all_x_values)))
+
+    # Convert to log2 space for positioning
+    x_values_log2 = np.log2(all_x_values)
+
+    # Plot each model
+    for i, (name, df_part_to_plot) in enumerate(df_dct.items()):
+        # Sort by x values to ensure proper line plotting
+        df_sorted = df_part_to_plot.sort_values(by=x_column)
+        
+        x = df_sorted[x_column]
+        y = df_sorted[y_column]
+
+        # Convert x values to log2 space
+        x_values_log2_model = np.log2(x.values)
+
+        # Handle error bars and error bands - if y_column_upper or y_column_lower is None, skip error visualization
+        if y_column_upper is not None and y_column_lower is not None:
+            y_lower = df_sorted[y_column_lower]
+            y_upper = df_sorted[y_column_upper]
+            
+            # Calculate error bar heights (distance from mean to bounds)
+            yerr_lower = y.values - y_lower.values
+            yerr_upper = y_upper.values - y.values
+            yerr = [yerr_lower, yerr_upper]
+            
+            # Plot shaded error band (optional)
+            if shaded_error_bands:
+                ax.fill_between(
+                    x_values_log2_model, 
+                    y_lower.values, 
+                    y_upper.values,
+                    alpha=alpha_fill,
+                    color=colors[i],
+                    edgecolor='none',
+                    label='_nolegend_'  # Don't add to legend
+                )
+            
+            # Plot error bars
+            ax.errorbar(
+                x_values_log2_model,
+                y.values,
+                yerr=yerr,
+                fmt='none',  # Don't plot line/markers, just error bars
+                color=colors[i],
+                capsize=errorbar_capsize,
+                capthick=errorbar_capthick,
+                elinewidth=errorbar_elinewidth,
+                alpha=alpha_line,
+                label='_nolegend_'  # Don't add to legend
+            )
+
+        # Plot line with markers
+        ax.plot(
+            x_values_log2_model, 
+            y.values,
+            marker=marker,
+            markersize=markersize,
+            linewidth=linewidth,
+            alpha=alpha_line,
+            label=name,
+            color=colors[i],
+            **kwargs
+        )
+
+    # Set x-axis labels
+    ax.set_xticks(x_values_log2)
+
+    # Handle extra info column if provided
+    if extra_info_column_x_axis is not None:
+        # Create a mapping from x values to extra info strings
+        x_to_extra_info = {}
+        for df_part_to_plot in df_dct.values():
+            if extra_info_column_x_axis in df_part_to_plot.columns:
+                for x_val, extra_info in zip(df_part_to_plot[x_column], df_part_to_plot[extra_info_column_x_axis]):
+                    if x_val not in x_to_extra_info:
+                        x_to_extra_info[x_val] = str(extra_info)
+
+        # Create tick labels with extra info
+        tick_labels = []
+        for x_val in all_x_values:
+            base_label = str(x_val)
+            if x_val in x_to_extra_info:
+                extra_info = x_to_extra_info[x_val]
+                # Combine with line break
+                if no_x_ticks_base_label:
+                    tick_labels.append(extra_info)
+                else:
+                    tick_labels.append(f"{base_label} {extra_info}")
+            else:
+                tick_labels.append(base_label)
+
+        ax.set_xticklabels(tick_labels, fontsize=fontsize_ticks)
+    else:
+        ax.set_xticklabels(all_x_values, fontsize=fontsize_ticks)
+
+    ax.set_xlabel(xlabel, fontsize=fontsize_labels)
+    ax.set_ylabel(ylabel, fontsize=fontsize_labels)
+    if title is not None:
+        ax.set_title(title, fontsize=fontsize_title)
+
+    # Set y-axis limits if provided
+    if y_min is not None or y_max is not None:
+        current_ylim = ax.get_ylim()
+        y_min_final = y_min if y_min is not None else current_ylim[0]
+        y_max_final = y_max if y_max is not None else current_ylim[1]
+        ax.set_ylim(y_min_final, y_max_final)
+
+    # Set ticks on all sides, labels only on left and bottom, all facing inside.
+    ax.tick_params(
+        axis='y', left=True, right=True, labelleft=True, labelright=False,
+        direction='in', labelsize=fontsize_ticks, which='both'
+    )
+    ax.tick_params(
+        axis='x', top=True, bottom=True, labeltop=False, labelbottom=True,
+        direction='in', labelsize=fontsize_ticks, which='both'
+    )
+    # Optionally, ensure ticks are shown on all sides for both major and minor
+    for tick in ax.xaxis.get_major_ticks():
+        tick.tick1line.set_visible(True)
+        tick.tick2line.set_visible(True)
+    for tick in ax.yaxis.get_major_ticks():
+        tick.tick1line.set_visible(True)
+        tick.tick2line.set_visible(True)
+
+    # Add legend if legend=True
+    if legend:
+        ax.legend(loc='best', fontsize=fontsize_legend, frameon=True, framealpha=0.9)
+
+    # No grid
+    # (Was: if grid: ax.grid(...))
+
+    plt.tight_layout()
+
+    return fig, ax
+

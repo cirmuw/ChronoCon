@@ -48,6 +48,236 @@ def compute_2d_projection(pack, reduction_method="tsne", seed=43):
     print(f"2D projection completed. Shape: {coords_2d.shape}")
     return coords_2d, reducer
 
+from copy import deepcopy
+
+def plot_trajectories_from_coords_sorted(
+    coords_2d,
+    pack,
+    trajectories_to_connect,
+    reduction_method="tsne",
+    figsize=(5, 4),
+    no_legend=True,
+    background_color_key=None,
+    background_color_key_title=None,
+    background_colormap="viridis",
+    traj_colors_columns="t_rel",
+    traj_colors_colorbar=False,
+    axis=None,
+    traj_line_color=None,
+    markersize_fn=None,
+    markersize_col="score_gt",
+    alpha_fn=None,
+    alpha_col="score_gt",
+    plot_order_column=None,   # <-- NEW
+    flip_x=False,                   # <-- NEW
+    hide_frame=True                 # <-- NEW
+):
+    """
+    Plot trajectories from pre-computed 2D coordinates.
+    """
+    pack = deepcopy(pack)
+    coords_2d=deepcopy(coords_2d)
+
+    print(f"Plotting {len(trajectories_to_connect)} trajectories...")
+
+    # ------------------- OPTIONAL X-FLIP -------------------
+    if flip_x:
+        coords_2d = coords_2d.copy()
+        coords_2d[:, 0] *= -1
+        print("Flipping X-axis (coords[:,0] *= -1).")
+
+    # Marker cycle
+    marker_cycle = ['o', '^', 'D', 'v', 'P', 'X', '*', 'h', 'p', 's']
+
+    # Set up figure
+    if axis is None:
+        fig, ax = plt.subplots(figsize=figsize)
+    else:
+        ax = axis
+        fig = ax.figure
+
+    # ----------------------- GROUPS ------------------------
+    # These preserve chronological order → DO NOT TOUCH THIS
+    from collections import defaultdict
+    groups = defaultdict(list)
+    for i, key in enumerate(pack["patient_scoretype_key"]):
+        groups[key].append(i)
+
+    for key in groups:
+        groups[key].sort(key=lambda i: pack["years_since_2000"][i])  # keep temporal trajectories
+
+    # ------------------ SORT BACKGROUND PLOTTING ORDER ------------------
+    # Only sort for background scatter → Does NOT affect trajectories
+    if plot_order_column in pack:
+        try:
+            background_order = np.argsort(pack[plot_order_column])
+            print(
+                f"Sorting background points by '{plot_order_column}' "
+                f"(low → high, high will be drawn last and appear on top)."
+            )
+        except Exception:
+            background_order = np.arange(len(coords_2d))
+            print(f"Warning: Could not sort by {plot_order_column}. Plotting in original order.")
+    else:
+        background_order = np.arange(len(coords_2d))
+        print(f"Warning: plot_order_column '{plot_order_column}' not found. No sorting applied.")
+
+    # ------------------ Marker sizes for background -------------------
+    marker_sizes = None
+    if markersize_fn is not None and markersize_col in pack:
+        x = pack[markersize_col]
+        marker_sizes = np.array([markersize_fn(val) for val in x])
+    elif markersize_fn is not None:
+        print(f"Warning: markersize_col '{markersize_col}' not found. Skipping.")
+
+    # ------------------ Alpha for background -------------------
+    alpha_values = None
+    if alpha_fn is not None and alpha_col in pack:
+        x = pack[alpha_col]
+        alpha_values = np.array([alpha_fn(val) for val in x])
+    elif alpha_fn is not None:
+        print(f"Warning: alpha_col '{alpha_col}' not found. Skipping.")
+
+    # ------------------ Compute trajectory colors -------------------
+    if len(trajectories_to_connect) > 0:
+        colors = plt.cm.Set1(np.linspace(0, 1, len(trajectories_to_connect)))
+        patient_colors = {patient: colors[i] for i, patient in enumerate(trajectories_to_connect)}
+
+    # ------------------ BACKGROUND SCATTER -------------------
+    # Draw in sorted order so high-score points appear ON TOP
+    print("Plotting background points...")
+
+    bg_x = coords_2d[background_order, 0]
+    bg_y = coords_2d[background_order, 1]
+
+    if background_color_key is None:
+        ax.scatter(
+            bg_x,
+            bg_y,
+            c='lightgray',
+            s=marker_sizes[background_order] if marker_sizes is not None else 20,
+            alpha=alpha_values[background_order] if alpha_values is not None else 0.3,
+        )
+    else:
+        if background_color_key not in pack:
+            print(f"Warning: '{background_color_key}' not found.")
+            ax.scatter(
+                bg_x,
+                bg_y,
+                c='lightgray',
+                s=marker_sizes[background_order] if marker_sizes is not None else 20,
+                alpha=alpha_values[background_order] if alpha_values is not None else 0.3,
+            )
+        else:
+            values = np.array(pack[background_color_key])
+            try:
+                values = values.astype(float)
+                scatter = ax.scatter(
+                    bg_x,
+                    bg_y,
+                    c=values[background_order],
+                    cmap=background_colormap,
+                    s=marker_sizes[background_order] if marker_sizes is not None else 20,
+                    alpha=alpha_values[background_order] if alpha_values is not None else 0.3,
+                )
+                if axis is None:
+                    plt.colorbar(scatter, ax=ax, label=background_color_key_title or background_color_key)
+            except Exception:
+                # categorical
+                unique = np.unique(values)
+                mapping = {cat: i for i, cat in enumerate(unique)}
+                mapped = np.array([mapping[v] for v in values])
+                scatter = ax.scatter(
+                    bg_x,
+                    bg_y,
+                    c=mapped[background_order],
+                    cmap='tab10',
+                    s=marker_sizes[background_order] if marker_sizes is not None else 20,
+                    alpha=alpha_values[background_order] if alpha_values is not None else 0.3,
+                )
+                if axis is None:
+                    cbar = plt.colorbar(scatter, ax=ax, ticks=np.arange(len(unique)))
+                    cbar.ax.set_yticklabels(unique)
+
+    # ------------------ TRAJECTORIES -------------------
+    last_scatter = None
+
+    for idx, patient_key in enumerate(trajectories_to_connect):
+
+        if patient_key not in groups or len(groups[patient_key]) < 2:
+            print(f"Skipping trajectory '{patient_key}' (less than 2 points).")
+            continue
+
+        indices = groups[patient_key]
+        patient_coords = coords_2d[indices]
+
+        # line color (same for all if traj_line_color set)
+        if traj_line_color is not None:
+            line_color = traj_line_color
+        else:
+            line_color = patient_colors[patient_key]
+
+        # plot line
+        ax.plot(
+            patient_coords[:, 0],
+            patient_coords[:, 1],
+            color=line_color,
+            linewidth=3,
+            alpha=0.8,
+        )
+
+        # marker cycle
+        marker = marker_cycle[idx % len(marker_cycle)]
+
+        # marker color
+        if traj_colors_columns in pack:
+            cvals = pack[traj_colors_columns][indices]
+        else:
+            cvals = np.linspace(0, 1, len(indices))
+
+        last_scatter = ax.scatter(
+            patient_coords[:, 0],
+            patient_coords[:, 1],
+            c=cvals,
+            cmap='viridis',
+            s=30,
+            marker=marker,
+            edgecolors=line_color,
+            linewidth=1.5,
+            alpha=0.95,
+            zorder=5,
+        )
+
+    # colorbar for trajectory points
+    if traj_colors_colorbar and last_scatter is not None and axis is None:
+        plt.colorbar(last_scatter, ax=ax, label=f'Trajectory: {traj_colors_columns}')
+
+    ax.set_xlabel(f'{reduction_method.upper()} Dimension 1')
+    ax.set_ylabel(f'{reduction_method.upper()} Dimension 2')
+
+    # Legend
+    if not no_legend:
+        ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+    ax.grid(False)
+    ax.tick_params(axis='both', direction='in')
+
+    # ------------------ HIDE FRAME -------------------
+    if hide_frame:
+        for s in ax.spines.values():
+            s.set_visible(False)
+        # uncomment if you also want no ticks:
+        # ax.set_xticks([])
+        # ax.set_yticks([])
+
+    if axis is None:
+        plt.tight_layout()
+
+    return fig, ax
+
+
+
+
 def plot_trajectories_from_coords(
     coords_2d,
     pack,
@@ -62,6 +292,11 @@ def plot_trajectories_from_coords(
     traj_colors_colorbar=False,
     axis=None,
     traj_line_color=None,  # <-- NEW KEYWORD
+    markersize_fn=None,  # Optional function to compute marker sizes: markersize_fn(x, size=20)
+    markersize_col="score_gt",  # Column name to use for marker size computation
+    alpha_fn=None,  # Optional function to compute alpha values: alpha_fn(x, base=0.3)
+    alpha_col="score_gt",  # Column name to use for alpha computation
+    flip_x=False
 ):
     """
     Plot trajectories from pre-computed 2D coordinates.
@@ -81,12 +316,27 @@ def plot_trajectories_from_coords(
         axis: Optional matplotlib axes. If provided, plot on this axis and do not create a new figure.
         traj_line_color: Color to use for connecting lines between markers for all trajectories (default: None = color per trajectory).
                          If set, all lines will be plotted with the same color.
+        markersize_fn: Optional function to compute marker sizes for background points only. Function signature: markersize_fn(x, size=20)
+                       where x is a single value from the pack column and size is the base size (default: 20).
+                       Should return a single marker size value. If None, uses default size of 20 for background points.
+                       Note: Trajectory points always use a fixed size of 30.
+        markersize_col: Column name in pack to use for marker size computation (default: "score_gt")
+        alpha_fn: Optional function to compute alpha (transparency) values for background points only. Function signature: alpha_fn(x, base=0.3)
+                  where x is a single value from the pack column and base is the base alpha value.
+                  Should return a single alpha value. If None, uses default alpha of 0.3 for background points.
+                  Note: Trajectory points always use a fixed alpha of 0.95.
+        alpha_col: Column name in pack to use for alpha computation (default: "score_gt")
 
     Returns:
         fig, ax: Matplotlib figure and axis objects (so you can save the plot later)
     """
     print(f"Plotting {len(trajectories_to_connect)} trajectories...")
-
+    pack = deepcopy(pack)
+    coords_2d = deepcopy(coords_2d)
+    if flip_x: 
+        factor_x= -1
+    else: 
+        factor_x=1
     # Define a marker cycle for up to 10 unique marker styles, then cycle through if more needed
     marker_cycle = ['o',  '^', 'D', 'v', 'P', 'X', '*', 'h', 'p', 's']
 
@@ -106,6 +356,30 @@ def plot_trajectories_from_coords(
     for key in groups:
         groups[key].sort(key=lambda i: pack['years_since_2000'][i])
 
+    # Compute marker sizes for background points if markersize_fn is provided
+    marker_sizes = None
+    if markersize_fn is not None:
+        # Get the column data
+        if markersize_col in pack:
+            x = pack[markersize_col]
+            marker_sizes = np.array([markersize_fn(val) for val in x])
+            print(f"Using markersize_fn with column '{markersize_col}' for background points, size range: {marker_sizes.min():.2f} to {marker_sizes.max():.2f}")
+        else:
+            print(f"Warning: Column '{markersize_col}' not found in pack for markersize_fn. Using default sizes.")
+            marker_sizes = None
+
+    # Compute alpha values for background points if alpha_fn is provided
+    alpha_values = None
+    if alpha_fn is not None:
+        # Get the column data
+        if alpha_col in pack:
+            x = pack[alpha_col]
+            alpha_values = np.array([alpha_fn(val) for val in x])
+            print(f"Using alpha_fn with column '{alpha_col}' for background points, alpha range: {alpha_values.min():.3f} to {alpha_values.max():.3f}")
+        else:
+            print(f"Warning: Column '{alpha_col}' not found in pack for alpha_fn. Using default alpha.")
+            alpha_values = None
+
     # Define colors for the trajectories to connect (for markers and edges)
     if len(trajectories_to_connect) > 0:
         colors = plt.cm.Set1(np.linspace(0, 1, len(trajectories_to_connect)))
@@ -121,15 +395,15 @@ def plot_trajectories_from_coords(
             try:
                 background_values = np.asarray(background_values, dtype=float)
                 print(f"Background values range: {background_values.min():.3f} to {background_values.max():.3f}")
-
+                
                 # Use colormap for numeric values
                 scatter = ax.scatter(
-                    coords_2d[:, 0],
+                    coords_2d[:, 0] * factor_x,
                     coords_2d[:, 1],
                     c=background_values,
                     cmap=background_colormap,
-                    s=20,
-                    alpha=0.3,
+                    s=marker_sizes if marker_sizes is not None else 20,
+                    alpha=alpha_values if alpha_values is not None else 0.3,
                     label='All other samples'
                 )
 
@@ -161,12 +435,12 @@ def plot_trajectories_from_coords(
                     cmap = plt.cm.get_cmap(background_colormap, n_categories)
 
                 scatter = ax.scatter(
-                    coords_2d[:, 0],
+                    coords_2d[:, 0] * factor_x,
                     coords_2d[:, 1],
                     c=numeric_categories,
                     cmap=cmap,
-                    s=20,
-                    alpha=0.3,
+                    s=marker_sizes if marker_sizes is not None else 20,
+                    alpha=alpha_values if alpha_values is not None else 0.3,
                     vmin=-0.5,
                     vmax=n_categories - 0.5
                 )
@@ -186,20 +460,20 @@ def plot_trajectories_from_coords(
             print(f"Available keys in pack: {list(pack.keys())}")
             print("Using default gray background")
             ax.scatter(
-                coords_2d[:, 0],
+                coords_2d[:, 0] * factor_x,
                 coords_2d[:, 1],
                 c='lightgray',
-                s=20,
-                alpha=0.3,
+                s=marker_sizes if marker_sizes is not None else 20,
+                alpha=alpha_values if alpha_values is not None else 0.3,
                 label='All other samples'
             )
     else:
         ax.scatter(
-            coords_2d[:, 0],
+            coords_2d[:, 0] * factor_x,
             coords_2d[:, 1],
             c='lightgray',
-            s=20,
-            alpha=0.3,
+            s=marker_sizes if marker_sizes is not None else 20,
+            alpha=alpha_values if alpha_values is not None else 0.3,
             label='All other samples'
         )
 
@@ -221,7 +495,7 @@ def plot_trajectories_from_coords(
             line_color = patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None
 
         ax.plot(
-            patient_coords[:, 0],
+            patient_coords[:, 0] * factor_x,
             patient_coords[:, 1],
             color=line_color,
             linewidth=3,
@@ -233,14 +507,15 @@ def plot_trajectories_from_coords(
         marker = marker_cycle[idx % len(marker_cycle)]
 
         # Plot points for this patient (smaller and with distinct style)
+        # Note: Trajectory points use fixed size (30), marker sizes only apply to background
         if traj_colors_columns is None:
             patient_t_rel = "gray"
             last_scatter = ax.scatter(
-                patient_coords[:, 0],
+                patient_coords[:, 0] * factor_x,
                 patient_coords[:, 1],
                 c=patient_t_rel,
                 cmap=None,
-                s=30,  # Smaller size!
+                s=30,  # Fixed size for trajectory points
                 marker=marker,
                 edgecolors=patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None,
                 linewidth=1.5,
@@ -254,11 +529,11 @@ def plot_trajectories_from_coords(
                 else np.linspace(0, 1, len(indices))
             )
             last_scatter = ax.scatter(
-                patient_coords[:, 0],
+                patient_coords[:, 0] * factor_x,
                 patient_coords[:, 1],
                 c=patient_t_rel,
                 cmap='viridis',
-                s=30,         # Smaller size!
+                s=30,  # Fixed size for trajectory points
                 marker=marker, # Distinct style for each trajectory
                 edgecolors=patient_colors[patient_key] if len(trajectories_to_connect) > 0 else None,
                 linewidth=1.5,
