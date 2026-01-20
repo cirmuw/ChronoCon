@@ -240,6 +240,17 @@ loss:
     # options: 
     #   validation_multiplier: 1.0  # 1 is the default. 
 
+# ## Rank N-Contrastive on TIME:   L^RnC:t  for MIDL Reply !! No not use otherwise!!!
+#   RnC_time:
+#   # label=time;  id=instance_label (e.g. PIPII_L_patient001_2010-01-01)
+#     name: "RnC_time"    # RnC_time (only with l1) or RnC_mono (RnC_mono is advised)  BUT for extra baseline: Use RnC_time
+#     params:
+#       temperature: 1.0
+#       feature_sim: "l2"  # "cosine" or "l2"
+#       label_diff: "l1"
+#       ignore_ids: False 
+
+
 
 # ## Rank N-Contrastive on SCORE "classio"
 #   RnC_score:  # Rank N Contrasive Loss 
