@@ -483,11 +483,29 @@ def build_models_v3(config: dict):
         if score_estimator_config is not None: 
             model_score_estimator = ContinuesScoreEsimator(**score_estimator_config["model_params"])
 
+    # Maybe make SimCLR projector
+    model_simclr_projector = None
+    simclr_projector_config = config_updated["model"].get("simCLR_projector")
+    if simclr_projector_config is not None:
+        from ra_utils.networks.architecture import SimCLRProjector
+        simclr_projector_kwargs = ra_utils.utils.utils.model_parameter_imports_(
+            simclr_projector_config.get("model_params", {}),
+            model_dct_keys_to_convert_to_lists=simclr_projector_config.get("model_dct_keys_to_convert_to_lists", []),
+            model_kw_requires_import=simclr_projector_config.get("model_kw_requires_import", [])
+        )
+        # Set default values if not provided
+        if "input_dim" not in simclr_projector_kwargs:
+            simclr_projector_kwargs["input_dim"] = model_AE.latent_dim
+        if "output_dim" not in simclr_projector_kwargs:
+            simclr_projector_kwargs["output_dim"] = 128
+        model_simclr_projector = SimCLRProjector(**simclr_projector_kwargs)
+
     models = dict(
         model_AE = model_AE, 
         model_c = model_c, 
         model_score_estimator = model_score_estimator,
-        model_delta_heads = model_delta_heads
+        model_delta_heads = model_delta_heads,
+        model_simclr_projector = model_simclr_projector
     )
 
     # Hack: store delta_head_infos in models for later use
@@ -552,6 +570,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
     models, config = build_models_v3(config)
     model_AE, model_c,  model_score_estimator = models["model_AE"], models["model_c"], models["model_score_estimator"]
     model_delta_heads = models["model_delta_heads"]
+    model_simclr_projector = models["model_simclr_projector"]
 
         
     if config.get("REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL", False):
@@ -577,6 +596,9 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         
     if model_delta_heads is not None: 
         model_delta_heads.to(device)
+    
+    if model_simclr_projector is not None:
+        model_simclr_projector.to(device)
 
     # Get loss_fn_dict and add delta head loss function
     loss_fn_dict = ra_utils.loss.loss_fn_dict.get_loss_fn_dict(config, device=device)
@@ -600,6 +622,8 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
         models = models + [model_score_estimator]
     if model_delta_heads is not None: 
         models = models + [model_delta_heads]
+    if model_simclr_projector is not None:
+        models = models + [model_simclr_projector]
     optimizer, scheduler, opt_planing_report = ra_utils.utils.utils_torch.plan_optimization_v4(
         models, # maybe add loss functions if these are trainable
         optimizer_class=optimizer_class, optimizer_params=optimizer_params,
@@ -653,6 +677,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             train_dataloaders=train_dataloaders,
             val_loaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
@@ -692,6 +717,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             dataloaders=train_dataloaders_with_val_transforms,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -709,6 +735,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             dataloaders=test_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,
@@ -724,6 +751,7 @@ def run_training_v2(config: dict,  verbose=VerboseLevel.CHATTY,
             model_classifier=model_c,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             dataloaders=val_loaders,
             loss_fn_dict=loss_fn_dict,
             device=device,

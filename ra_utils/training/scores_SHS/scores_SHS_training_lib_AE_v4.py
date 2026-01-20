@@ -91,7 +91,8 @@ def train_loop_AE_v4(
     loss_fn_dict: dict, 
     optimizer: torch.optim.Optimizer,
     model_score_estimator : Optional[torch.nn.Module] = None, 
-    model_delta_heads: Optional[torch.nn.Module]= None,    
+    model_delta_heads: Optional[torch.nn.Module]= None,
+    model_simclr_projector: Optional[torch.nn.Module] = None,
     scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None,
     device: str = "cuda",
     # training config
@@ -145,6 +146,11 @@ def train_loop_AE_v4(
         if model_delta_heads is not None
         else None
     )
+    best_simclr_state = (
+        copy.deepcopy(model_simclr_projector.state_dict())
+        if model_simclr_projector is not None
+        else None
+    )
     epochs_no_improve = 0
     print("Starting training")
 
@@ -162,6 +168,7 @@ def train_loop_AE_v4(
             model_classifier=model_classifier,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             loss_fn_dict=loss_fn_dict,
             transform=transform,
             transform_Contrastive=transform_Contrastive,
@@ -181,6 +188,7 @@ def train_loop_AE_v4(
             model_classifier=model_classifier,
             model_score_estimator=model_score_estimator,
             model_delta_heads=model_delta_heads,
+            model_simclr_projector=model_simclr_projector,
             loss_fn_dict=loss_fn_dict,
             transform=lambda x: x,  # No denoising in val. loop
             device=device,
@@ -328,6 +336,8 @@ def train_loop_AE_v4(
                     best_se_state = copy.deepcopy(model_score_estimator.state_dict())
                 if model_delta_heads is not None:
                     best_dh_state = copy.deepcopy(model_delta_heads.state_dict())
+                if model_simclr_projector is not None:
+                    best_simclr_state = copy.deepcopy(model_simclr_projector.state_dict())
 
                 epochs_no_improve = 0
 
@@ -403,6 +413,8 @@ def train_loop_AE_v4(
             model_score_estimator.load_state_dict(best_se_state)
         if model_delta_heads is not None and best_dh_state is not None:
             model_delta_heads.load_state_dict(best_dh_state)
+        if model_simclr_projector is not None and best_simclr_state is not None:
+            model_simclr_projector.load_state_dict(best_simclr_state)
 
     return metrics_Tr, metrics_Val
 
@@ -418,6 +430,7 @@ def val_epoch_AE_v4(
     model_classifier: Optional[torch.nn.Module] = None,
     model_score_estimator:  Optional[torch.nn.Module]= None,
     model_delta_heads: Optional[torch.nn.Module]= None,
+    model_simclr_projector: Optional[torch.nn.Module] = None,
     transform=lambda x: x,
     device: str = "cuda",
     classes: Optional[List[str]] = None,
@@ -486,12 +499,14 @@ def val_epoch_AE_v4(
     loss_fn_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["function"]
     lambda_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["lambda"]
 
+    loss_fn_z_SimCLR = loss_fn_dict["z_SimCLR"]["function"]
+    lambda_z_SimCLR = loss_fn_dict["z_SimCLR"]["lambda"]
 
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer",
-                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead"]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead", "z_SimCLR"]
 
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
      f"Expected loss functions not found in loss_fn_dict {loss_fn_dict.keys()} or found more"
@@ -502,6 +517,9 @@ def val_epoch_AE_v4(
 
     if model_delta_heads is not None:
         model_delta_heads.eval().to(device)
+
+    if model_simclr_projector is not None:
+        model_simclr_projector.eval().to(device)
 
     if model_classifier is not None:
         model_classifier.eval().to(device)
@@ -665,6 +683,19 @@ def val_epoch_AE_v4(
                 # contr_dct["RNC_score_fracNontrivial"]    = contr_dct.get("RNC_score_fracNontrivial", 0.0) + float(support_dct_RnC_score.get("frac_nontrivial_terms", 0.0))
                 # contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
                 # contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
+
+                # ---- SimCLR Loss ----
+                loss_z_SimCLR = torch.tensor(0.0, device=device)
+                if model_simclr_projector is not None and lambda_z_SimCLR > 1e-8:
+                    if X_pos is not None:
+                        # Project features
+                        z1_proj = model_simclr_projector(z)
+                        z2_proj = model_simclr_projector(z_positive)
+                        # Compute SimCLR loss
+                        loss_z_SimCLR = loss_fn_z_SimCLR(z1_proj, z2_proj)
+                    else:
+                        # Fallback: if X_pos is None, SimCLR loss should be 0
+                        pass
 
                 # ----------------------------------------------------------
                 # 1.1.5 Delta heads (if present)
@@ -1503,6 +1534,7 @@ def training_epoch_AE_v4(
     model_delta_heads: Optional[torch.nn.Module] = None,
     model_classifier=None,
     model_score_estimator=None,
+    model_simclr_projector: Optional[torch.nn.Module] = None,
     transform=lambda x: x,
     transform_Contrastive=lambda x: x,
     device="cuda",
@@ -1552,11 +1584,14 @@ def training_epoch_AE_v4(
     loss_fn_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["function"]
     lambda_y_DeltaHead = loss_fn_dict["y_DeltaHead"]["lambda"]
 
+    loss_fn_z_SimCLR = loss_fn_dict["z_SimCLR"]["function"]
+    lambda_z_SimCLR = loss_fn_dict["z_SimCLR"]["lambda"]
+
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
                   "y_reg_extra", "y_delta"]
     loss_terms_contrastive_ = ["z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
-                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead"]
+                               "z_triplet_MDP_time", "z_RnC_time", "z_RnC_score", "y_DeltaHead", "z_SimCLR"]
 
     # Checks
     assert set(loss_fn_dict.keys()) == set(loss_terms_ + loss_terms_contrastive_), \
@@ -1573,6 +1608,9 @@ def training_epoch_AE_v4(
 
     if model_delta_heads is not None:
         model_delta_heads.train().to(device)
+
+    if model_simclr_projector is not None:
+        model_simclr_projector.train().to(device)
 
     # running sums for global losses
     running_loss = dict(L=0.0)
@@ -1691,6 +1729,20 @@ def training_epoch_AE_v4(
             # contr_dct["RNC_score_denomSizeMean_sum"] = contr_dct.get("RNC_score_denomSizeMean_sum", 0.0) + float(support_dct_RnC_score.get("denom_size_mean", 0.0))
             # contr_dct["RNC_score_batches"]           = contr_dct.get("RNC_score_batches", 0.0) + 1.0
 
+            # ---- SimCLR Loss ----
+            loss_z_SimCLR = torch.tensor(0.0, device=device)
+            if model_simclr_projector is not None and lambda_z_SimCLR > 1e-8:
+                if X_pos is not None:
+                    # Project features
+                    z1_proj = model_simclr_projector(z)
+                    z2_proj = model_simclr_projector(z_positive)
+                    # Compute SimCLR loss
+                    loss_z_SimCLR = loss_fn_z_SimCLR(z1_proj, z2_proj)
+                else:
+                    # Fallback: if X_pos is None, SimCLR loss should be 0
+                    # (lambda should be 0 in this case, but handle gracefully)
+                    pass
+
 
 
 
@@ -1789,6 +1841,7 @@ def training_epoch_AE_v4(
                     lambda_z_triplet_MDP_time * loss_z_triplet_MDP_time + 
                     lambda_z_RnC_time * loss_z_RnC_time + 
                     lambda_z_RnC_score * loss_z_RnC_score + 
+                    lambda_z_SimCLR * loss_z_SimCLR +
                     lambda_y_delta * loss_y_delta + 
                     lambda_y_reg_extra * loss_y_reg_extra +
                     lambda_y_DeltaHead * loss_y_DeltaHead
@@ -1852,6 +1905,9 @@ def training_epoch_AE_v4(
             contr_dct["Lz_SCR"]   = contr_dct.get("Lz_SCR", 0.0) + (N_pos * l) 
             contr_dct["Lz_SCR_numPos"]   = contr_dct.get("Lz_SCR_numPos", 0.0) + N_pos        
 
+            # Track SimCLR loss
+            if lambda_z_SimCLR > 1e-8:
+                contr_dct["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0) + loss_z_SimCLR.item() * B
             
             running_loss["L"]  += loss.item()  * B
 
@@ -1925,6 +1981,7 @@ def evaluate_and_log_testset_results_AE_v4(
     loss_fn_dict: dict, 
     model_score_estimator:  Optional[torch.nn.Module]= None,
     model_delta_heads: Optional[torch.nn.Module]= None,
+    model_simclr_projector: Optional[torch.nn.Module] = None,
     device:    str  = "cuda",
     classes:   Optional[List[str]] = None,
     transform            = lambda x: x,
@@ -1939,7 +1996,9 @@ def evaluate_and_log_testset_results_AE_v4(
         model_AE,
         dataloaders,
         model_classifier=model_classifier,
-        model_score_estimator = model_score_estimator, 
+        model_score_estimator = model_score_estimator,
+        model_delta_heads=model_delta_heads,
+        model_simclr_projector=model_simclr_projector,
         loss_fn_dict = loss_fn_dict,
         transform=transform,
         device=device,

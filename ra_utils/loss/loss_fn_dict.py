@@ -23,6 +23,7 @@ from ra_utils.networks.architecture import (
 import ra_utils.loss.loss_RnC_with_ranks_and_ids
 import ra_utils.loss.delta_head_utils
 import ra_utils.networks.delta_heads
+import ra_utils.loss.loss_SimCLR
 
 
 def make_loss_function_dict_delta_heads(config, data, delta_head_infos=None, device="cuda"):
@@ -245,6 +246,23 @@ def get_loss_fn_dict(config, device="cuda"):
             "options": config["loss"].get("RnC_score", {}).get("options", {})
         }
 
+    # SimCLR loss
+    lambda_z_SimCLR = config.get('loss_weights', {}).get('lambda_z_SimCLR', 0.0)
+    if lambda_z_SimCLR < 1.0e-8:
+        loss_fn_z_SimCLR = dummy
+    else:
+        simclr_config = config["loss"].get("SimCLR", {})
+        simclr_params = simclr_config.get("params", {})
+        loss_fn_z_SimCLR = ra_utils.loss.loss_SimCLR.SimCLRLoss(
+            temperature=simclr_params.get("temperature", 0.07),
+            #feature_sim=simclr_params.get("feature_sim", "cosine")  # Just Cosine is implemented!!
+        )
+    loss_dct_z_SimCLR = {
+        "function": loss_fn_z_SimCLR,
+        "lambda": lambda_z_SimCLR,
+        "options": config["loss"].get("SimCLR", {}).get("options", {})
+    }
+
 
     # lambda_ = config.get('loss_weights', {}).get('lambda_y_delta', 0.0)
     # if lambda_ < 1.0e-8: 
@@ -344,7 +362,8 @@ def get_loss_fn_dict(config, device="cuda"):
         "z_triplet_MDP_time": loss_dct_z_triplet_MDP_time,
         "z_RnC_score": loss_dct_z_RnC_score,
         #"z_RnC_score_mono": loss_dct_z_RnC_score_mono,
-        "z_RnC_time": loss_dct_z_RnC_time
+        "z_RnC_time": loss_dct_z_RnC_time,
+        "z_SimCLR": loss_dct_z_SimCLR
     }
 
     return r

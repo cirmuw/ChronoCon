@@ -1078,6 +1078,46 @@ class ResNetNOAutoEncoder(nn.Module):
         z_out = torch.flatten(z_out, 1)
         x_hat = x*0.0 
         return x_hat, z_out
+
+
+class SimCLRProjector(nn.Module):
+    """
+    SimCLR Projection Head
+    
+    A 2-layer MLP that maps representations to the space where contrastive loss is applied.
+    Following the SimCLR paper: g(h) = W^(2) * ReLU(W^(1) * h)
+    
+    Args:
+        input_dim: Input dimension (typically encoder latent dimension)
+        hidden_dim: Hidden layer dimension (default: same as input_dim)
+        output_dim: Output dimension (default: 128 as per SimCLR paper)
+        nonlin: Nonlinearity function (default: nn.ReLU)
+        nonlin_kwargs: Keyword arguments for nonlinearity
+    """
+    def __init__(self,
+                 input_dim: int,
+                 hidden_dim: Optional[int] = None,
+                 output_dim: int = 128,
+                 nonlin=nn.ReLU,
+                 nonlin_kwargs: dict = {}):
+        super(SimCLRProjector, self).__init__()
+        if hidden_dim is None:
+            hidden_dim = input_dim
+        
+        self.projector = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nonlin(**nonlin_kwargs),
+            nn.Linear(hidden_dim, output_dim)
+        )
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Input features of shape [B, input_dim]
+        Returns:
+            Projected features of shape [B, output_dim]
+        """
+        return self.projector(x)
     
 class DummyReturnZeroLoss(nn.Module):
     def __init__(self, device="cuda"):
