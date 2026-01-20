@@ -122,6 +122,8 @@ loss:
       #normalization: "pair balanced positive" #  "pair balanced", "anchor balanced", "pair balanced positive" (DEFAULT) 
 
 
+
+
 # ## Rank N-Contrastive on SCORE "classio"
 #   RnC_score:  # Rank N Contrasive Loss 
 #   # label=score;  id=score_type e.g. "PIPII_JSN"
@@ -142,6 +144,12 @@ loss:
       feature_sim: "cosine"  # "cosine" or "l2"
       ignore_ids: False  # Here this might make sense. But better keep seperate
 
+  SimCLR:  # SimCLR Self-Supervised Contrastive Loss
+  # Uses X and X_pos (two augmented views) for contrastive learning
+    name: "SimCLR"
+    params:
+      temperature: 0.07  # Default from SimCLR paper
+
 
 
 loss_weights:
@@ -158,6 +166,7 @@ loss_weights:
   lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
   lambda_z_score_consistency_regularizer: 0.0 
   lambda_z_triplet_MDP: 0.0   # with old DL not allowed
+  lambda_z_SimCLR: 0.0
 
 
 
@@ -198,6 +207,17 @@ model:
     name: ResNetRGBMaker # ResNetRGBMaker  # Null ResNetRGBMaker
   score_type_encoder:
     name: null # "ROI_type_encoder"  # null  # ROI_type_encoder
+  simCLR_projector: null  # Set to dict with model_params to enable SimCLR projector
+  # Example:
+  # simCLR_projector:
+  #   model_dct_keys_to_convert_to_lists: []
+  #   model_kw_requires_import:
+  #   - nonlin
+  #   model_params:
+  #     hidden_dim: 512  # Hidden dimension (default: same as input)
+  #     output_dim: 128  # Output dimension (default: 128 as per SimCLR paper)
+  #     nonlin: torch.nn.ReLU
+  #     nonlin_kwargs: {}
   #-.-----------------------  
   # score_estimator: # Only used when  MixLogAndReg # Comment out -> Not used
   #   model_params:
@@ -217,6 +237,7 @@ optimizer_params:
     "auto_encoder":  !!float  2.0e-04
     heads: !!float  2.0e-05
     score_estimators: !!float 5.0e-3
+    projector: null  # Set to learning rate (e.g., 2.0e-04) to enable SimCLR projector
   other_optimizer_kwargs:
     weight_decay: !!float 1.0e-6
 
