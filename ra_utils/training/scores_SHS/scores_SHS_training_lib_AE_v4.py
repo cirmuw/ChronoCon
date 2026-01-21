@@ -501,6 +501,7 @@ def val_epoch_AE_v4(
 
     loss_fn_z_SimCLR = loss_fn_dict["z_SimCLR"]["function"]
     lambda_z_SimCLR = loss_fn_dict["z_SimCLR"]["lambda"]
+    lambda_z_SimCLR_val_multiplier = loss_fn_dict["z_SimCLR"]["options"].get("validation_multiplier", 1.0)
 
     loss_terms_ = ["x", "y", "z", 
                   # "z_triplet_classes", "z_triplet_WST_score", "z_triplet_WST_time", "z_score_consistency_regularizer", 
@@ -686,6 +687,7 @@ def val_epoch_AE_v4(
 
                 # ---- SimCLR Loss ----
                 loss_z_SimCLR = torch.tensor(0.0, device=device)
+                num_batches_SimCLR = 0.0
                 if model_simclr_projector is not None and lambda_z_SimCLR > 1e-8:
                     if X_pos is not None:
                         # Project features
@@ -693,9 +695,15 @@ def val_epoch_AE_v4(
                         z2_proj = model_simclr_projector(z_positive)
                         # Compute SimCLR loss
                         loss_z_SimCLR = loss_fn_z_SimCLR(z1_proj, z2_proj)
+                        num_batches_SimCLR = 1.0
                     else:
                         # Fallback: if X_pos is None, SimCLR loss should be 0
                         pass
+                
+                # Track SimCLR loss
+                contr_dct["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0) + (loss_z_SimCLR.item() * B * num_batches_SimCLR)
+                contr_dct["Lz_SimCLR_numBatches"] = contr_dct.get("Lz_SimCLR_numBatches", 0.0) + num_batches_SimCLR
+                contr_dct["Lz_SimCLR_numSamples"] = contr_dct.get("Lz_SimCLR_numSamples", 0.0) + (B * num_batches_SimCLR)
 
                 # ----------------------------------------------------------
                 # 1.1.5 Delta heads (if present)
@@ -960,7 +968,13 @@ def val_epoch_AE_v4(
     if contr_dct.get("Lz_RnC_time_numTerms", 0.0) > 0:
         contr_dct["Lz_RnC_time"] /= (contr_dct["Lz_RnC_time_numTerms"] + 1e-10)
     if contr_dct.get("Lz_RnC_score_numTerms", 0.0) > 0:
-        contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)    
+        contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)
+    
+    # Mean per sample for SimCLR:
+    if contr_dct.get("Lz_SimCLR_numSamples", 0.0) > 0:
+        contr_dct["Lz_SimCLR"] /= (contr_dct["Lz_SimCLR_numSamples"] + 1e-10)
+    else:
+        contr_dct["Lz_SimCLR"] = 0.0
 
 
 
@@ -976,6 +990,7 @@ def val_epoch_AE_v4(
             + contr_dct.get("Lz_RnC_time", 0.0)  * lambda_z_RnC_time  * lambda_z_RnC_time_val_multiplier
             + contr_dct.get("Lz_RnC_score", 0.0) * lambda_z_RnC_score * lambda_z_RnC_score_val_multiplier
             + contr_dct.get("Ly_DeltaHead", 0.0) * lambda_y_DeltaHead
+            + contr_dct.get("Lz_SimCLR", 0.0) * lambda_z_SimCLR * lambda_z_SimCLR_val_multiplier
     )
 
     # # Average compact support across minibatches and rename for auto-logging
@@ -995,6 +1010,8 @@ def val_epoch_AE_v4(
     running_loss = {**running_loss, **contr_dct}
     # Add normalized delta head loss to running_loss for consistency (override any per-sample average)
     running_loss["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
+    # Add normalized SimCLR loss to running_loss for consistency
+    running_loss["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0)
 
     if model_classifier is not None:
         for head_name in model_classifier.classifier_head_infos:
@@ -1906,8 +1923,13 @@ def training_epoch_AE_v4(
             contr_dct["Lz_SCR_numPos"]   = contr_dct.get("Lz_SCR_numPos", 0.0) + N_pos        
 
             # Track SimCLR loss
-            if lambda_z_SimCLR > 1e-8:
+            if lambda_z_SimCLR > 1e-8 and X_pos is not None:
                 contr_dct["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0) + loss_z_SimCLR.item() * B
+                contr_dct["Lz_SimCLR_numSamples"] = contr_dct.get("Lz_SimCLR_numSamples", 0.0) + B
+            else:
+                # Ensure dict keys exist even when not computed
+                contr_dct["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0)
+                contr_dct["Lz_SimCLR_numSamples"] = contr_dct.get("Lz_SimCLR_numSamples", 0.0)
             
             running_loss["L"]  += loss.item()  * B
 
@@ -1937,6 +1959,12 @@ def training_epoch_AE_v4(
         contr_dct["Lz_RnC_time"] /= (contr_dct["Lz_RnC_time_numTerms"] + 1e-10)
     if contr_dct.get("Lz_RnC_score_numTerms", 0.0) > 0:
         contr_dct["Lz_RnC_score"] /= (contr_dct["Lz_RnC_score_numTerms"] + 1e-10)
+    
+    # Mean per sample for SimCLR:
+    if contr_dct.get("Lz_SimCLR_numSamples", 0.0) > 0:
+        contr_dct["Lz_SimCLR"] /= (contr_dct["Lz_SimCLR_numSamples"] + 1e-10)
+    else:
+        contr_dct["Lz_SimCLR"] = 0.0
 
     # # Also average the compact support across minibatches (nice for logging dashboards)
     # for prefix in ["RNC_time", "RNC_score"]:
@@ -1958,6 +1986,8 @@ def training_epoch_AE_v4(
     running_loss = {**running_loss, **contr_dct}
     # Add normalized delta head loss to running_loss for consistency (override the per-sample average)
     running_loss["Ly_DeltaHead"] = contr_dct.get("Ly_DeltaHead", 0.0)
+    # Add normalized SimCLR loss to running_loss for consistency
+    running_loss["Lz_SimCLR"] = contr_dct.get("Lz_SimCLR", 0.0)
 
     # per-head means
     if model_classifier is not None:
