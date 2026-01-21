@@ -257,7 +257,7 @@ def prepare_dataloaders(datasets, config):
                          f"'PatientLevelWeightedRandomSampler', 'PatientBatchSampler', None)")
 
     # validation / test unchanged
-    val_loader = DataLoader(datasets["dataset_validation"],
+    val_loader_standard__notGrouped_Deterministic = DataLoader(datasets["dataset_validation"],
                             batch_size=batch_size,
                             shuffle=False,
                             num_workers=num_workers,
@@ -274,13 +274,31 @@ def prepare_dataloaders(datasets, config):
         drop_last=False,
         sort_groups_by="key",   # or "size_desc" if you prefer big groups first
     )
-    val_loader_grouped = DataLoader(
+    val_loader_grouped_deterministic = DataLoader(
         datasets["dataset_validation"],
         batch_sampler=val_batch_sampler,
         num_workers=num_workers,
         pin_memory=pin_memory,
     )
 
+    # Grouped and not deterministic: 
+    val_batch_sampler = ra_utils.data.datasampler_CR_patches.GroupPackingBatchSampler(
+        dataset=datasets["dataset_val_with_train_transforms"],
+        batch_size=batch_size,
+        group_identifiers=val_group_ids,
+        drop_last=False,
+        sort_groups_by="key",   # or "size_desc" if you prefer big groups first
+    )
+    val_loader_grouped_NOT_deterministic = DataLoader(
+        datasets["dataset_val_with_train_transforms"],
+        batch_sampler=val_batch_sampler,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+    )
+    
+    
+    
+    
 
     test_loader = DataLoader(datasets["dataset_test"],
                              batch_size=batch_size,
@@ -297,25 +315,42 @@ def prepare_dataloaders(datasets, config):
         pin_memory=pin_memory
     )
 
-    if config["training"].get("USE_GROUPED_VALIDATION_LOADER", False): 
+    USE_TRAIN_TRANSFORMS_IN_VAL_LOADER = config["training"].get("USE_TRAIN_TRANSFORMS_IN_VAL_LOADER", False)
+    USE_GROUPED_VALIDATION_LOADER = config["training"].get("USE_GROUPED_VALIDATION_LOADER", False)
+
+    # Not standard:  no randomness in validation set  but grouped 
+    if (USE_GROUPED_VALIDATION_LOADER and (not USE_TRAIN_TRANSFORMS_IN_VAL_LOADER)): 
         print("WARINING::  USE_GROUPED_VALIDATION_LOADER=True  the metrics might not be comparible! "  )
         return {
             "train_loader": train_loader,
-            "val_loader":   val_loader_grouped,
+            "val_loader":   val_loader_grouped_deterministic,
+            "test_loader":  test_loader,
+            "train_loader_with_val_transforms": train_loader_with_val_transforms
+        }
+
+    # Not standard:  randomness in validation set  but grouped 
+    if (USE_GROUPED_VALIDATION_LOADER and (USE_TRAIN_TRANSFORMS_IN_VAL_LOADER)): 
+        print(f"WARINING::  {USE_GROUPED_VALIDATION_LOADER = } and  {USE_TRAIN_TRANSFORMS_IN_VAL_LOADER = } Metrics might not be comparible! "  )
+        return {
+            "train_loader": train_loader,
+            "val_loader":   val_loader_grouped_NOT_deterministic,
+            "test_loader":  test_loader,
+            "train_loader_with_val_transforms": train_loader_with_val_transforms
+        }
+
+    # Default standard:  no randomness in validation set. 
+    elif ((not USE_GROUPED_VALIDATION_LOADER) and (not USE_TRAIN_TRANSFORMS_IN_VAL_LOADER)): 
+        return {
+            "train_loader": train_loader,
+            "val_loader":   val_loader_standard__notGrouped_Deterministic,
+            "val_loader_grouped": val_loader_grouped_deterministic,
             "test_loader":  test_loader,
             "train_loader_with_val_transforms": train_loader_with_val_transforms
         }
 
 
-    return {
-        "train_loader": train_loader,
-        "val_loader":   val_loader,
-        "val_loader_grouped": val_loader_grouped,
-        "test_loader":  test_loader,
-        "train_loader_with_val_transforms": train_loader_with_val_transforms
-    }
-
-
+    else: 
+        raise ValueError(f"Unexpected combination on loaders: {USE_GROUPED_VALIDATION_LOADER = }  {USE_TRAIN_TRANSFORMS_IN_VAL_LOADER = } ")
 
 
 
@@ -366,6 +401,10 @@ def prepare_datasets(data_tables, config):
             data=df_scores_to_dct_list(data_tables["df_train"], optional_keys=optional_keys),
             transform=transform_val
         ),
+        "dataset_val_with_train_transforms": Dataset(
+            data=df_scores_to_dct_list(data_tables["df_val"], optional_keys=optional_keys),
+            transform=transform_train
+        ),        
     }
 
 
