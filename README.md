@@ -5,8 +5,8 @@ The ChronoCon code was written by Clemens Watzenböck. The preprocessing code (j
 
 
 ### Some key components
-- ChronoCon loss function: ["RnCLossMono"](./ra_utils/ra_utils/loss/loss_RnCMono.py)
-- Main script for training: [train.py](./ra_utils/ra_utils/training/scores_SHS/07_train.py). 
+- ChronoCon loss function: ["RnCLossMono"](./ra_utils/loss/loss_RnCMono.py)
+- Main script for training: [train.py](./ra_utils/training/scores_SHS/07_train.py). 
 - Sample input script [config.yml](./runs/config_scoring/development_inputs/training_config_cleaned.yml)
 
 These two should be called as 
@@ -27,7 +27,7 @@ Follow these steps to set up your environment:
 conda create -n py3-10-ra_utils python=3.10
 conda activate py3-10-ra_utils
 
-# Step 4: Install this package (ra_utils)
+# Step 3: Install this package (ra_utils)
 pip install -e .
 ```
 
