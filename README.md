@@ -1,5 +1,5 @@
 ## Chronological Contrastive Learning: Few-Shot Progression Assessment in Irreversible Diseases
-This repository contains the relencant code for the MIDL 2026 submission. 
+This repository contains the relencant code for the MIDL 2026 submission.. 
 
 The ChronoCon code was written by Clemens Watzenböck. The preprocessing code (joint-detetection, automatic ROI size adaptation, patch extraction, ...) was written by Thomas Deimel and Paul Weiser. It is also contained in this repository. More details in the dataset and prepocessing can be found in [DOI:10.64898/2025.12.26.25343056; see reference below]. 
 
