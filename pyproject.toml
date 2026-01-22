@@ -2,11 +2,13 @@
 name = "ra_utils"
 dynamic = ["version"]
 requires-python = ">=3.9"
-description = "ra_utils is .....  in development"
+description = "ra_utils is a python package used for Sharp-van-der-Heijde score prediction. Most notably it contains the Chronological Contrastive loss function for the MIDL2026 conference."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [
     { name = "Clemens Watzenboeck", email = "clemens.watzenboeck@meduniwien.ac.at"},
+    { name = "Paul Weiser"},
+    { name = "Thomas Deimel"},        
     { name = "Center for Imaging Research; Medical University of Vienna" }
 ]
 classifiers = [
@@ -73,13 +75,15 @@ dependencies = [
 [project.scripts]
 ra_utils__print_package_infos = "ra_utils.tools.print_package_info:main"
 ra_utils__annotate_landmarks = "ra_utils.tools.landmark_annotation:main"
-ra_utils__annotate_landmarks_prepopulation = "ra_utils.tools.landmark_annotation_prepopulation:main"
-ra_utils__annotate_landmarks_combine_annotations = "ra_utils.tools.landmark_annotation_combine_annotations:main"
-ra_utils__annotate_landmarks_consistency_check = "ra_utils.tools.landmark_annotation_check_consistency:main"
 ra_utils__visualize_latentspace = "ra_utils.visualization.interactive.ra_model:main"
 ra_utils__sum_and_plot_SvH = "ra_utils.evaluation.plot_and_save_true_vs_predicted_summed_scores:main"
 ra_utils__compute_progression_classification_metrics = "ra_utils.evaluation.save_progression_classification_metrics:main"
 
+
+# OLD
+# ra_utils__annotate_landmarks_prepopulation = "ra_utils.tools.landmark_annotation_prepopulation:main"
+# ra_utils__annotate_landmarks_combine_annotations = "ra_utils.tools.landmark_annotation_combine_annotations:main"
+# ra_utils__annotate_landmarks_consistency_check = "ra_utils.tools.landmark_annotation_check_consistency:main"
 # ra_utils__annotate_landmarks_foot = "ra_utils.tools.landmark_annotation_foot:main"
 # ra_utils__annotate_landmarks_feet = "ra_utils.tools.landmark_annotation_feet:main"
 

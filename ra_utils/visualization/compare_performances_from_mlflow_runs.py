@@ -768,6 +768,8 @@ def line_plot_performances(
     errorbar_elinewidth=1.5,
     y_min=None,
     y_max=None,
+    line_connections: list = None,
+    error_bars: list = None,
     **kwargs
 ):
     """
@@ -806,6 +808,10 @@ def line_plot_performances(
     - errorbar_elinewidth: Width of error bar lines (default 1.5)
     - y_min: Optional minimum value for y-axis (default None, uses automatic scaling)
     - y_max: Optional maximum value for y-axis (default None, uses automatic scaling)
+    - line_connections: Optional list of booleans controlling line connections for each model (default None, all True)
+                       If False for a model, only markers are plotted (no lines)
+    - error_bars: Optional list of booleans controlling error bar display for each model (default None, all True)
+                 If False for a model, no error bars are shown
     - **kwargs: Additional keyword arguments passed to plt.plot()
 
     Returns:
@@ -813,6 +819,15 @@ def line_plot_performances(
     """
 
     num_models = len(df_dct)
+    if line_connections is None: 
+        line_connections = [True] * num_models
+    else: 
+        assert num_models == len(line_connections), f"{num_models = } {len(line_connections) = }"
+    
+    if error_bars is None:
+        error_bars = [True] * num_models
+    else:
+        assert num_models == len(error_bars), f"{num_models = } {len(error_bars) = }"
 
     if colors is None:
         # Use matplotlib's default color cycle
@@ -836,6 +851,10 @@ def line_plot_performances(
     # Convert to log2 space for positioning
     x_values_log2 = np.log2(all_x_values)
 
+    # Define marker cycle for models without line connections
+    no_line_markers = ["3", "x", 11, "1", "3", "4"]
+    no_line_marker_index = 0  # Track which marker to use next
+
     # Plot each model
     for i, (name, df_part_to_plot) in enumerate(df_dct.items()):
         # Sort by x values to ensure proper line plotting
@@ -847,8 +866,11 @@ def line_plot_performances(
         # Convert x values to log2 space
         x_values_log2_model = np.log2(x.values)
 
+        # Determine if this model should show error bars
+        show_error_bars = error_bars[i] and (y_column_upper is not None and y_column_lower is not None)
+        
         # Handle error bars and error bands - if y_column_upper or y_column_lower is None, skip error visualization
-        if y_column_upper is not None and y_column_lower is not None:
+        if show_error_bars:
             y_lower = df_sorted[y_column_lower]
             y_upper = df_sorted[y_column_upper]
             
@@ -883,13 +905,28 @@ def line_plot_performances(
                 label='_nolegend_'  # Don't add to legend
             )
 
-        # Plot line with markers
+        # Determine marker style and size based on line_connections
+        if line_connections[i]:
+            # Use default marker and markersize
+            current_marker = marker
+            current_markersize = markersize
+            current_linewidth = linewidth
+        else:
+            # Use different marker from cycle and larger markersize, no line
+            current_marker = no_line_markers[no_line_marker_index % len(no_line_markers)]
+            no_line_marker_index += 1
+            current_markersize = markersize * 3  # 50% larger
+            current_linewidth = 0  # No line
+            # if current_marker == "x":
+            #     current_markersize *= 1.5
+
+        # Plot line with markers (or just markers if line_connections[i] is False)
         ax.plot(
             x_values_log2_model, 
             y.values,
-            marker=marker,
-            markersize=markersize,
-            linewidth=linewidth,
+            marker=current_marker,
+            markersize=current_markersize,
+            linewidth=current_linewidth,
             alpha=alpha_line,
             label=name,
             color=colors[i],
