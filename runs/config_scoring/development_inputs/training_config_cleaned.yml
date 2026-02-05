@@ -13,7 +13,7 @@ experiment_name: "ExpDev"
 evaluate_and_save_training_set: False
 eval_on_val_set_once_more: true
 evaluate_on_testset: false
-run_name: "pretraining_setup"
+run_name: "dev_setup"
 
 
 SAVE_MODEL_state_dct: True
@@ -111,18 +111,17 @@ loss:
     name: MSELoss  # FocalLoss  MSELoss  "MSE+CELoss"  ""
     params: {}
 
-  RnC_time:  # Rank N Contrasive Loss 
+
+  RnC_time:  # Rank N Contrasive Loss  on TIME. In two different variants
   # label=Time;  id=instance_label (e.g. PIPII_L_patient001_2010-01-01)
   # Make sure that transforms.ACTIVATE_TRIPLET_TRAINING_TRANSFORMS is True 
-    name: "RnC_mono"    # RnC_time (only with l1) or RnC_mono (RnC_mono is advised)
+    name: "RnC_mono"  # RnC_time (only with l1) or RnC_mono (RnC_mono is advised!  THIS IS THE ChronoCon loss!!!)
     params:
       temperature: 1.0
-      feature_sim: "cosine"  # "cosine" (DEFAULT) ,'negative l1', 'negative l2'
+      feature_sim: 'negative l2'  # "cosine" (DEFAULT) ,'negative l1', 'negative l2'  # 'negative l2' is advised!
       #label_diff: "scalar difference"  # "l1", "scalar difference" (DEFAULT)
       # ignore_ids: False  # For ablation study and tests
       #normalization: "pair balanced positive" #  "pair balanced", "anchor balanced", "pair balanced positive" (DEFAULT) 
-
-
 
 
 # ## Rank N-Contrastive on SCORE "classio"
@@ -145,21 +144,25 @@ loss:
       feature_sim: "cosine"  # "cosine" or "l2"
       ignore_ids: False  # Here this might make sense. But better keep seperate
 
-  SimCLR:  # SimCLR Self-Supervised Contrastive Loss
-  # Uses X and X_pos (two augmented views) for contrastive learning
-    name: "SimCLR"
-    params:
-      temperature: 0.07  # Default from SimCLR paper
+  # # SIM CLR Loss as baseline
+  # SimCLR:  # SimCLR Self-Supervised Contrastive Loss
+  # # Uses X and X_pos (two augmented views) for contrastive learning
+  #   name: "SimCLR"
+  #   params:
+  #     temperature: 0.07  # Default from SimCLR paper
 
 
 
 loss_weights:
-  lambda_y: !!float 0.0 # 1e-0  
-  lambda_z_RnC_time: 1.0   # with old DL not allowed
-  lambda_z_RnC_score: 1.0   # with old DL not allowed
+  lambda_y: !!float 1.0     # prefactor for MSE(y, \hat y) or similar  | simply set to 0 -> no scores are used
+  lambda_z_RnC_time: 0.0    # prefactor for ChronoCon    or RnC:t loss in paper | with old DL not allowed
+  lambda_z_RnC_score: 0.0   # prefactor for OrdinalCon:y or RnC:y loss in paper | with old DL not allowed
 
   # not active for now
-  lambda_x: !!float 0.0 # 1e2  
+  lambda_x: !!float 0.0 # 1e2  # prefactor for Recon loss (DAE in the paper)
+  lambda_z_SimCLR: 0.0         # prefactor for SimCLR loss (baseline)
+
+  # Some things I tried (experimental ... not in paper)
   lambda_y_delta: 0.0      # Huber loss for same patient, ... 
   lambda_y_reg_extra: 0.0  # An extra MSE Loss (makes only sense on top of Classification loss)
   lambda_z:  0.0    
@@ -167,7 +170,6 @@ loss_weights:
   lambda_z_triplet_WST_scores: 0.0   # with old DL not allowed
   lambda_z_score_consistency_regularizer: 0.0 
   lambda_z_triplet_MDP: 0.0   # with old DL not allowed
-  lambda_z_SimCLR: 0.0
 
 
 
@@ -180,7 +182,8 @@ loss_weights:
 
 model_name: "ResNetNoAE + MultiHeadClassifier"
 
-REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: False 
+
+REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: False  # Makes sense for pretraining (no scores needed!)
 
 model:
   autoencoder:

@@ -70,6 +70,7 @@ dependencies = [
     "transformers @ git+https://github.com/huggingface/transformers",
     "huggingface_hub",
     "fiftyone",
+    "python-dotenv"
 ]
 
 [project.scripts]

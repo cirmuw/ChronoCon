@@ -68,3 +68,17 @@ pip install -e .
 ```
 
 
+
+### Other notes: 
+#### `.env`: 
+ - I started experimenting with dinov3 as backbone. It was usefull to have the dinov3 cloned locally and also to have the official pretrained weights stored locally. See `.env` file.
+
+
+```bash 
+
+DINOV3_WEIGHTS_LOCATION="/home/cwatzenboeck/data/dinov3/weights"
+DINOV3_CODE_DIR="/home/cwatzenboeck/code/RA/public/dinov3/"
+
+```
+
+
