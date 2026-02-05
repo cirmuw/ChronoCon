@@ -404,7 +404,7 @@ def _compute_boxplot_data_all_models(ROI, data_similarities_per_model):
 
 def _plot_multiple_boxplots(ax, model_data, unified_dmin, unified_dmax, unified_x_ticks, 
                             model_names, colors=None, show_x_ticks=True, show_legend=True, 
-                            legend_fontsize=10, ylabel_fontsize=13):
+                            legend_fontsize=10, ylabel_fontsize=13, legend_ncol=1, tick_fontsize=None):
     """
     Helper function to plot multiple boxplots side-by-side for each delta value.
     
@@ -432,6 +432,10 @@ def _plot_multiple_boxplots(ax, model_data, unified_dmin, unified_dmax, unified_
         Font size for the legend
     ylabel_fontsize : int, default=13
         Font size for the y-axis label
+    legend_ncol : int, default=1
+        Number of columns in the legend
+    tick_fontsize : int, optional
+        Font size for tick labels. If None, uses matplotlib default.
     """
     n_models = len(model_names)
     
@@ -518,6 +522,8 @@ def _plot_multiple_boxplots(ax, model_data, unified_dmin, unified_dmax, unified_
     else:
         ax.set_xticks([])  # Hide ticks when histogram is shown below
     ax.set_ylabel("Similarity", fontsize=ylabel_fontsize)
+    if tick_fontsize is not None:
+        ax.tick_params(axis='both', labelsize=tick_fontsize)
     ax.grid(True, alpha=0.3)
     
     # Create legend if requested
@@ -525,7 +531,7 @@ def _plot_multiple_boxplots(ax, model_data, unified_dmin, unified_dmax, unified_
         from matplotlib.patches import Patch
         legend_elements = [Patch(facecolor=colors[i], alpha=0.7, label=model_name) 
                           for i, model_name in enumerate(model_names)]
-        ax.legend(handles=legend_elements, loc='best', fontsize=legend_fontsize)
+        ax.legend(handles=legend_elements, loc='best', fontsize=legend_fontsize, ncol=legend_ncol)
 
 
 def plot_single_roi_several_models(ROI, data_similarities_per_model, plot_hist=True, 
@@ -637,6 +643,144 @@ def plot_single_roi_several_models(ROI, data_similarities_per_model, plot_hist=T
     
     return fig, axs
 
+
+
+
+
+def plot_single_roi_several_models_LARGER_FONTS(ROI, data_similarities_per_model, plot_hist=True, 
+                                    hist_y_log=True, colors=None, hist_model=None, hide_hist_legend=True,
+                                    show_legend=True, title_fontsize=13, legend_fontsize=10, 
+                                    ylabel_fontsize=13, xlabel_fontsize=13, ylabel_fontsize_hist=13,
+                                    tick_fontsize=None):
+    """
+    Plot similarity boxplots for a single ROI comparing multiple models side-by-side.
+    
+    Parameters:
+    -----------
+    ROI : str
+        The ROI name to plot
+    data_similarities_per_model : dict
+        Dictionary with model names as keys and data_similarities dicts as values.
+        Each data_similarities dict should have the same structure as used in plot_single_roi,
+        i.e., it should contain a key matching ROI with sub-dict containing:
+        - "scores": array of scores
+        - "patient_scoretype_keys": array of patient identifiers
+        - "sim": similarity matrix
+    plot_hist : bool, default=True
+        Whether to plot the histogram below the boxplots
+    hist_y_log : bool, default=True
+        Whether to use log scale for histogram y-axis
+    colors : list, optional
+        List of colors for each model. If None, uses matplotlib default color cycle.
+        Should have same length as number of models.
+    hist_model : str, optional
+        Model name to use for histogram data. If None, uses the first model.
+    show_legend : bool, default=True
+        Whether to show the legend on the plot.
+    title_fontsize : int, default=13
+        Font size for the title
+    legend_fontsize : int, default=10
+        Font size for the legend
+    ylabel_fontsize : int, default=13
+        Font size for the y-axis label of the boxplot
+    xlabel_fontsize : int, default=13
+        Font size for the x-axis label of the histogram
+    ylabel_fontsize_hist : int, default=13
+        Font size for the y-axis label of the histogram
+    tick_fontsize : int, optional
+        Font size for tick labels. If None, uses matplotlib default.
+    
+    Returns:
+    --------
+    fig : matplotlib.figure.Figure
+        The figure object
+    axs : list
+        List of axes objects [ax_boxplot, ax_histogram] (or [ax_boxplot] if plot_hist=False)
+    """
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from matplotlib import gridspec
+    
+    # Validate input
+    if not data_similarities_per_model:
+        raise ValueError("data_similarities_per_model cannot be empty")
+    
+    model_names = list(data_similarities_per_model.keys())
+    
+    # Validate ROI exists in all models
+    for model_name in model_names:
+        if ROI not in data_similarities_per_model[model_name]:
+            raise ValueError(f"ROI '{ROI}' not found in model '{model_name}' data")
+    
+    # Compute boxplot data for all models
+    model_data, unified_dmin, unified_dmax, unified_x_ticks = _compute_boxplot_data_all_models(
+        ROI, data_similarities_per_model
+    )
+    
+    # Set up figure and axes
+    if plot_hist:
+        fig = plt.figure(figsize=(10, 6))
+        gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1], hspace=0)
+        ax_boxplot = fig.add_subplot(gs[0])
+        ax_hist = fig.add_subplot(gs[1], sharex=ax_boxplot)
+        axs = [ax_boxplot, ax_hist]
+    else:
+        fig, ax_boxplot = plt.subplots(1, 1, figsize=(10, 4))
+        axs = [ax_boxplot]
+    
+    # Plot multiple boxplots
+    _plot_multiple_boxplots(ax_boxplot, model_data, unified_dmin, unified_dmax, unified_x_ticks,
+                           model_names, colors=colors, show_x_ticks=not plot_hist, show_legend=show_legend,
+                           legend_ncol=2, legend_fontsize=legend_fontsize, ylabel_fontsize=ylabel_fontsize,
+                           tick_fontsize=tick_fontsize)
+    
+    # Set title
+    ax_boxplot.set_title(f"{ROI = }", fontsize=title_fontsize)
+    
+    # Remove xticklabels from top plot when histogram is shown (they share the same axis)
+    if plot_hist:
+        ax_boxplot.tick_params(axis='x', labelbottom=False)  # Hide x-axis labels on top plot
+    
+    # Plot histogram if requested
+    if plot_hist:
+        # Determine which model to use for histogram
+        if hist_model is None:
+            hist_model = model_names[0]
+        elif hist_model not in model_names:
+            raise ValueError(f"hist_model '{hist_model}' not found in model names")
+        
+        # Get histogram data from selected model
+        _, _, data, dmin, dmax, edges, _ = model_data[hist_model]
+        
+        # Plot histogram
+        ax_hist.hist(data, bins=edges, edgecolor="black", color="lightblue", alpha=0.7)
+        ax_hist.set_xlim(unified_dmin - 0.5, unified_dmax + 0.5)
+        ax_hist.set_xticks(unified_x_ticks)
+        # Explicitly show x-axis labels on bottom plot
+        ax_hist.tick_params(axis='x', labelbottom=True)  # Ensure x-axis labels are visible on bottom plot
+        ax_hist.set_xlabel(r'Score difference (intra patient; time-ordered) $\Delta_{ij}$', fontsize=xlabel_fontsize)
+        ax_hist.set_ylabel("Frequency", fontsize=ylabel_fontsize_hist)
+        ax_hist.tick_params(axis='both', direction='in', which='both', top=True, right=True)
+        if tick_fontsize is not None:
+            ax_hist.tick_params(axis='both', labelsize=tick_fontsize)
+        if hist_y_log:
+            ax_hist.set_yscale("log")
+        
+        # Add note about which model's histogram is shown
+        if len(model_names) > 1 and not hide_hist_legend:
+            ax_hist.text(0.98, 0.98, f"Histogram: {hist_model}", 
+                        transform=ax_hist.transAxes, 
+                        fontsize=9, verticalalignment='top', horizontalalignment='right',
+                        bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    else:
+        ax_boxplot.set_xticks(unified_x_ticks)
+        ax_boxplot.set_xlabel(r'Score difference (intra patient; time-ordered) $\Delta_{ij}$', fontsize=xlabel_fontsize)
+        if tick_fontsize is not None:
+            ax_boxplot.tick_params(axis='both', labelsize=tick_fontsize)
+    
+    plt.tight_layout()
+    
+    return fig, axs
 
 
 

@@ -757,8 +757,8 @@ def line_plot_performances(
     marker='+',
     markersize=8,
     fontsize_title=16,
-    fontsize_labels=20,
-    fontsize_legend=16,
+    fontsize_labels=22,
+    fontsize_legend=19,
     fontsize_ticks=16,
     grid=True,  # This argument has no effect below; kept for API compatibility.
     grid_alpha=0.3,
@@ -927,6 +927,7 @@ def line_plot_performances(
             marker=current_marker,
             markersize=current_markersize,
             linewidth=current_linewidth,
+             markeredgewidth=3.5,   
             alpha=alpha_line,
             label=name,
             color=colors[i],
