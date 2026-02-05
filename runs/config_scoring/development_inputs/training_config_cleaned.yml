@@ -180,7 +180,8 @@ loss_weights:
 ########################### MODEL ###############################
 #################################################################
 
-model_name: "ResNetNoAE + MultiHeadClassifier"
+model_name: "ResNetNoAE + MultiHeadClassifier"    # Model for fine-tuning or single-stage training  (No decoder needed!)
+#model_name: "ResNetAE_v2p2 + MultiHeadClassifier" # Model with an auto-encoder (AE) based on ResNet
 
 
 REMOVE_REGRESSION_OR_CLASSIFICATION_MODEL: False  # Makes sense for pretraining (no scores needed!)
